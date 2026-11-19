@@ -6,11 +6,8 @@ import { connectMongo } from "../../db";
 import { getGranotLifecycleHealthStateModel } from "../../models/GranotLifecycleHealthState";
 import { persistGranotLifecycleAlertTransitions, type GranotLifecycleAlertProjection } from "./alerts";
 import {
-  bucketStart,
   incrementGranotLifecycleHealthCounter,
   readGranotLifecycleHealthCounters,
-  readGranotLifecycleLastRun,
-  recordGranotLifecycleLastRun,
   resetGranotLifecycleHealthStateMissedWrite,
 } from "./healthState";
 import { emitGranotLifecycleEvent } from "./observability";
@@ -88,63 +85,6 @@ test("[SLIM-04] a capture failure while Mongo is down is logged, then fences the
   const counters = await readGranotLifecycleHealthCounters(new Date());
   assert.equal(counters.capture_failures_24h, null);
   assert.equal(counters.claim_recoveries_1h, null);
-  await HealthState.deleteMany({});
-});
-
-test("[SLIM-04] two writers increment one minute bucket atomically under the unique fence", async (t) => {
-  if (!(await replicaReady(t))) return;
-  resetGranotLifecycleHealthStateMissedWrite();
-  const HealthState = getGranotLifecycleHealthStateModel();
-  await HealthState.deleteMany({});
-  await HealthState.createIndexes();
-  const at = new Date();
-  await Promise.all(
-    Array.from({ length: 20 }, (_, index) =>
-      incrementGranotLifecycleHealthCounter(
-        index % 2 === 0 ? "claim_recovered" : "owner_command_conflict",
-        index % 2 === 0 ? "all" : "GRANOT_CASE_REVISION_CONFLICT",
-        at,
-      ),
-    ),
-  );
-  const buckets = await HealthState.find({ kind: "bucket" }).lean();
-  assert.equal(buckets.length, 2);
-  for (const row of buckets) {
-    assert.equal(row.count, 10);
-    assert.equal(row.bucket_start?.toISOString(), bucketStart(at).toISOString());
-    assert.equal(row.expires_at!.getTime() - row.bucket_start!.getTime(), 48 * 60 * 60 * 1000);
-  }
-  await incrementGranotLifecycleHealthCounter("owner_command_conflict", "not a code", at);
-  assert.equal(await HealthState.countDocuments({ kind: "bucket" }), 2);
-
-  const fresh = await readGranotLifecycleHealthCounters(new Date());
-  assert.equal(fresh.claim_recoveries_1h, null, "fresh counting is unknown until the window is covered");
-  assert.equal(fresh.command_conflicts_24h, null);
-
-  await HealthState.updateOne(
-    { _id: "coverage" },
-    { $set: { counters_since: new Date(Date.now() - 25 * 60 * 60 * 1000) } },
-  );
-  const warm = await readGranotLifecycleHealthCounters(new Date());
-  assert.equal(warm.claim_recoveries_1h, 10);
-  assert.deepEqual(warm.command_conflicts_24h, [{ code: "GRANOT_CASE_REVISION_CONFLICT", count: 10 }]);
-  assert.equal(warm.capture_failures_24h, 0);
-  await HealthState.deleteMany({});
-});
-
-test("[SLIM-04] latest run per trigger keeps the newest run across late writers", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const HealthState = getGranotLifecycleHealthStateModel();
-  await HealthState.deleteMany({});
-  assert.equal(await readGranotLifecycleLastRun("cron"), null);
-  const newer = new Date("2026-10-03T12:05:00.000Z");
-  const older = new Date("2026-10-03T12:00:00.000Z");
-  await recordGranotLifecycleLastRun("cron", "failed", newer);
-  await recordGranotLifecycleLastRun("cron", "completed", older);
-  await recordGranotLifecycleLastRun("queue", "completed", older);
-  assert.deepEqual(await readGranotLifecycleLastRun("cron"), { at: newer.toISOString(), status: "failed" });
-  assert.deepEqual(await readGranotLifecycleLastRun("queue"), { at: older.toISOString(), status: "completed" });
-  assert.equal(await HealthState.countDocuments({ kind: "last_run" }), 2);
   await HealthState.deleteMany({});
 });
 

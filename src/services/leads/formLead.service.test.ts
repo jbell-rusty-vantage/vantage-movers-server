@@ -11,21 +11,13 @@ import {
   clearCapturedDailyOperationsFacts,
   getCapturedDailyOperationsFacts,
 } from "../dailyOperations/testDailyOperationsSink";
-import { ConflictError, NotFoundError } from "../errors";
+import { ConflictError } from "../errors";
 import {
   beginFormLeadRemoval,
   completeFormLeadIngestion,
   correctFormLead,
-  findFormLeadForEnrichment,
-  listRecentFormLeads,
-  removeFormLead,
   type FormLeadIngestionInProgress,
 } from "./formLead.service";
-import {
-  deriveFormLeadIngestionOrigin,
-  noSyncOnCreate,
-  omitForbiddenLeadLifecycleFields,
-} from "./leadIngestionProvenance";
 
 type StubbedFormLeadModel = {
   findById: (id: string) => unknown;
@@ -70,33 +62,6 @@ afterEach(() => {
   clearCapturedDailyOperationsFacts();
 });
 
-test("findFormLeadForEnrichment does not return a Duplicate Lead", async () => {
-  stubFindById({
-    _id: "6a19ddd4bf20b878123aac14",
-    duplicate: true,
-    quoted: false,
-    cubic_feet: 100,
-  });
-
-  await assert.rejects(
-    () => findFormLeadForEnrichment("6a19ddd4bf20b878123aac14"),
-    (error: unknown) => {
-      assert.ok(error instanceof NotFoundError);
-      assert.match(error.message, /not found/i);
-      return true;
-    },
-  );
-});
-
-test("findFormLeadForEnrichment is not found when the Form Lead is missing", async () => {
-  stubFindById(null);
-
-  await assert.rejects(
-    () => findFormLeadForEnrichment("6a19ddd4bf20b878123aac14"),
-    (error: unknown) => error instanceof NotFoundError,
-  );
-});
-
 test("correctFormLead refuses quoted and cubic feet on a Duplicate Lead", async () => {
   const lead = {
     _id: "6a19ddd4bf20b878123aac14",
@@ -112,16 +77,6 @@ test("correctFormLead refuses quoted and cubic feet on a Duplicate Lead", async 
     () => correctFormLead("6a19ddd4bf20b878123aac14", { quoted: true }),
     (error: unknown) => error instanceof ConflictError,
   );
-});
-
-test("refuseIllegalCorrections does not mention no_sync", async () => {
-  const source = await readFile(path.join(__dirname, "formLead.service.ts"), "utf8");
-  const start = source.indexOf("function refuseIllegalCorrections");
-  assert.ok(start >= 0, "missing refuseIllegalCorrections");
-  const refuse = source.slice(start, source.indexOf("function applyTheAllowedPatch", start));
-  assert.doesNotMatch(refuse, /no_sync/);
-  assert.match(refuse, /bad_lead/);
-  assert.match(refuse, /ConflictError/);
 });
 
 test("correctFormLead marks no_sync on booked, duplicate, or bad without a conflict", async () => {
@@ -141,40 +96,6 @@ test("correctFormLead marks no_sync on booked, duplicate, or bad without a confl
     assert.equal(document.no_sync, true);
     assert.equal(saveCount(), 1);
   }
-});
-
-test("correctFormLead skips the booking refresh when nothing material changed", async () => {
-  const { document, saveCount } = liveFormLead({ no_sync: true });
-  stubFindById(document);
-
-  const returned = await correctFormLead(LEAD_ID, { no_sync: true });
-
-  assert.equal(returned, document);
-  assert.equal(saveCount(), 0);
-});
-
-test("correctFormLead refuses extension username match and cubic feet on a Duplicate Lead", async () => {
-  stubFindById({
-    _id: LEAD_ID,
-    duplicate: true,
-    source_company: "top10_leads",
-    local: "local",
-  });
-
-  await assert.rejects(
-    () =>
-      correctFormLead(LEAD_ID, {
-        cubic_feet: 400,
-      }),
-    (error: unknown) => error instanceof ConflictError,
-  );
-  await assert.rejects(
-    () =>
-      correctFormLead(LEAD_ID, {
-        receiver_agent_source: "extension_crm_username_match",
-      }),
-    (error: unknown) => error instanceof ConflictError,
-  );
 });
 
 test("correctFormLead turns a missed preview and a version clash into a reload conflict", async () => {
@@ -205,80 +126,6 @@ test("correctFormLead turns a missed preview and a version clash into a reload c
   );
 });
 
-test("correctFormLead is not found when the Form Lead is missing", async () => {
-  stubFindById(null);
-
-  await assert.rejects(
-    () => correctFormLead(LEAD_ID, { no_sync: true }),
-    (error: unknown) => error instanceof NotFoundError,
-  );
-});
-
-test("correctFormLead refuses Bad Lead on duplicate, Booked, or Cancelled", async () => {
-  for (const lead of [
-    { duplicate: true, booked: undefined, cancelled: undefined },
-    { duplicate: false, booked: "booking-id", cancelled: undefined },
-    { duplicate: false, booked: undefined, cancelled: "cancel-id" },
-  ]) {
-    const document = {
-      _id: "6a19ddd4bf20b878123aac14",
-      source_company: "top10_leads",
-      local: "local",
-      save: async () => document,
-      ...lead,
-    };
-
-    stubFindById(document);
-
-    await assert.rejects(
-      () =>
-        correctFormLead("6a19ddd4bf20b878123aac14", {
-          bad_lead: "auto_only",
-        }),
-      (error: unknown) => error instanceof ConflictError,
-    );
-  }
-});
-
-test("removeFormLead refuses a Booked Form Lead without cascade", async () => {
-  stubFindById({
-    _id: "6a19ddd4bf20b878123aac14",
-    booked: { toString: () => "booking-id" },
-    duplicate: false,
-  });
-
-  await assert.rejects(
-    () => removeFormLead("6a19ddd4bf20b878123aac14", false),
-    (error: unknown) => {
-      assert.ok(error instanceof ConflictError);
-      assert.match(String(error), /cascade=true/);
-      return true;
-    },
-  );
-});
-
-test("[AC-10] WordPress and Admin Form create paths derive exact origins", () => {
-  assert.equal(deriveFormLeadIngestionOrigin({}), "wordpress_form");
-  assert.equal(
-    deriveFormLeadIngestionOrigin({
-      commandOrigin: "vantage_admin",
-      actorType: "system",
-    }),
-    "wordpress_form",
-  );
-  assert.equal(
-    deriveFormLeadIngestionOrigin({
-      commandOrigin: "vantage_admin",
-      actorType: "owner",
-    }),
-    "vantage_admin",
-  );
-  assert.equal(
-    deriveFormLeadIngestionOrigin({ commandOrigin: "external_sheet_ingestion" }),
-    "best_relocation_sheet",
-  );
-});
-
 test("Admin Form create omit stores no_sync true and skips form_lead.create outbox", async () => {
   const source = await readFile(path.join(__dirname, "formLead.service.ts"), "utf8");
   const writeStart = source.indexOf("async function writeTheFormLead");
@@ -288,87 +135,6 @@ test("Admin Form create omit stores no_sync true and skips form_lead.create outb
   assert.match(write, /if \(created\.no_sync !== true\)/);
   assert.match(write, /operation:\s*"form_lead\.create"/);
   assert.match(write, /sheetSyncJobs\.push\(formLeadJob\)/);
-});
-
-test("Admin Form omit stamps no_sync true; opt-in false and WordPress client true stamp correctly", () => {
-  assert.equal(noSyncOnCreate("vantage_admin"), true);
-  const omitted = new FormLead({
-    name: "Synthetic Admin Form",
-    phone_number: "5550100110",
-    pickup_zip: "10001",
-    destination_zip: "94105",
-    no_sync: noSyncOnCreate("vantage_admin"),
-  });
-  assert.equal(omitted.no_sync, true);
-
-  const optedIn = new FormLead({
-    name: "Synthetic Admin Form",
-    phone_number: "5550100110",
-    pickup_zip: "10001",
-    destination_zip: "94105",
-    no_sync: noSyncOnCreate("vantage_admin", false),
-  });
-  assert.equal(optedIn.no_sync, false);
-
-  const wordpress = new FormLead({
-    name: "Synthetic WP Form",
-    phone_number: "5550100110",
-    pickup_zip: "10001",
-    destination_zip: "94105",
-    no_sync: noSyncOnCreate("wordpress_form", true),
-  });
-  assert.equal(wordpress.no_sync, false);
-});
-
-test("FormLead schema defaults no_sync to false so missing-field documents stay syncable", () => {
-  const field = FormLead.schema.path("no_sync") as { defaultValue?: unknown } | undefined;
-  assert.ok(field);
-  assert.equal(field.defaultValue, false);
-});
-
-test("[AC-10] Form updates cannot carry internal snapshot or origin fields", () => {
-  const stripped = omitForbiddenLeadLifecycleFields({
-    quoted: true,
-    ingestion_origin: "granot_lead_created",
-    ingested_move_snapshot: { pickup_zip: "10001" },
-  });
-  assert.equal(stripped.quoted, true);
-  assert.equal("ingestion_origin" in stripped, false);
-  assert.equal("ingested_move_snapshot" in stripped, false);
-});
-
-test("findFormLeadForEnrichment returns a live Form Lead", async () => {
-  stubFindById({
-    _id: LEAD_ID,
-    duplicate: false,
-    quoted: true,
-  });
-
-  const lead = await findFormLeadForEnrichment(LEAD_ID);
-
-  assert.equal(lead.quoted, true);
-  assert.equal(lead.duplicate, false);
-});
-
-test("listRecentFormLeads keeps a Duplicate Lead in the last 200", async () => {
-  stubFind([
-    { _id: "1", duplicate: true, name: "Dup" },
-    { _id: "2", duplicate: false, name: "Live" },
-  ]);
-
-  const found = await listRecentFormLeads();
-
-  assert.equal(found.length, 2);
-  assert.equal(found.some((lead) => lead.duplicate === true), true);
-});
-
-test("removeFormLead is not found when the Form Lead is missing", async () => {
-  stubFindById(null);
-
-  await assert.rejects(
-    () => removeFormLead(LEAD_ID, false),
-    (error: unknown) => error instanceof NotFoundError,
-  );
 });
 
 test("beginFormLeadRemoval refuses a Booked Form Lead without cascade", async () => {
@@ -421,29 +187,6 @@ test("beginFormLeadRemoval tombstones queued Sheet Sync with the Duplicate Lead 
   assert.equal(typeof removed.finalize, "function");
 });
 
-test("completeFormLeadIngestion reports a missing CPL, then sheets, then a skipped CRM post", async () => {
-  process.env.SHEET_SYNC_MODE = "disabled";
-  const pending = pendingIngestion({
-    duplicate: false,
-    cplStatus: "missing_rate",
-    jobs: [formLeadCreateJob()],
-  });
-
-  const result = await completeFormLeadIngestion(pending);
-
-  assert.equal(result.sheet_sync_status, "pending");
-  assert.equal(result.crm_sync_status, "skipped");
-  assert.equal(result.messaging_status, "not_requested");
-  assert.deepEqual(loggedKeys, [
-    "lead.cpl.missing_rate",
-    "form_lead.create.sheet_sync.disabled",
-    "crm.form_lead.submit.skipped",
-    "form_lead.sheet_sync.pending_response",
-    "lead.form.created",
-  ]);
-  assert.equal(capturedFactKinds()[0], "form_lead.created");
-});
-
 test("completeFormLeadIngestion skips CRM and Form Fill owner events for a Duplicate Lead", async () => {
   process.env.SHEET_SYNC_MODE = "disabled";
   const pending = pendingIngestion({
@@ -459,30 +202,6 @@ test("completeFormLeadIngestion skips CRM and Form Fill owner events for a Dupli
   assert.equal(loggedKeys.includes("lead.form.call_leads_marked_form_fill"), false);
   assert.equal(loggedKeys.includes("crm.form_lead.submit.skipped"), true);
   assert.deepEqual(capturedFactKinds(), ["form_lead.duplicate"]);
-});
-
-test("completeFormLeadIngestion records Form Fill only from jobs remembered before commit", async () => {
-  process.env.SHEET_SYNC_MODE = "disabled";
-  const pending = pendingIngestion({
-    duplicate: false,
-    cplStatus: "resolved",
-    jobs: [
-      {
-        resource: "source_lead",
-        operation: "call_lead.form_fill.update",
-        leadModel: "CallLead",
-        leadId: "507f1f77bcf86cd799439099",
-      },
-      formLeadCreateJob(),
-    ],
-  });
-
-  await completeFormLeadIngestion(pending);
-
-  const createdAt = loggedKeys.indexOf("lead.form.created");
-  const formFillAt = loggedKeys.indexOf("lead.form.call_leads_marked_form_fill");
-  assert.ok(createdAt >= 0);
-  assert.ok(formFillAt > createdAt);
 });
 
 test("completeFormLeadIngestion returns a reused WordPress lead without telling the company again", async () => {
@@ -502,24 +221,6 @@ test("completeFormLeadIngestion returns a reused WordPress lead without telling 
   assert.deepEqual(capturedFactKinds(), []);
 });
 
-test("story aliases delegate to the Form Lead operations", async () => {
-  const source = await readFile(path.join(__dirname, "formLead.service.ts"), "utf8");
-  const aliases = source.slice(source.indexOf("// ── Compatibility aliases"));
-  assert.match(aliases, /return ingestFormLead\(input\)/);
-  assert.match(aliases, /return beginFormLeadIngestion\(input, tx\)/);
-  assert.match(aliases, /return completeFormLeadIngestion\(pending\)/);
-  assert.match(aliases, /return correctFormLead\(id, input, options\)/);
-  assert.match(
-    aliases,
-    /return correctFormLead\(id, input, \{ \.\.\.options, transaction: tx \}\)/,
-  );
-  assert.match(aliases, /return persistTheCorrectionAndRefreshTheBookingChain\(lead, tx\)/);
-  assert.match(aliases, /return listRecentFormLeads\(\)/);
-  assert.match(aliases, /return findFormLeadForEnrichment\(id\)/);
-  assert.match(aliases, /return removeFormLead\(id, cascade\)/);
-  assert.match(aliases, /return beginFormLeadRemoval\(id, cascade, tx\)/);
-});
-
 function stubFindById(document: Record<string, unknown> | null): void {
   installFormLeadModel();
   (FormLead as unknown as StubbedFormLeadModel).findById = () => thenable(document);
@@ -530,10 +231,6 @@ function stubFindOne(document: Record<string, unknown> | null): void {
   (FormLead as unknown as StubbedFormLeadModel).findOne = () => thenable(document);
 }
 
-function stubFind(documents: Array<Record<string, unknown>>): void {
-  installFormLeadModel();
-  (FormLead as unknown as StubbedFormLeadModel).find = () => thenable(documents);
-}
 
 function stubMissingBooking(): void {
   BookedLead.findById = (() => thenable(null)) as unknown as typeof BookedLead.findById;

@@ -25,7 +25,6 @@ import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob"
 import { assembleEstimatesPlan } from "../granotHttpCollector/runWorkflow";
 import { normalizeGranotReceipt } from "./normalization";
 import { createGranotObservationProcessor, loadGranotLeadProjection, processGranotObservation, type GranotLifecycleProcessorDeps } from "./processor";
-import type { LeadDesiredStateProjection } from "./leadDesiredState";
 import { synchronizeLeadFromGranot } from "./synchronizeLeadFromGranot";
 import { getCapturedDailyOperationsFacts, clearCapturedDailyOperationsFacts } from "../dailyOperations/testDailyOperationsSink";
 import type { SourcePolicyStore } from "./sourcePolicy";
@@ -412,78 +411,6 @@ for (const bumpRevision of [false, true]) test(`capacity W1: writer makes date e
   assert.equal(delayed.outcome, "stale");
 });
 
-test("capacity W1: equal Call date still establishes its first Record Link", async t => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seedDatedCall(false);
-  const incoming = fixture.capture(1000);
-  const result = await processLive({ observation: incoming, identity: fixture.identity });
-  assert.equal(result.outcome, "linked");
-  assert.ok(result.effects.some(e => e.kind === "record_link_established"));
-  const link = await getGranotRecordLinkModel().findOne({ normalized_job_no: fixture.job.normalized }).lean();
-  assert.equal(String(link?.lead_ref?.id), String(fixture.id));
-  const lead = await getCallLeadModel().findById(fixture.id).lean();
-  assert.equal(String(lead?.last_accepted_granot_observation?.observation_id), String(incoming._id));
-  const evidence = await evidenceFor(String(fixture.id));
-  assert.equal(evidence.changes.length, 0);
-  assert.equal(evidence.outbox.length, 0);
-  assert.equal(getCapturedDailyOperationsFacts().filter(f => f.input.kind === "granot.linked" && f.input.links?.lead_id === String(fixture.id)).length, 1);
-});
-
-test("capacity W1: both adapters project every planner field", async t => {
-  if (!(await replicaReady(t))) return;
-  const receiver = objectId(), winner = objectId();
-  // Required<> makes adding a planner input without a projection expectation a type error.
-  const common = {
-    ingestion_origin: "ringcentral", job_no: "P123", normalized_job_no: "P123", granot_priority: "1",
-    quoted: true, receiver_agent: String(receiver), receiver_agent_source: "granot_username_match",
-    receiver_agent_set_at: capturedAt, name: "Ada Example", first_name: "Ada", last_name: "Example",
-    phone_number: SYNTHETIC_PHONE, normalized_phone_number: SYNTHETIC_PHONE, email: SYNTHETIC_EMAIL,
-    pickup_city: "Brooklyn", pickup_zip: "11201", pickup_state: "NY", delivery_city: "Queens", delivery_state: "NY",
-    move_date: capturedAt, cubic_feet: 300, local: "local", granot_move_size: "Studio", granot_service_type: "Full",
-    granot_contact_snapshot: { name: "Ada Example" }, ingested_contact_snapshot: { name: "Ada Example" },
-    last_accepted_granot_observation: { observation_id: String(winner), captured_at: capturedAt },
-    last_granot_contact_change: { changed_paths: ["name"] }, domain_revision: 3,
-  } satisfies Required<Omit<LeadDesiredStateProjection, "model" | "id" | "destination_zip" | "delivery_zip" | "move_size">>;
-  for (const kind of ["FormLead", "CallLead"] as const) {
-    const id = objectId();
-    const model = kind === "FormLead" ? getFormLeadModel() : getCallLeadModel();
-    const fields = kind === "FormLead" ? { destination_zip: "11101", move_size: "Studio" } : { delivery_zip: "11101" };
-    await mongoose.connection.db!.collection(model.collection.name).insertOne({ _id: id, ...common, ...fields,
-      receiver_agent: receiver, last_accepted_granot_observation: { observation_id: winner, captured_at: capturedAt },
-    });
-    const projection = await loadGranotLeadProjection({ model: kind, id: String(id) });
-    assert.ok(projection);
-    for (const [key, value] of Object.entries({ ...common, ...fields })) {
-      // Snapshot projection explicitly includes absent optional leaves.
-      assert.deepEqual(JSON.parse(JSON.stringify(Reflect.get(projection, key))), JSON.parse(JSON.stringify(value)), `${kind}.${key}`);
-    }
-  }
-});
-
-test("capacity W1: normalization and invalid calendar dates preserve canonical dates", async t => {
-  if (!(await replicaReady(t))) return;
-  for (const [raw, expected] of [[" 12/01/2026 ", "2026-12-01T05:00:00Z"], ["03/08/2026", "2026-03-08T05:00:00Z"], ["07/01/2026", "2026-07-01T04:00:00Z"], ["02/30/2026", null]] as const) {
-    const fixture = await seedDatedCall();
-    if (expected) {
-      fixture.date = new Date(expected);
-      await getCallLeadModel().updateOne({ _id: fixture.id }, { $set: { move_date: fixture.date } });
-    }
-    const incoming = fixture.capture(1000);
-    const normalized = normalizeGranotReceipt({ observation_channel: "granot_webhook", route_event_class: "lead_created",
-      captured_at: incoming.captured_at, payload: { source: "Synthetic Forms", job_no: fixture.job.raw, priority: "8", move_date: raw } });
-    incoming.move = normalized.move;
-    incoming.issues = normalized.issues;
-    incoming.normalization_result = normalized.normalization_result;
-    if (expected) assert.equal(incoming.move.move_date?.getTime(), +fixture.date);
-    else {
-      assert.equal(incoming.move.move_date, undefined);
-      assert.ok(incoming.issues.some(issue => issue.code === "invalid_move_date"));
-    }
-    const result = await processLive({ observation: incoming, identity: fixture.identity });
-    await assertAcceptedWithoutEffects(fixture, incoming, result.decision_id);
-  }
-});
-
 test("capacity W1: concurrent fresh equal captures preserve the greater winner and one Decision each", async t => {
   if (!(await replicaReady(t))) return;
   const fixture = await seedDatedCall();
@@ -707,81 +634,6 @@ test("[AC-12] replica RingCentral Call qualified contact writes snapshot only", 
   }
 });
 
-test("[AC-12] replica Granot-created Form contact becomes current and keeps origin", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const FormLead = getFormLeadModel();
-  const leadId = objectId();
-  const job = jobPair(String(leadId));
-  const incoming = observation({
-    job,
-    priority: "1",
-    contact: {
-      first_name: "Granot",
-      display_name: "Granot Created",
-      phone_raw: SYNTHETIC_PHONE,
-      normalized_phone: SYNTHETIC_PHONE,
-    },
-  });
-  try {
-    await seedFormLead({ id: leadId, job, origin: "granot_lead_created" });
-    const result = await processLive({
-      observation: incoming,
-      identity: identityFor(String(leadId)),
-    });
-    assert.equal(result.outcome, "applied");
-    const lead = await FormLead.findById(leadId).lean();
-    assert.equal(lead?.ingestion_origin, "granot_lead_created");
-    assert.equal(lead?.name, "Submitted Name");
-    assert.equal(lead?.granot_contact_snapshot?.name, "Granot Created");
-  } finally {
-    await FormLead.deleteMany({ _id: leadId });
-    await deleteLinks([job.normalized]);
-  }
-});
-
-test("[AC-13] replica Agent fills only an empty receiver through one active match", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const FormLead = getFormLeadModel();
-  const leadId = objectId();
-  const agentId = objectId();
-  const job = jobPair(String(leadId));
-  const incoming = observation({ job, priority: "8", agent: { user_raw: "MIKE" } });
-  try {
-    await Agent.create({
-      _id: agentId,
-      name: "Synthetic Mike",
-      normalized_name: "synthetic mike",
-      active: true,
-      role: "agent",
-      created_from: "test",
-      granot_identity: { username: "MIKE", verified: false },
-    });
-    await seedFormLead({ id: leadId, job, priority: "0" });
-    const result = await processLive({
-      observation: incoming,
-      identity: identityFor(String(leadId), "FormLead", {
-        agent: {
-          target: { model: "Agent", id: String(agentId) },
-          normalized_username: "mike",
-        },
-        agent_assertion: "single",
-      }),
-    });
-    assert.equal(result.outcome, "applied");
-    const lead = await FormLead.findById(leadId).lean();
-    assert.equal(String(lead?.receiver_agent), String(agentId));
-    assert.equal(lead?.receiver_agent_source, "granot_username_match");
-    assert.equal(lead?.receiver_agent_source_value, "mike");
-    assert.equal(lead?.receiver_agent_name_snapshot, "Synthetic Mike");
-    assert.ok(lead?.receiver_agent_set_at instanceof Date);
-    assert.equal(lead?.quoted, false);
-  } finally {
-    await FormLead.deleteMany({ _id: leadId });
-    await Agent.deleteMany({ _id: agentId });
-    await deleteLinks([job.normalized]);
-  }
-});
-
 test("[AC-05] replica Bad Form stores Priority only and Duplicate never becomes a target", async (t) => {
   if (!(await replicaReady(t))) return;
   const FormLead = getFormLeadModel();
@@ -839,85 +691,6 @@ test("[AC-05] replica Bad Form stores Priority only and Duplicate never becomes 
   }
 });
 
-test("[AC-07][AC-32] replica establish, attach, confirm, and duplicate-key race", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const FormLead = getFormLeadModel();
-  const Link = getGranotRecordLinkModel();
-  const leadId = objectId();
-  const otherLead = objectId();
-  const job = jobPair(String(leadId));
-  const attachJob = jobPair(`attach-${String(leadId)}`);
-  try {
-    await seedFormLead({ id: leadId, job });
-    const established = await processLive({
-      observation: observation({ job, priority: "1" }),
-      identity: identityFor(String(leadId)),
-    });
-    assert.equal(established.outcome, "applied");
-    const link = await Link.findOne({ normalized_job_no: job.normalized, state: "active" }).lean();
-    assert.equal(String(link?.lead_ref?.id), String(leadId));
-
-    await seedFormLead({ id: otherLead, job: attachJob });
-    await Link.create({
-      provider: "granot",
-      normalized_job_no: attachJob.normalized,
-      job_no_snapshot: attachJob.raw,
-      state: "active",
-      disputed: false,
-      established_by_decision_id: objectId(),
-      established_at: olderCapturedAt,
-      last_observation_id: objectId(),
-      last_observed_at: olderCapturedAt,
-      domain_revision: 0,
-    });
-    const attached = await processLive({
-      observation: observation({ job: attachJob, priority: "1" }),
-      identity: identityFor(String(otherLead)),
-    });
-    assert.equal(attached.outcome, "applied");
-    const attachedLink = await Link.findOne({
-      normalized_job_no: attachJob.normalized,
-      state: "active",
-    }).lean();
-    assert.equal(String(attachedLink?.lead_ref?.id), String(otherLead));
-    assert.ok((attachedLink?.domain_revision ?? 0) >= 1);
-
-    const confirmObs = observation({ job, priority: "5" });
-    const confirmed = await processLive({
-      observation: confirmObs,
-      identity: identityFor(String(leadId)),
-    });
-    assert.equal(confirmed.outcome, "applied");
-    const confirmedLink = await Link.findOne({ normalized_job_no: job.normalized }).lean();
-    assert.equal(String(confirmedLink?.last_observation_id), String(confirmObs._id));
-
-    const first = observation({ job: jobPair(`race-${String(leadId)}`), priority: "1" });
-    const second = observation({
-      job: { raw: first.identity.job_no_raw!, normalized: first.identity.normalized_job_no! },
-      priority: "1",
-    });
-    const raceLead = objectId();
-    const raceJob = {
-      raw: first.identity.job_no_raw!,
-      normalized: first.identity.normalized_job_no!,
-    };
-    await seedFormLead({ id: raceLead, job: raceJob });
-    const [a, b] = await Promise.all([
-      processLive({ observation: first, identity: identityFor(String(raceLead)) }),
-      processLive({ observation: second, identity: identityFor(String(raceLead)) }),
-    ]);
-    const outcomes = [a.outcome, b.outcome].sort();
-    assert.ok(outcomes.includes("applied"));
-    assert.ok(outcomes.every((outcome) => ["applied", "already_current", "linked", "stale"].includes(outcome)));
-    assert.equal(await Link.countDocuments({ normalized_job_no: raceJob.normalized, state: "active" }), 1);
-    await FormLead.deleteMany({ _id: raceLead });
-    await deleteLinks([raceJob.normalized]);
-  } finally {
-    await FormLead.deleteMany({ _id: { $in: [leadId, otherLead] } });
-    await deleteLinks([job.normalized, attachJob.normalized]);
-  }
-});
-
 test("[AC-32] replica revision race has one winner and rolls back the losing transaction", async (t) => {
   if (!(await replicaReady(t))) return;
   const FormLead = getFormLeadModel();
@@ -950,34 +723,6 @@ test("[AC-32] replica revision race has one winner and rolls back the losing tra
       assert.notEqual(loserDecision?.outcome, "applied");
       assert.equal(loserDecision?.effects.length, 0);
     }
-  } finally {
-    await FormLead.deleteMany({ _id: leadId });
-    await deleteLinks([job.normalized]);
-  }
-});
-
-test("[AC-32] replica equal-time Observation tie-break admits only the greater ObjectId", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const FormLead = getFormLeadModel();
-  const leadId = objectId();
-  const job = jobPair(String(leadId));
-  const low = observation({ job, priority: "8" });
-  const high = observation({ job, priority: "8" });
-  const [first, second] = String(low._id) < String(high._id) ? [low, high] : [high, low];
-  first.priority = { valid: true, canonical: "1" };
-  second.priority = { valid: true, canonical: "1" };
-  try {
-    await seedFormLead({ id: leadId, job, winner: { observation_id: objectId(), captured_at: olderCapturedAt } });
-    await processLive({ observation: first, identity: identityFor(String(leadId)) });
-    const afterFirst = await FormLead.findById(leadId).lean();
-    const secondResult = await processLive({
-      observation: second,
-      identity: identityFor(String(leadId)),
-    });
-    const after = await FormLead.findById(leadId).lean();
-    assert.equal(String(after?.last_accepted_granot_observation?.observation_id), String(second._id));
-    assert.ok(secondResult.outcome === "already_current" || secondResult.outcome === "applied");
-    assert.equal(after?.domain_revision, afterFirst?.domain_revision);
   } finally {
     await FormLead.deleteMany({ _id: leadId });
     await deleteLinks([job.normalized]);

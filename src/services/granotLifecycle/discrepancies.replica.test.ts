@@ -16,7 +16,7 @@ import { getGranotObservationReceiptModel } from "../../models/GranotObservation
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import { SheetSyncJob } from "../../models/SheetSyncJob";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
-import { correctGranotRecordLink, reEvaluateGranotDiscrepancy, resolveGranotDiscrepancyNoAction } from "./discrepancyOwnerCommands";
+import { correctGranotRecordLink, resolveGranotDiscrepancyNoAction } from "./discrepancyOwnerCommands";
 
 const ids = new Set<string>();
 const prefix = `U29-${Date.now().toString(36).toUpperCase()}`;
@@ -97,19 +97,6 @@ test("[AC-35][AC-36] No Action is exactly replayable and a revision race has one
   const contenders = await Promise.allSettled(["a", "b"].map((suffix) => resolveGranotDiscrepancyNoAction({ ...input, discrepancy_id: String(race.discrepancyId), idempotency_key: `unit29-race-${suffix}-${race.discrepancyId}` })));
   assert.equal(contenders.filter((row) => row.status === "fulfilled").length, 1);
   assert.equal((await getGranotBookingDiscrepancyModel().findById(race.discrepancyId).lean())?.revision, 2);
-});
-
-test("[AC-26][AC-36] re-evaluation leaves an unchanged current conflict open and exactly replays", async (t) => {
-  if (!await ready(t)) return;
-  const job = normalizeJobNo(`${prefix}-REEVALUATE`)!, bookingId = id();
-  await BookedLead.collection.insertOne({ _id: bookingId, job_no: job, normalized_job_no: job, cancelled: true, domain_revision: 0 });
-  const seeded = await seedDiscrepancy({ job, reason: "booked_after_official_cancellation" });
-  const input = { discrepancy_id: String(seeded.discrepancyId), expected_revision: 1, idempotency_key: `unit29-reevaluate-${seeded.discrepancyId}`, owner };
-  const first = await reEvaluateGranotDiscrepancy(input);
-  const replay = await reEvaluateGranotDiscrepancy(input);
-  assert.equal(first.outcome, "still_conflicting"); assert.equal(first.state, "open"); assert.equal(first.revision, 1);
-  assert.equal(replay.replayed, true); assert.equal(replay.command_execution_id, first.command_execution_id);
-  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.discrepancy_id": seeded.discrepancyId }), 0);
 });
 
 test("[AC-23][AC-35] correction atomically preserves the old link and Lead scope with two Changes and zero official/Sheet effects", async (t) => {

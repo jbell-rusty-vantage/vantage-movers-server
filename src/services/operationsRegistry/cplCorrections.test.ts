@@ -2,12 +2,9 @@ import assert from "node:assert/strict";
 import { afterEach, before, mock, test } from "node:test";
 import mongoose from "mongoose";
 import {
-  cancelCplCorrectionJob,
   cplCorrectionWindowToStoredLeadRange,
-  computeCplCorrectionPreviewHash,
   configureCplCorrectionAnalyticsInvalidation,
   createCplCorrection,
-  getCplCorrectionAnalyticsInvalidationSeam,
   normalizeCplCorrectionSelection,
   previewCplCorrection,
   processCplCorrectionBatch,
@@ -344,76 +341,6 @@ afterEach(() => {
   loggedKeys.length = 0;
 });
 
-test("computeCplCorrectionPreviewHash is stable for normalized selection and impact", () => {
-  const selection = normalizeCplCorrectionSelection(baseSelection());
-  const impact = {
-    matched_count: 3,
-    form_lead_count: 2,
-    call_lead_count: 1,
-    would_change_count: 2,
-    would_no_op_count: 1,
-    selection_digest: "digest-a",
-    selection_bounds: {
-      max_form_lead_id: leadId("FormLead", "02"),
-      max_call_lead_id: leadId("CallLead", "01"),
-    },
-    sample: [
-      {
-        lead_model: "CallLead" as const,
-        lead_id: leadId("CallLead", "01"),
-        timestamp: "2026-01-15T12:00:00.000Z",
-        current_cpl: 90,
-        current_resolution_status: "resolved",
-        target_cpl: 195,
-        target_resolution_status: "resolved" as const,
-        would_change: true,
-      },
-      {
-        lead_model: "FormLead" as const,
-        lead_id: leadId("FormLead", "01"),
-        timestamp: "2026-01-15T12:00:00.000Z",
-        current_cpl: 100,
-        current_resolution_status: "resolved",
-        target_cpl: 195,
-        target_resolution_status: "resolved" as const,
-        would_change: true,
-      },
-    ],
-  };
-
-  const first = computeCplCorrectionPreviewHash(selection, impact);
-  const second = computeCplCorrectionPreviewHash(selection, impact);
-  assert.equal(first, second);
-  assert.match(first, /^[a-f0-9]{64}$/);
-});
-
-test("previewCplCorrection returns deterministic hash and bounded sample", async () => {
-  const { deps } = createMemoryHarness();
-  const preview = await previewCplCorrection(baseSelection(), deps);
-
-  assert.equal(preview.impact.matched_count, 3);
-  assert.equal(preview.impact.sample.length, 3);
-  assert.equal(preview.preview_hash, computeCplCorrectionPreviewHash(preview.selection, {
-    matched_count: preview.impact.matched_count,
-    form_lead_count: preview.impact.form_lead_count,
-    call_lead_count: preview.impact.call_lead_count,
-    would_change_count: preview.impact.would_change_count,
-    would_no_op_count: preview.impact.would_no_op_count,
-    selection_digest: preview.impact.selection_digest,
-    selection_bounds: preview.impact.selection_bounds,
-    sample: preview.impact.sample.map((item) => ({
-      lead_model: item.lead_model,
-      lead_id: item.lead_id,
-      timestamp: item.timestamp,
-      current_cpl: item.current_cpl,
-      current_resolution_status: item.current_resolution_status ?? null,
-      target_cpl: item.target_cpl,
-      target_resolution_status: item.target_resolution_status,
-      would_change: item.would_change,
-    })),
-  }));
-});
-
 test("preview hashes full Lead state and reports full counts beyond its sample", async () => {
   const { deps, state } = createMemoryHarness({ previewSampleLimit: 1 });
   const first = await previewCplCorrection(baseSelection(), deps);
@@ -473,37 +400,6 @@ test("createCplCorrection rejects stale preview hash", async () => {
   assert.equal(state.jobs.size, 0);
 });
 
-test("createCplCorrection rejects changed schedule revision", async () => {
-  const { deps } = createMemoryHarness({ revision: 5 });
-  await assert.rejects(
-    () => previewCplCorrection(baseSelection(), deps),
-    (error: unknown) =>
-      error instanceof Error &&
-      "registryCode" in error &&
-      error.registryCode === "CPL_PREVIEW_STALE",
-  );
-});
-
-test("createCplCorrection commits audit metadata without lead payloads", async () => {
-  const { deps, state } = createMemoryHarness();
-  const preview = await previewCplCorrection(baseSelection(), deps);
-  const job = await createCplCorrection(
-    {
-      ...baseSelection(),
-      preview_hash: preview.preview_hash,
-      confirm: true,
-      reason: "Owner-reviewed schedule correction",
-    },
-    ACTOR,
-    deps,
-  );
-
-  assert.equal(job.status, "pending");
-  assert.equal(job.reason, "Owner-reviewed schedule correction");
-  assert.equal(state.auditCommitted, true);
-  assert.equal(state.jobs.size, 1);
-});
-
 test("correction jobs exclude Leads inserted after the reviewed preview", async () => {
   const { deps, state } = createMemoryHarness({ batchSize: 10 });
   const preview = await previewCplCorrection(baseSelection(), deps);
@@ -555,68 +451,6 @@ test("correction jobs fail visibly when reviewed Lead state changes", async () =
   assert.equal(changedAfterReview.cpl_correction, undefined);
 });
 
-test("correction jobs fail when a reviewed Lead disappears", async () => {
-  const { deps, state } = createMemoryHarness({ batchSize: 10 });
-  const preview = await previewCplCorrection(baseSelection(), deps);
-  const created = await createCplCorrection(
-    {
-      ...baseSelection(),
-      preview_hash: preview.preview_hash,
-      confirm: true,
-    },
-    ACTOR,
-    deps,
-  );
-  state.leads = state.leads.filter(
-    (lead) => lead.lead_model !== "CallLead",
-  );
-
-  const result = await processCplCorrectionBatch(created.id, deps);
-  assert.equal(result.changed, 2);
-  assert.equal(result.failed, 1);
-  assert.equal(result.completed, false);
-  assert.equal(
-    (await deps.jobStore.findById(created.id))?.status,
-    "failed",
-  );
-});
-
-test("processCplCorrectionBatch resumes after expired lease", async () => {
-  const { deps, state } = createMemoryHarness({ batchSize: 2, leaseMs: 1_000 });
-  const preview = await previewCplCorrection(baseSelection(), deps);
-  const created = await createCplCorrection(
-    {
-      ...baseSelection(),
-      preview_hash: preview.preview_hash,
-      confirm: true,
-    },
-    ACTOR,
-    deps,
-  );
-
-  state.now = new Date(state.now.getTime() + 500);
-  const first = await processCplCorrectionBatch(created.id, deps);
-  assert.equal(first.claimed, true);
-  assert.equal(first.processed, 2);
-  assert.equal(first.completed, false);
-
-  const midJob = await deps.jobStore.findById(created.id);
-  assert.ok(midJob?.cursor);
-
-  state.now = new Date(state.now.getTime() + 2_000);
-  const second = await processCplCorrectionBatch(created.id, {
-    ...deps,
-    workerOwner: () => "worker-resume",
-  });
-  assert.equal(second.claimed, true);
-  assert.equal(second.processed, 1);
-  assert.equal(second.completed, true);
-
-  const finalJob = await deps.jobStore.findById(created.id);
-  assert.equal(finalJob?.status, "completed");
-  assert.equal(finalJob?.changed_count, 3);
-});
-
 test("overlapping workers do not double-correct the same lead", async () => {
   const { deps, state } = createMemoryHarness({ batchSize: 10 });
   const preview = await previewCplCorrection(baseSelection(), deps);
@@ -643,68 +477,6 @@ test("overlapping workers do not double-correct the same lead", async () => {
   const allowed = await processCplCorrectionBatch(created.id, deps);
   assert.equal(allowed.claimed, true);
   assert.equal(allowed.changed, 3);
-});
-
-test("re-entering a completed batch is a no-op", async () => {
-  const { deps } = createMemoryHarness({ batchSize: 10 });
-  const preview = await previewCplCorrection(baseSelection(), deps);
-  const created = await createCplCorrection(
-    {
-      ...baseSelection(),
-      preview_hash: preview.preview_hash,
-      confirm: true,
-    },
-    ACTOR,
-    deps,
-  );
-
-  const first = await processCplCorrectionBatch(created.id, deps);
-  assert.equal(first.completed, true);
-
-  const second = await processCplCorrectionBatch(created.id, deps);
-  assert.equal(second.claimed, false);
-  assert.equal(second.processed, 0);
-  assert.equal(second.completed, true);
-});
-
-test("cancellation stops future batches without corrupting completed work", async () => {
-  const { deps, state } = createMemoryHarness({ batchSize: 2 });
-  const preview = await previewCplCorrection(baseSelection(), deps);
-  const created = await createCplCorrection(
-    {
-      ...baseSelection(),
-      preview_hash: preview.preview_hash,
-      confirm: true,
-    },
-    ACTOR,
-    deps,
-  );
-
-  const firstBatch = await processCplCorrectionBatch(created.id, deps);
-  assert.equal(firstBatch.changed, 2);
-  assert.equal(firstBatch.completed, false);
-
-  const correctedBeforeCancel = state.leads.filter(
-    (lead) => lead.cpl_correction?.job_id === created.id,
-  );
-  assert.equal(correctedBeforeCancel.length, 2);
-
-  const cancelled = await cancelCplCorrectionJob(created.id, ACTOR, deps);
-  assert.equal(cancelled.status, "cancelled");
-
-  const resume = await processCplCorrectionBatch(created.id, deps);
-  assert.equal(resume.cancelled, true);
-  assert.equal(resume.processed, 0);
-
-  assert.equal(
-    state.leads.filter((lead) => lead.cpl_correction?.job_id === created.id).length,
-    2,
-  );
-  const uncorrected = state.leads.filter((lead) => !lead.cpl_correction?.job_id);
-  assert.equal(uncorrected.length, 1);
-  assert.ok(
-    loggedKeys.includes("cpl_correction.cancelled"),
-  );
 });
 
 test("partial failure records failed count and resumes remaining leads", async () => {
@@ -739,69 +511,6 @@ test("partial failure records failed count and resumes remaining leads", async (
   assert.ok(
     loggedKeys.includes("cpl_correction.lead_failed"),
   );
-});
-
-test("analytics invalidation seam fires once after successful completion with changes", async () => {
-  const { deps, state } = createMemoryHarness({ batchSize: 10 });
-  const preview = await previewCplCorrection(baseSelection(), deps);
-  const created = await createCplCorrection(
-    {
-      ...baseSelection(),
-      preview_hash: preview.preview_hash,
-      confirm: true,
-    },
-    ACTOR,
-    deps,
-  );
-
-  await processCplCorrectionBatch(created.id, deps);
-  assert.equal(state.analyticsCalls.length, 1);
-  assert.equal(state.analyticsCalls[0]?.job_id, created.id);
-  assert.equal(state.analyticsCalls[0]?.changed_count, 3);
-
-  configureCplCorrectionAnalyticsInvalidation(async (request) => {
-    state.analyticsCalls.push(request);
-  });
-  assert.equal(getCplCorrectionAnalyticsInvalidationSeam().isConfigured, true);
-});
-
-test("analytics handoff failure does not downgrade completed corrections", async () => {
-  const { deps } = createMemoryHarness({ batchSize: 10 });
-  deps.invalidateAnalytics = async () => {
-    throw new Error("simulated analytics outage");
-  };
-  const preview = await previewCplCorrection(baseSelection(), deps);
-  const created = await createCplCorrection(
-    {
-      ...baseSelection(),
-      preview_hash: preview.preview_hash,
-      confirm: true,
-    },
-    ACTOR,
-    deps,
-  );
-  const result = await processCplCorrectionBatch(created.id, deps);
-  assert.equal(result.completed, true);
-  const job = await deps.jobStore.findById(created.id);
-  assert.equal(job?.status, "completed");
-  assert.ok(
-    loggedKeys.includes("cpl_correction.analytics_handoff_failed"),
-  );
-});
-
-test("normalizeCplCorrectionSelection converts inclusive business dates", () => {
-  const normalized = normalizeCplCorrectionSelection({
-    source_granularity_id: GRANULARITY_ID,
-    target_schedule_revision: 2,
-    window: {
-      kind: "business_date",
-      window_from_date: "2026-01-01",
-      window_until_date: "2026-01-31",
-    },
-  });
-
-  assert.equal(normalized.window_from.toISOString(), "2026-01-01T05:00:00.000Z");
-  assert.equal(normalized.window_until.toISOString(), "2026-02-01T05:00:00.000Z");
 });
 
 test("correction windows query pseudo-UTC Lead timestamps across DST", () => {

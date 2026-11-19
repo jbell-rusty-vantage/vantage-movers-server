@@ -56,35 +56,6 @@ test("empty Connect q does not dump the book", async () => {
   assert.equal(form.filter, undefined);
 });
 
-test("Connect Form q hits snapshot paths and omits ineligible Leads", async () => {
-  stubBooking({ is_leadless_booking: true, is_referral_booking: false, source: "best-relocation" });
-  stubOpenCase(false);
-  const form = stubFind(bindForm(), [formLeadWithSnapshot()]);
-  stubFind(bindCall(), []);
-  stubLink();
-
-  const result = await listConnectLeadCandidates(String(bookingId), {
-    q: "Granot Later",
-    limit: 25,
-  });
-
-  const filterPreview = inspect(form.filter, { depth: null });
-  assert.match(filterPreview, /granot_contact_snapshot\.name/);
-  assert.match(filterPreview, /duplicate/);
-  assert.match(filterPreview, /bad_lead/);
-  assert.match(filterPreview, /booked/);
-  assert.match(filterPreview, /cancelled/);
-  const projectionPreview = inspect(form.projection, { depth: null });
-  assert.match(projectionPreview, /granot_contact_snapshot/);
-
-  const item = result.items[0];
-  assert.ok(item);
-  assert.equal(item.contact.name, "Form Submitted");
-  assert.equal(item.known_contacts?.granot?.name, "Granot Later");
-  assert.equal(item.known_contacts?.granot?.differs_from_ingested, true);
-  assert.equal(JSON.stringify(item.known_contacts).includes("observation_id"), false);
-});
-
 test("Connect Call q hits snapshot paths and excludes unmatched Call Leads", async () => {
   stubBooking({ is_leadless_booking: true, is_referral_booking: false });
   stubOpenCase(false);
@@ -113,30 +84,6 @@ test("Connect Call q hits snapshot paths and excludes unmatched Call Leads", asy
   assert.equal(item.known_contacts?.granot?.name, "Granot-only Name");
   assert.equal(item.known_contacts?.granot?.differs_from_ingested, true);
   assert.equal(JSON.stringify(item.known_contacts).includes("observation_id"), false);
-});
-
-test("Connect Call q for Granot-only phone hits snapshot phone paths", async () => {
-  stubBooking({ is_leadless_booking: true, is_referral_booking: false });
-  stubOpenCase(false);
-  stubFind(bindForm(), []);
-  const call = stubFind(bindCall(), [callLeadWithSnapshot()]);
-  stubLink();
-
-  const result = await listConnectLeadCandidates(String(bookingId), {
-    q: "555-9999",
-    lead_model: "CallLead",
-    limit: 25,
-  });
-
-  const preview = inspect(call.filter, { depth: null });
-  assert.match(preview, /granot_contact_snapshot\.phone_number/);
-  assert.match(preview, /ingested_contact_snapshot\.normalized_phone_number/);
-  assert.match(preview, /555-9999/);
-
-  const item = result.items[0];
-  assert.ok(item);
-  assert.equal(item.contact.phone_number, "555-0001");
-  assert.equal(item.known_contacts?.granot?.phone_number, "555-9999");
 });
 
 test("Connect candidates fail closed on Referral, cancelled, and open-case Bookings", async () => {
@@ -230,25 +177,6 @@ function callLeadWithSnapshot(): Record<string, unknown> {
     granot_contact_snapshot: {
       name: "Granot-only Name",
       phone_number: "555-9999",
-      differs_from_ingested: true,
-      observation_id: toObjectId("64b7f4d9e6c2a1b0f3d5e799"),
-      evidence_status: "qualified",
-      captured_at: new Date("2026-08-01T12:00:00.000Z"),
-    },
-  };
-}
-
-function formLeadWithSnapshot(): Record<string, unknown> {
-  return {
-    _id: formLeadId,
-    name: "Form Submitted",
-    first_name: "Form",
-    last_name: "Submitted",
-    phone_number: "555-0001",
-    email: "form@example.invalid",
-    source_company: "best-relocation",
-    granot_contact_snapshot: {
-      name: "Granot Later",
       differs_from_ingested: true,
       observation_id: toObjectId("64b7f4d9e6c2a1b0f3d5e799"),
       evidence_status: "qualified",

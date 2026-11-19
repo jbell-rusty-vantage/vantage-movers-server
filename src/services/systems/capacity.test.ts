@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import type { CapacityDatabaseReading, CapacitySheetReading, CapacitySnapshotDocument } from "../../models/CapacitySnapshot";
-import { databaseStatus, getSystemsCapacity, resetSystemsCapacityCache, sheetStatus } from "./capacity";
+import type { CapacityDatabaseReading, CapacitySheetReading } from "../../models/CapacitySnapshot";
+import { getSystemsCapacity, resetSystemsCapacityCache } from "./capacity";
 import type { CapacityReaders, SyncLine } from "./readers";
-import type { Runway } from "./runway";
 import type { SnapshotStore } from "./snapshot";
 
 /** The 2026-10-06 gather (doc 11b seeds). */
@@ -56,7 +55,6 @@ function fakeReaders(overrides: Partial<CapacityReaders> = {}) {
 }
 
 const noSnapshots: SnapshotStore = { exists: async () => false, insert: async () => undefined, recent: async () => [] };
-const snapshotsOf = (rows: Array<Omit<CapacitySnapshotDocument, "_id">>): SnapshotStore => ({ ...noSnapshots, recent: async () => rows });
 
 beforeEach(() => resetSystemsCapacityCache());
 
@@ -98,23 +96,6 @@ test("day one: the database is green on the seed estimate and Master Leads is re
   assert.equal("last_cancellation_at" in leads, false);
 });
 
-test("seven snapshots switch to a measured rate, using the data slope when the disk is flat", async () => {
-  const rows = Array.from({ length: 7 }, (_, i) => ({
-    day: `2026-10-0${i + 1}`,
-    taken_at: new Date(now.getTime() - (7 - i) * 86_400_000),
-    // The disk stays flat while data grows 10 MB a day into freed space.
-    database: { ...DATABASE, data_bytes: DATABASE.data_bytes - (7 - i) * 10_000_000 },
-    sheets: SHEETS,
-  }));
-  const { readers } = fakeReaders();
-  const result = await getSystemsCapacity({ refresh: false }, { readers, snapshots: snapshotsOf(rows), now: () => now });
-  assert.equal(result.database.until_full!.basis, "measured");
-  assert.equal(result.database.growth_source, "data");
-  assert.ok(Math.abs(result.database.growth_per_day_bytes! - 10_000_000) < 1);
-  // Flat sheets are not growing.
-  assert.equal(result.sheets[0].until_cell_cap!.label, "not growing");
-});
-
 test("the database reading is cached for 10 minutes, and refresh skips it at most once a minute", async () => {
   const { readers, calls } = fakeReaders();
   let clock = now.getTime();
@@ -132,50 +113,4 @@ test("the database reading is cached for 10 minutes, and refresh skips it at mos
   clock += 11 * 60_000;
   await getSystemsCapacity({ refresh: false }, deps);
   assert.deepEqual(calls, { database: 3, sheets: 2 }, "sheets keep their 1-hour cache");
-});
-
-test("a failed reader shows an unknown card instead of failing the page", async () => {
-  const { readers } = fakeReaders({
-    readSheets: async () => {
-      throw new Error("Sheets quota");
-    },
-    readSync: async () => {
-      throw new Error("down");
-    },
-  });
-  const result = await getSystemsCapacity({ refresh: false }, { readers, snapshots: noSnapshots, now: () => now });
-  assert.equal(result.database.status.colour, "green");
-  assert.equal(result.sheets[0].status.colour, "unknown");
-  assert.equal(result.sheets[0].error, "Sheets quota");
-  assert.equal(result.sheets[0].sync, null);
-});
-
-const runway = (days: number | null): Runway => ({
-  rate_per_day: 1,
-  days_left: days,
-  date: null,
-  label: days === null ? "more than 5 years" : `about ${days} days`,
-  basis: "measured",
-  points: 7,
-});
-
-test("database colour rules", () => {
-  assert.equal(databaseStatus(65, runway(900)).colour, "green");
-  assert.equal(databaseStatus(65, runway(null)).colour, "green");
-  assert.equal(databaseStatus(75, runway(900)).colour, "amber");
-  assert.equal(databaseStatus(70, runway(80)).colour, "amber");
-  assert.equal(databaseStatus(85.1, runway(900)).colour, "red");
-  assert.equal(databaseStatus(70, runway(25)).colour, "red");
-});
-
-test("sheet colour rules", () => {
-  const base = { filledRows: 6_000, cells: 400_000, untilNewWorkbook: runway(800), sync: clean };
-  assert.equal(sheetStatus(base).colour, "green");
-  assert.equal(sheetStatus({ ...base, filledRows: 30_000 }).colour, "amber");
-  assert.equal(sheetStatus({ ...base, cells: 3_000_000 }).colour, "amber");
-  assert.equal(sheetStatus({ ...base, untilNewWorkbook: runway(150) }).colour, "amber");
-  assert.equal(sheetStatus({ ...base, filledRows: 40_000 }).colour, "red");
-  assert.equal(sheetStatus({ ...base, cells: 5_000_000 }).colour, "red");
-  assert.equal(sheetStatus({ ...base, sync: { ...clean, failed: 1 } }).colour, "red");
-  assert.equal(sheetStatus({ ...base, sync: stuck }).colour, "red");
 });

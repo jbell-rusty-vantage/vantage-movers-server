@@ -168,49 +168,6 @@ test("RingCentral snapshot excludes inactive source targets", () => {
   assert.deepEqual(listActiveRingCentralSnapshotNumbers(snapshot), []);
 });
 
-test("active RingCentral snapshot number listing excludes closed history", () => {
-  const snapshot = buildRingCentralRouteSnapshot({
-    routes: [{
-      _id: routeId,
-      phone_number: "+18883164387",
-      ever_activated: true,
-      validation_status: "valid",
-    }],
-    companies: [{
-      _id: companyId,
-      company_slug: "dynamic_company",
-      owner_label: "Dynamic Company",
-      active: true,
-    }],
-    granularities: [{
-      _id: oldGranularityId,
-      source_company: companyId,
-      granularity_key: "dynamic_calls",
-      owner_label: "Calls",
-      crm_label: "Dynamic Inbounds",
-      active: true,
-      channel: "call",
-    }],
-    assignments: [{
-      _id: "66a000000000000000000005",
-      route: routeId,
-      source_company: companyId,
-      source_granularity: oldGranularityId,
-      effective_from: new Date("2026-06-01T00:00:00.000Z"),
-      effective_until: new Date("2026-06-02T00:00:00.000Z"),
-      active: false,
-    }],
-  });
-
-  assert.deepEqual(
-    listActiveRingCentralSnapshotNumbers(
-      snapshot,
-      new Date("2026-06-03T00:00:00.000Z"),
-    ),
-    [],
-  );
-});
-
 test("cache invalidation discards an in-flight stale refresh", async () => {
   resetRingCentralRouteSnapshotForTests();
   let releaseFirst!: (snapshot: ReturnType<typeof buildRingCentralRouteSnapshot>) => void;

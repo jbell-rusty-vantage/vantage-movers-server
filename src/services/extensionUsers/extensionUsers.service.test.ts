@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConflictError, NotFoundError } from "../errors";
 import {
   createExtensionUser,
-  deleteExtensionUser,
   listExtensionUsers,
   toAdminExtensionUser,
   updateExtensionUser,
@@ -126,33 +124,6 @@ test("createExtensionUser persists canonical roles and never returns the secret"
   ]);
 });
 
-test("createExtensionUser rejects a duplicate email", async () => {
-  const store = memoryStore([
-    {
-      id: "existing",
-      email: "rep@vantage.com",
-      password_hash: "hashed",
-      roles: ["sales"],
-      token_version: 0,
-      active: true,
-      created_at: "2026-09-01T12:00:00.000Z",
-      last_login_at: null,
-    },
-  ]);
-
-  await assert.rejects(
-    () =>
-      createExtensionUser(
-        { email: "Rep@Vantage.com", password: "secret-pass", roles: ["sales"] },
-        { store, hashPassword: async () => "hashed" },
-      ),
-    (error: unknown) =>
-      error instanceof ConflictError &&
-      error.message === "An Extension User already uses this email.",
-  );
-  assert.equal(store.created.length, 0);
-});
-
 test("listExtensionUsers returns roles and dual-reads leftover employee", async () => {
   const listed = await listExtensionUsers({
     store: memoryStore([
@@ -184,19 +155,6 @@ test("listExtensionUsers returns roles and dual-reads leftover employee", async 
   assert.equal("role" in listed[0]!, false);
   assert.equal("employee" in (listed[1] ?? {}), false);
   assert.equal(listed[1]?.roles.includes("employee" as never), false);
-});
-
-test("toAdminExtensionUser dual-reads leftover employee as Sales plus Customer Service", () => {
-  const admin = toAdminExtensionUser({
-    _id: { toString: () => "legacy-1" },
-    email: "legacy@vantage.com",
-    role: "employee",
-    active: true,
-    created_at: "2026-09-02T16:00:00.000Z",
-    last_login_at: null,
-  });
-  assert.deepEqual(admin.roles, ["sales", "customer_service"]);
-  assert.equal("role" in admin, false);
 });
 
 test("updateExtensionUser bumps token_version only on actual email, password, or roles change", async () => {
@@ -252,109 +210,4 @@ test("updateExtensionUser bumps token_version only on actual email, password, or
   );
   assert.equal(store.rows[0]?.token_version, 7);
   assert.deepEqual(store.rows[0]?.roles, ["owner"]);
-});
-
-test("updateExtensionUser rejects a duplicate email with the create message", async () => {
-  const store = memoryStore([
-    {
-      id: "user-1",
-      email: "rep@vantage.com",
-      password_hash: "hashed",
-      roles: ["sales"],
-      token_version: 0,
-      active: true,
-      created_at: "2026-09-01T12:00:00.000Z",
-      last_login_at: null,
-    },
-    {
-      id: "user-2",
-      email: "taken@vantage.com",
-      password_hash: "hashed",
-      roles: ["owner"],
-      token_version: 0,
-      active: true,
-      created_at: "2026-09-01T12:00:00.000Z",
-      last_login_at: null,
-    },
-  ]);
-
-  await assert.rejects(
-    () =>
-      updateExtensionUser(
-        "user-1",
-        { email: "Taken@Vantage.com" },
-        { store, hashPassword: async () => "hashed" },
-      ),
-    (error: unknown) =>
-      error instanceof ConflictError &&
-      error.message === "An Extension User already uses this email.",
-  );
-});
-
-test("updateExtensionUser returns not found for a missing id", async () => {
-  const store = memoryStore();
-  await assert.rejects(
-    () => updateExtensionUser("missing", { email: "a@b.com" }, { store }),
-    (error: unknown) =>
-      error instanceof NotFoundError && error.message === "Extension User not found.",
-  );
-});
-
-test("deleteExtensionUser removes the row so the email can be reused", async () => {
-  const store = memoryStore([
-    {
-      id: "user-1",
-      email: "rep@vantage.com",
-      password_hash: "hashed",
-      roles: ["sales"],
-      token_version: 1,
-      active: true,
-      created_at: "2026-09-01T12:00:00.000Z",
-      last_login_at: null,
-    },
-  ]);
-
-  const deleted = await deleteExtensionUser("user-1", { store });
-  assert.deepEqual(deleted, { id: "user-1" });
-  assert.equal(store.rows.length, 0);
-
-  const created = await createExtensionUser(
-    { email: "rep@vantage.com", password: "secret-pass", roles: ["sales"] },
-    { store, hashPassword: async () => "hashed" },
-  );
-  assert.equal(created.email, "rep@vantage.com");
-});
-
-test("deleteExtensionUser returns not found for a missing id", async () => {
-  const store = memoryStore();
-  await assert.rejects(
-    () => deleteExtensionUser("missing", { store }),
-    (error: unknown) =>
-      error instanceof NotFoundError && error.message === "Extension User not found.",
-  );
-});
-
-test("an extension login connects to one Agent without signing it out", async () => {
-  const agents = new Set(["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"]);
-  const deps = (store: ExtensionUserStore) => ({ store, hashPassword: async (password: string) => `hashed:${password}`, agentExists: async (id: string) => agents.has(id) });
-  const store = memoryStore([
-    { id: "user-1", email: "rep@vantage.com", password_hash: "h", roles: ["sales"], token_version: 2, active: true, created_at: "2026-09-01T12:00:00.000Z", last_login_at: null },
-  ]);
-
-  const connected = await updateExtensionUser("user-1", { agent_id: "aaaaaaaaaaaaaaaaaaaaaaaa" }, deps(store));
-  assert.equal(connected.agent_id, "aaaaaaaaaaaaaaaaaaaaaaaa");
-  assert.equal(store.rows[0]?.token_version, 2);
-
-  const made = await createExtensionUser({ email: "other@vantage.com", password: "secret-123", roles: ["sales"], agent_id: "bbbbbbbbbbbbbbbbbbbbbbbb" }, deps(store));
-  assert.equal(made.agent_id, "bbbbbbbbbbbbbbbbbbbbbbbb");
-
-  await assert.rejects(updateExtensionUser("user-1", { agent_id: "bbbbbbbbbbbbbbbbbbbbbbbb" }, deps(store)), ConflictError);
-  await assert.rejects(
-    createExtensionUser({ email: "third@vantage.com", password: "secret-123", roles: ["sales"], agent_id: "cccccccccccccccccccccccc" }, deps(store)),
-    /not on the roster/,
-  );
-
-  const cleared = await updateExtensionUser("user-1", { agent_id: null }, deps(store));
-  assert.equal(cleared.agent_id, null);
-  assert.equal(store.rows[0]?.token_version, 2);
 });

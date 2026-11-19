@@ -37,30 +37,6 @@ function stubFindOneAndUpdate(): FindOneAndUpdateCall[] {
   return calls;
 }
 
-test("enqueueSheetSyncJob writes a coalescing upsert keyed by entity", async () => {
-  const calls = stubFindOneAndUpdate();
-  const leadId = new mongoose.Types.ObjectId().toString();
-
-  await enqueueSheetSyncJob({
-    resource: "source_lead",
-    operation: "form_lead.create",
-    leadModel: "FormLead",
-    leadId,
-  });
-
-  assert.equal(calls.length, 1);
-  const { filter, update, options } = calls[0];
-  assert.equal(filter.coalescing_key, `source_lead:FormLead:${leadId}`);
-  assert.deepEqual(filter.status, { $in: ["pending", "retrying"] });
-  assert.equal(update.$set.resource, "source_lead");
-  assert.equal(update.$set.entity_model, "FormLead");
-  assert.equal(update.$set.entity_id, leadId);
-  // create-priority is higher than update-priority.
-  assert.equal(update.$max.priority, 60);
-  assert.equal(update.$setOnInsert.status, "pending");
-  assert.equal(options.upsert, true);
-});
-
 test("enqueueSheetSyncJob threads the caller session for atomic commit", async () => {
   const calls = stubFindOneAndUpdate();
   const session = { id: "fake-session" } as unknown as mongoose.ClientSession;

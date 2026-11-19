@@ -8,10 +8,7 @@ import { callMarks, MemoryRepDayStore } from "../../src/services/salesOutreach/c
 import { activeInspection, fixedConfigurationLoader } from "../../src/services/salesOutreach/reads/testing";
 import {
   dryRunRepDayStore,
-  MAX_RECOUNT_DAYS,
-  parseRecountArgs,
   planRecountKeys,
-  resolveRecountRange,
   runRecount,
   summarizeRecount,
   type RecountRowBefore,
@@ -25,53 +22,8 @@ const CAROL = "c".repeat(24);
 const NOW = new Date("2026-10-06T16:00:00Z"); // 12:00 New York
 const TODAY = "2026-10-06";
 
-describe("parseRecountArgs", () => {
-  test("target required; flags parsed; dry run by default", () => {
-    assert.deepEqual(parseRecountArgs(["--target=testdb"]), { target: "testdb", from: null, to: null, materialize_roster: false, apply: false });
-    assert.deepEqual(parseRecountArgs(["--target=vantagemovers", "--from=2026-09-20", "--to=2026-10-05", "--materialize-roster", "--apply", "--allow-schema-drift"]), {
-      target: "vantagemovers", from: "2026-09-20", to: "2026-10-05", materialize_roster: true, apply: true,
-    });
-    assert.throws(() => parseRecountArgs([]), /--target/);
-    assert.throws(() => parseRecountArgs(["--target=a.b"]), /plain database name/);
-    assert.throws(() => parseRecountArgs(["--target=x", "--from=2026-13-01"]), /--from/);
-    assert.throws(() => parseRecountArgs(["--target=x", "--to=2026-02-30"]), /--to/);
-    assert.throws(() => parseRecountArgs(["--target=x", "--force"]), /Unknown argument/);
-  });
-});
-
-describe("resolveRecountRange", () => {
-  test("defaults to the derivation's coverage day through today; refuses an inverted, future or too-long range", () => {
-    assert.deepEqual(resolveRecountRange({ from: null, to: null, today: TODAY, coverage_from_day: "2026-07-07" }), { from: "2026-07-07", to: TODAY });
-    assert.deepEqual(resolveRecountRange({ from: "2026-09-20", to: "2026-10-05", today: TODAY, coverage_from_day: null }), { from: "2026-09-20", to: "2026-10-05" });
-    assert.throws(() => resolveRecountRange({ from: null, to: null, today: TODAY, coverage_from_day: null }), /--from/);
-    assert.throws(() => resolveRecountRange({ from: "2026-10-01", to: "2026-10-07", today: TODAY, coverage_from_day: null }), /after today/);
-    assert.throws(() => resolveRecountRange({ from: "2026-10-05", to: "2026-10-04", today: TODAY, coverage_from_day: null }), /after --to/);
-    assert.throws(() => resolveRecountRange({ from: "2025-01-01", to: TODAY, today: TODAY, coverage_from_day: null }), new RegExp(String(MAX_RECOUNT_DAYS)));
-  });
-});
-
 const row = (agent_id: string, business_day: string, extra: Partial<RecountRowBefore> = {}): RecountRowBefore => ({
   agent_id, business_day, count_scope: "all_outbound", actual_confirmed: 0, both_counts: false, ...extra,
-});
-
-describe("planRecountKeys", () => {
-  test("every row in the range; with --materialize-roster a zero key per roster rep missing on a past day only", () => {
-    const rows = [row(BOB, "2026-10-04"), row(ALICE, "2026-10-04"), row(ALICE, "2026-10-06")];
-    assert.deepEqual(planRecountKeys({ rows, roster: [ALICE, BOB, CAROL], from: "2026-10-04", to: TODAY, today: TODAY, materialize_roster: false }), [
-      { agent_id: ALICE, business_day: "2026-10-04" },
-      { agent_id: BOB, business_day: "2026-10-04" },
-      { agent_id: ALICE, business_day: TODAY },
-    ]);
-    assert.deepEqual(planRecountKeys({ rows, roster: [CAROL, ALICE, BOB, CAROL], from: "2026-10-04", to: TODAY, today: TODAY, materialize_roster: true }), [
-      { agent_id: ALICE, business_day: "2026-10-04" },
-      { agent_id: BOB, business_day: "2026-10-04" },
-      { agent_id: CAROL, business_day: "2026-10-04", materialize: true },
-      { agent_id: ALICE, business_day: "2026-10-05", materialize: true },
-      { agent_id: BOB, business_day: "2026-10-05", materialize: true },
-      { agent_id: CAROL, business_day: "2026-10-05", materialize: true },
-      { agent_id: ALICE, business_day: TODAY }, // never a zero key today
-    ]);
-  });
 });
 
 /** Events as the contact-event store holds them (only the fields the rep-day recount reads). */

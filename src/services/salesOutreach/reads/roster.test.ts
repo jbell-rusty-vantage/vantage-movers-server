@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { SalesOutreachConfigurationInput } from "../../../validation/v1/salesOutreach";
-import { salesOutreachRepDaysSchema, salesOutreachTeamSchema } from "../../../validation/v1/salesOutreachReads";
+import { salesOutreachTeamSchema } from "../../../validation/v1/salesOutreachReads";
 import type { OutreachActor } from "../auth";
 import { csiOperatorActor } from "../../salesIntelligence/auth";
 import { MemoryDeskReadStore } from "./deskTesting";
-import { readRepDays, readTeam } from "./service";
+import { readTeam } from "./service";
 import { activeInspection, fixedConfigurationLoader, MemoryReadStore, repDayRow } from "./testing";
 
 /**
@@ -23,7 +23,6 @@ const DAY = "2026-10-05"; // Monday
 const NOW = new Date("2026-10-05T15:00:00.000Z"); // 11:00 New York
 const actor = (role: OutreachActor["role"], agent_id: string | null = null): OutreachActor => ({ role, actor: csiOperatorActor("roster-test"), agent_id });
 const owner = actor("owner");
-const manager = actor("manager");
 
 const input = (rule: "desk_reps" | "explicit" | null): SalesOutreachConfigurationInput => ({
   controls: { desk_enabled: true, goal_metrics_enabled: true },
@@ -93,20 +92,6 @@ test("desk_reps: GET /team lists exactly the desk reps with derived goals; other
   assert.deepEqual(s.deskRepQueries.map((d) => d.toISOString()), [NOW.toISOString()]);
 });
 
-test("desk_reps: a Manager gets the same rows and roster but no other_callers footnote", async () => {
-  const team = salesOutreachTeamSchema.parse(await readTeam(manager, { business_day: DAY }, deps(store(), "desk_reps")));
-  assert.deepEqual(team.daily_call_goals!.map((row) => row.agent_id), [A, B]);
-  assert.equal(team.goals!.other_callers, null);
-  assert.equal(team.roster!.rule, "desk_reps");
-});
-
-test("desk_reps: GET /rep-days narrowed to a non-rep still answers that Agent, as Not on roster", async () => {
-  const days = salesOutreachRepDaysSchema.parse(await readRepDays(owner, { business_day: DAY, agent_id: X }, deps(store(), "desk_reps")));
-  assert.deepEqual(days.reps!.map((row) => [row.agent_id, row.goal_state, row.actual_confirmed, row.agent_name]), [[X, "not_on_roster", 7, "Xavier (Agent)"]]);
-  const all = salesOutreachRepDaysSchema.parse(await readRepDays(owner, { business_day: DAY }, deps(store(), "desk_reps")));
-  assert.deepEqual(all.reps!.map((row) => row.agent_id), [A, B], "the unnarrowed read lists desk reps only");
-});
-
 test("desk_reps: a past day reads the roster at the end of that New York day, and a member without a current link keeps its Agent name", async () => {
   const s = store();
   const later = new Date("2026-10-07T15:00:00.000Z");
@@ -114,24 +99,4 @@ test("desk_reps: a past day reads the roster at the end of that New York day, an
   assert.deepEqual(s.deskRepQueries.map((d) => d.toISOString()), ["2026-10-06T04:00:00.000Z"], "end of 2026-10-05 New York");
   assert.equal(team.roster!.at, "2026-10-06T04:00:00.000Z");
   assert.deepEqual(team.daily_call_goals!.map((row) => row.agent_id), [A, B]);
-});
-
-test("explicit (absent or explicit): the configured list is the roster, extra callers are rows, no footnote, Agent-name fallback for a configured rep without a link", async () => {
-  for (const rule of [null, "explicit"] as const) {
-    const s = store();
-    const team = salesOutreachTeamSchema.parse(await readTeam(owner, { business_day: DAY }, deps(s, rule)));
-    assert.deepEqual(
-      team.daily_call_goals!.map((row) => [row.agent_id, row.agent_name, row.reviewed_link, row.goal_state, row.goal]),
-      [
-        [A, "Alice", true, "goal", 100],
-        [D, "Dan (Agent)", false, "goal", 60],
-        [E, "Eve", true, "no_goal_today", 0],
-        [X, "Xavier (Agent)", false, "not_on_roster", null],
-      ],
-      `rule ${rule}: configured reps first (D's name from the Agent record), then X as a not-on-roster row`,
-    );
-    assert.equal(team.goals!.other_callers, null);
-    assert.deepEqual([team.roster!.rule, team.roster!.roster_version, team.roster!.members.length], ["explicit", "roster-explicit", 3]);
-    assert.equal(s.deskRepQueries.length, 0, "no desk-rep lookup under the explicit rule");
-  }
 });

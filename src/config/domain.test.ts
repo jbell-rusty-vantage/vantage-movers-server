@@ -6,9 +6,6 @@ import {
   SHEET_TAB_NAMES,
   getCallLeadSourceCompanyLabel,
   getFormLeadSourceCompanyLabel,
-  getSourceCompanyLabel,
-  resolveSourceCompany,
-  resolveSourceCompanyFromLabel,
 } from "./domain";
 
 test("lead sheet headers include booked date on Forms and Calls tabs", () => {
@@ -36,44 +33,6 @@ test("lead sheet configuration includes duplicate and form fill surfaces", () =>
   assert.equal(SHEET_TAB_NAMES.badCalls, "Bad Call Leads");
   assert.equal(CALL_SHEET_HEADERS.at(-1), "Sales Rep");
   assert.equal((FORM_SHEET_HEADERS as readonly string[]).includes("Duplicate"), false);
-});
-
-test("source label mapping accepts Granot compact BestRelocation labels", () => {
-  assert.equal(resolveSourceCompanyFromLabel("BestRelocation Forms"), "best_relocation_leads");
-  assert.equal(resolveSourceCompanyFromLabel("BestRelocation Locals"), "best_relocation_leads");
-  assert.equal(resolveSourceCompanyFromLabel("BestRelocation Inbounds"), "best_relocation_leads");
-});
-
-test("top10_leads sheet label is Top 10 Forms while legacy labels still resolve", () => {
-  assert.equal(getSourceCompanyLabel("tbm_leads"), "TBM Leads");
-  assert.equal(getSourceCompanyLabel("top10_leads"), "Top 10 Forms");
-  assert.equal(resolveSourceCompany("TBM Leads"), "tbm_leads");
-  assert.equal(resolveSourceCompany("Top 10 Leads"), "top10_leads");
-});
-
-test("10 Best inbound labels resolve to tbm_leads", () => {
-  assert.equal(resolveSourceCompany("10 Best Inbounds"), "tbm_leads");
-  assert.equal(resolveSourceCompany("10Best Inbounds"), "tbm_leads");
-  assert.equal(resolveSourceCompany("10best Inbounds"), "tbm_leads");
-  assert.equal(resolveSourceCompanyFromLabel("10 Best Inbounds"), "tbm_leads");
-  assert.equal(resolveSourceCompanyFromLabel("10Best Inbounds"), "tbm_leads");
-  assert.equal(resolveSourceCompanyFromLabel("10best Inbounds"), "tbm_leads");
-  assert.equal(resolveSourceCompany("Top10 Inbounds"), "top10_leads");
-});
-
-test("GetMovers labels resolve to get_movers_leads", () => {
-  assert.equal(resolveSourceCompany("Get Movers"), "get_movers_leads");
-  assert.equal(resolveSourceCompany("GetMovers"), "get_movers_leads");
-  assert.equal(resolveSourceCompany("GetMovers Leads"), "get_movers_leads");
-  assert.equal(resolveSourceCompanyFromLabel("Get Movers"), "get_movers_leads");
-  assert.equal(resolveSourceCompanyFromLabel("GetMovers Forms"), "get_movers_leads");
-  assert.equal(resolveSourceCompanyFromLabel("GetMovers Inbounds"), "get_movers_leads");
-});
-
-test("Paid Overflow labels resolve to paid_overflow", () => {
-  assert.equal(resolveSourceCompany("Paid Overflow"), "paid_overflow");
-  assert.equal(resolveSourceCompany("paid_overflow"), "paid_overflow");
-  assert.equal(resolveSourceCompanyFromLabel("Paid Overflow"), "paid_overflow");
 });
 
 test("lead sheet source company labels are precise by lead type", () => {

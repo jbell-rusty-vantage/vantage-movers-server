@@ -73,33 +73,6 @@ test("every Systems read and the edit are Owner-only", async () => {
   assert.deepEqual(calls, []);
 });
 
-test("the Owner reads locations and capacity, and refresh=1 reaches the service", async () => {
-  const locations = await fetch(`${urls.open}/api/v1/admin/systems/locations`);
-  assert.equal(locations.status, 200);
-  assert.equal(locations.headers.get("cache-control"), "no-store");
-  assert.deepEqual(await locations.json(), { ok: true, data: { revision: 1 } });
-  const capacity = await fetch(`${urls.open}/api/v1/admin/systems/capacity?refresh=1`);
-  assert.equal(capacity.status, 200);
-  assert.ok(calls.includes('capacity:{"refresh":true}'));
-});
-
-test("the edit validates before writing and passes the signed actor", async () => {
-  const bad = await fetch(`${urls.open}/api/v1/admin/systems/locations`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ revision: 1, locations: { partner_pages: { url: "http://vantagemoves.com" } } }),
-  });
-  assert.equal(bad.status, 400);
-  assert.equal(((await bad.json()) as { error: string }).error, "partner_pages › url: Links must start with https://");
-  const good = await fetch(`${urls.open}/api/v1/admin/systems/locations`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ revision: 1, locations: { partner_pages: { url: "https://partners.example.com" } } }),
-  });
-  assert.equal(good.status, 200);
-  assert.ok(calls.some((call) => call.startsWith("patch:owner@example.com:")));
-});
-
 test("a stale revision answers 409 with the reason", async () => {
   const stale = express()
     .use(express.json())

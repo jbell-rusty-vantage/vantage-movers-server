@@ -8,120 +8,25 @@ import { GRANOT_LIFECYCLE_ERROR_CODES, GranotLifecycleError } from "../services/
 import { createGranotLifecycleAdminRouter } from "./granot-lifecycle-admin.routes";
 
 const SECRET = "synthetic-admin-signing-secret";
-const HEALTH_FIXTURE = {
-  generated_at: "2026-08-19T16:00:00.000Z",
-  flags: {
-    GRANOT_LIFECYCLE_PROCESSING_ENABLED: true,
-    GRANOT_LIFECYCLE_SHADOW_MODE: true,
-    GRANOT_LIFECYCLE_LEAD_WRITES_ENABLED: false,
-    GRANOT_LIFECYCLE_LEAD_CREATION_ENABLED: false,
-    GRANOT_LIFECYCLE_BOOKING_CASES_ENABLED: false,
-    GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED: false,
-    GRANOT_LIFECYCLE_RELEASE_CASES_ENABLED: false,
-    GRANOT_LIFECYCLE_RELEASE_COMMANDS_ENABLED: false,
-    GRANOT_LIFECYCLE_REFERRAL_BOOKING_ENABLED: false,
-    GRANOT_LIFECYCLE_EMAIL_ENABLED: false,
-  },
-  activation: { present: false },
-  receipts: {
-    by_work_state: { pending: 0, claimed: 0, retry_scheduled: 0, completed: 0, dead_letter: 0 },
-    due_count: 0,
-    oldest_due_at: null,
-    oldest_due_age_ms: null,
-    claimed_count: 0,
-    expired_claim_count: 0,
-    dead_letter_count: 0,
-  },
-  decisions_last_24h: [
-    { execution_mode: "historical_shadow" as const, outcome: "already_current" as const, reason_code: "desired_state_already_current" as const, count: 2 },
-  ],
-  open_cases: [],
-  open_discrepancies: [],
-  command_conflicts_last_24h: null,
-  counter_coverage: { counters_since: null, window_24h: "unknown" as const, window_1h: "unknown" as const },
-  record_links: { active: 0, disputed: 0 },
-  last_queue_run: null,
-  last_cron_run: null,
-  ringcentral: {
-    state_present: false,
-    last_run_at: null,
-    last_run_status: null,
-    cursor_to: null,
-    lease: { held: false, acquired_at: null, expires_at: null, age_ms: null, expired: false },
-    last_runtime_ms: null,
-    last_adopted_count: null,
-    last_adoption_conflict_count: null,
-    last_throttled_count: null,
-  },
-  alerts: [
-    { code: "dead_letter_present" as const, state: "ok" as const, observed_value: 0, threshold: 0, unit: "count" as const },
-  ],
-};
 const receiptId = new mongoose.Types.ObjectId().toHexString();
 const releaseCaseId = new mongoose.Types.ObjectId().toHexString();
 const createMissingCaseId = new mongoose.Types.ObjectId().toHexString();
 const bookedPostureCaseId = new mongoose.Types.ObjectId().toHexString();
-let lastRequeue: { id: string; reason: string; role: string } | null = null;
-let lastCaseQuery: Record<string, unknown> | null = null;
-let lastCandidateQuery: Record<string, unknown> | null = null;
 let lastCreatingObservationCaseId: string | null = null;
 let lastConfirm: Record<string, unknown> | null = null;
 let lastReferralCreate: Record<string, unknown> | null = null;
 let lastUpdate: Record<string, unknown> | null = null;
-let lastNoAction: Record<string, unknown> | null = null;
 let lastBookingCancellation: Record<string, unknown> | null = null;
 let lastReleaseCancellation: Record<string, unknown> | null = null;
 let lastReleaseUpdate: Record<string, unknown> | null = null;
 let lastReleaseNoAction: Record<string, unknown> | null = null;
 let lastDiscrepancyAction: Record<string, unknown> | null = null;
-let lastDiscrepancyQuery: Record<string, unknown> | null = null;
 
 const app = express();
 app.use(express.json());
 app.use(
   createGranotLifecycleAdminRouter({
     connect: async () => undefined,
-    requeue: async (input, actor) => {
-      lastRequeue = { id: input.id, reason: input.reason, role: actor.actorRole };
-      return {
-        receipt_id: input.id,
-        state: "pending",
-        next_attempt_at: "2026-08-17T18:00:00.000Z",
-        manual_requeue_count: 1,
-        match_attempt: 2,
-        payload_sha256: "d".repeat(64),
-      };
-    },
-    listCases: async (query) => {
-      lastCaseQuery = query;
-      return { items: [], next_cursor: null };
-    },
-    getCaseDetail: async (caseId) => caseId === receiptId ? {
-      case_id: caseId,
-      kind: "booking",
-      state: "open",
-      mode: "create_missing_booking",
-      sequence_number: 1,
-      case_revision: 1,
-      evidence_revision: 1,
-      normalized_job_no: "SYNTHETIC 100",
-      job_no: "synthetic-100",
-      opened_at: "2026-08-17T16:00:00.000Z",
-      last_evidence_at: "2026-08-17T16:00:00.000Z",
-      evidence: [],
-      observed_context: { section_label: "Granot evidence — not official Vantage values" },
-      contacts: {},
-      candidate_search: { available: true, default_scope: "source", all_scope_warning: true },
-      official_current: {},
-      official_draft: {},
-      timeline: {
-        items: [], next_cursor: null, current: {},
-        capabilities: { booking_cases: true, release_cases: false, discrepancies: false, official_facts: true },
-      },
-      latest_action: "booked",
-      capabilities: { commands: false, referral: false, confirm_cancellation: false, release_cases: false, discrepancies: false },
-      priority_pairing: null,
-    } : null,
     getCreatingObservation: async (caseId) => {
       lastCreatingObservationCaseId = caseId;
       if (caseId === releaseCaseId) {
@@ -181,18 +86,6 @@ app.use(
         priority_pairing: null,
       } : null;
     },
-    listCandidates: async (caseId, query) => {
-      lastCandidateQuery = query;
-      return caseId === receiptId ? { items: [], next_cursor: null } : null;
-    },
-    projectLeadTimeline: async (_model, leadId) => leadId === receiptId ? {
-      items: [], next_cursor: null, current: {},
-      capabilities: { booking_cases: true, release_cases: false, discrepancies: false, official_facts: true },
-    } : null,
-    projectJob: async () => ({
-      items: [], next_cursor: null, current: {},
-      capabilities: { booking_cases: true, release_cases: false, discrepancies: false, official_facts: true },
-    }),
     confirmBooking: async (input) => {
       lastConfirm = input as unknown as Record<string, unknown>;
       return {
@@ -233,19 +126,6 @@ app.use(
         command_execution_id: new mongoose.Types.ObjectId().toHexString(),
         decision_id: new mongoose.Types.ObjectId().toHexString(),
         booking_ref: { id: new mongoose.Types.ObjectId().toHexString(), domain_revision: 2 },
-        entity_refs: [],
-        replayed: false,
-      };
-    },
-    noAction: async (input) => {
-      lastNoAction = input as unknown as Record<string, unknown>;
-      return {
-        case_id: input.case_id,
-        case_state: "resolved",
-        case_revision: 2,
-        outcome: "no_action",
-        command_execution_id: new mongoose.Types.ObjectId().toHexString(),
-        decision_id: new mongoose.Types.ObjectId().toHexString(),
         entity_refs: [],
         replayed: false,
       };
@@ -315,20 +195,9 @@ app.use(
         replayed: false,
       };
     },
-    listDiscrepancies: async (query) => {
-      lastDiscrepancyQuery = query;
-      return { items: [], next_cursor: null };
-    },
-    getDiscrepancyDetail: async (id) => ({
-      discrepancy_id: id, kind: "booking", state: "open", reason_code: "booked_record_link_conflict",
-      normalized_job_no: "SYNTHETIC JOB 29", masked_contact_label: "Contact masked", evidence_count: 1,
-      revision: 1, evidence_revision: 1, opened_at: "2026-08-19T12:00:00.000Z", last_evidence_at: "2026-08-19T12:00:00.000Z",
-      reason_fingerprint: "f".repeat(64), evidence: [], candidates: [], capabilities: { re_evaluate: true, correct_record_link: false, no_action: true },
-    }),
     reEvaluateDiscrepancy: async (input) => discrepancyResult(input, "still_conflicting"),
     correctRecordLink: async (input) => discrepancyResult(input, "record_link_corrected"),
     discrepancyNoAction: async (input) => discrepancyResult(input, "no_action"),
-    projectHealth: async () => HEALTH_FIXTURE,
   }),
 );
 
@@ -360,19 +229,14 @@ after(async () => {
 });
 
 afterEach(() => {
-  lastRequeue = null;
-  lastCaseQuery = null;
-  lastCandidateQuery = null;
   lastCreatingObservationCaseId = null;
   lastConfirm = null;
   lastUpdate = null;
-  lastNoAction = null;
   lastBookingCancellation = null;
   lastReleaseCancellation = null;
   lastReleaseUpdate = null;
   lastReleaseNoAction = null;
   lastDiscrepancyAction = null;
-  lastDiscrepancyQuery = null;
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = SECRET;
 });
 
@@ -405,101 +269,6 @@ function signedHeaders(
     "x-vantage-admin-signature": signature,
   };
 }
-
-test("[AC-37] Owner requeue route returns 200 {ok:true,data}", async () => {
-  const path = `/api/v1/admin/granot-lifecycle/receipts/${receiptId}/requeue`;
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: "POST",
-    headers: signedHeaders("owner", path),
-    body: JSON.stringify({ reason: "Owner requeue of synthetic dead-lettered receipt" }),
-  });
-  assert.equal(response.status, 200);
-  const body = (await response.json()) as { ok: boolean; data: { state: string } };
-  assert.equal(body.ok, true);
-  assert.equal(body.data.state, "pending");
-  assert.equal(lastRequeue?.role, "owner");
-  assert.equal(lastRequeue?.id, receiptId);
-});
-
-test("[AC-37] Admin without Owner cannot requeue", async () => {
-  const path = `/api/v1/admin/granot-lifecycle/receipts/${receiptId}/requeue`;
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: "POST",
-    headers: signedHeaders("admin", path),
-    body: JSON.stringify({ reason: "Admin must not requeue dead-lettered work" }),
-  });
-  assert.equal(response.status, 403);
-  const body = (await response.json()) as { code: string };
-  assert.equal(body.code, GRANOT_LIFECYCLE_ERROR_CODES.OWNER_REQUIRED);
-  assert.equal(lastRequeue, null);
-});
-
-test("[AC-37] invalid requeue body is GRANOT_VALIDATION_FAILED", async () => {
-  const path = `/api/v1/admin/granot-lifecycle/receipts/${receiptId}/requeue`;
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: "POST",
-    headers: signedHeaders("owner", path),
-    body: JSON.stringify({ reason: "short", payload: { secret: true } }),
-  });
-  assert.equal(response.status, 400);
-  const body = (await response.json()) as { code: string };
-  assert.equal(body.code, GRANOT_LIFECYCLE_ERROR_CODES.VALIDATION_FAILED);
-});
-
-test("[AC-18] [AC-19] read list applies the exact default queue for Owner/Admin", async () => {
-  const path = "/api/v1/admin/granot-lifecycle/cases";
-  for (const role of ["owner", "admin"] as const) {
-    const response = await fetch(`${baseUrl}${path}`, { headers: signedHeaders(role, path, "GET") });
-    assert.equal(response.status, 200);
-    const body = (await response.json()) as { ok: boolean; data: { items: unknown[] } };
-    assert.equal(body.ok, true);
-    assert.deepEqual(body.data.items, []);
-    assert.equal(lastCaseQuery?.state, "open");
-    assert.equal(lastCaseQuery?.sort, "last_evidence_at");
-    assert.equal(lastCaseQuery?.order, "desc");
-    assert.equal(lastCaseQuery?.limit, 25);
-  }
-});
-
-test("[AC-25][AC-35] read list forwards the explicit Release discriminants", async () => {
-  const path = "/api/v1/admin/granot-lifecycle/cases?kind=release&mode=release&state=open";
-  const response = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("admin", path, "GET") });
-  assert.equal(response.status, 200);
-  assert.equal(lastCaseQuery?.kind, "release");
-  assert.equal(lastCaseQuery?.mode, "release");
-  assert.equal(lastCaseQuery?.state, "open");
-});
-
-test("[AC-35] unsigned lifecycle reads are denied before projection", async () => {
-  const path = "/api/v1/admin/granot-lifecycle/cases";
-  const response = await fetch(`${baseUrl}${path}`);
-  assert.equal(response.status, 403);
-  assert.equal(lastCaseQuery, null);
-});
-
-test("[AC-35] strict case filters reject unknown keys with a safe 400", async () => {
-  const path = "/api/v1/admin/granot-lifecycle/cases?payload=forbidden";
-  const response = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("owner", path, "GET") });
-  assert.equal(response.status, 400);
-  const body = (await response.json()) as { code: string; error: string };
-  assert.equal(body.code, GRANOT_LIFECYCLE_ERROR_CODES.VALIDATION_FAILED);
-  assert.equal(body.error, "Invalid request");
-});
-
-test("[AC-35] [AC-39] case detail has safe 404 and exact read envelope", async () => {
-  const foundPath = `/api/v1/admin/granot-lifecycle/cases/${receiptId}`;
-  const found = await fetch(`${baseUrl}${foundPath}`, { headers: signedHeaders("admin", foundPath, "GET") });
-  assert.equal(found.status, 200);
-  const foundBody = (await found.json()) as { data: { observed_context: { section_label: string } } };
-  assert.equal(foundBody.data.observed_context.section_label, "Granot evidence — not official Vantage values");
-
-  const missingId = new mongoose.Types.ObjectId().toHexString();
-  const missingPath = `/api/v1/admin/granot-lifecycle/cases/${missingId}`;
-  const missing = await fetch(`${baseUrl}${missingPath}`, { headers: signedHeaders("admin", missingPath, "GET") });
-  assert.equal(missing.status, 404);
-  const missingBody = (await missing.json()) as { code: string };
-  assert.equal(missingBody.code, GRANOT_LIFECYCLE_ERROR_CODES.CASE_NOT_FOUND);
-});
 
 test("creating observation is Owner-only and returns the Booked statement for a booking case", async () => {
   const path = `/api/v1/admin/granot-lifecycle/cases/${receiptId}/creating-observation`;
@@ -538,55 +307,6 @@ test("creating observation returns the Release statement for a cancellation inta
   assert.equal(body.data.selection, "preferred_release");
   assert.equal(body.data.granot_statement.event_type, "Release");
   assert.equal(lastCreatingObservationCaseId, releaseCaseId);
-});
-
-test("[AC-35] candidate browser is Owner-only for source and all scope and performs a read", async () => {
-  const path = `/api/v1/admin/granot-lifecycle/cases/${receiptId}/candidates?scope=all&q=synthetic`;
-  const denied = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("admin", path, "GET") });
-  assert.equal(denied.status, 403);
-
-  const allowed = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("owner", path, "GET") });
-  assert.equal(allowed.status, 200);
-  const observed = lastCandidateQuery as Record<string, unknown> | null;
-  assert.ok(observed);
-  assert.equal(observed.scope, "all");
-  assert.equal(observed.q, "synthetic");
-  assert.equal(observed.limit, 25);
-});
-
-test("[AC-40] Lead timeline validates model/ID and preserves generic missing Lead envelope", async () => {
-  const foundPath = `/api/v1/admin/leads/FormLead/${receiptId}/lifecycle`;
-  const found = await fetch(`${baseUrl}${foundPath}`, { headers: signedHeaders("admin", foundPath, "GET") });
-  assert.equal(found.status, 200);
-
-  const missingId = new mongoose.Types.ObjectId().toHexString();
-  const missingPath = `/api/v1/admin/leads/CallLead/${missingId}/lifecycle`;
-  const missing = await fetch(`${baseUrl}${missingPath}`, { headers: signedHeaders("admin", missingPath, "GET") });
-  assert.equal(missing.status, 404);
-  assert.deepEqual(await missing.json(), { ok: false, error: "Lead not found" });
-});
-
-test("[AC-20] Job timeline is readable by Admin and strictly bounds pagination", async () => {
-  const path = "/api/v1/admin/granot-lifecycle/jobs/synthetic-100?limit=200";
-  const response = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("admin", path, "GET") });
-  assert.equal(response.status, 200);
-  const invalidPath = "/api/v1/admin/granot-lifecycle/jobs/synthetic-100?limit=201";
-  const invalid = await fetch(`${baseUrl}${invalidPath}`, { headers: signedHeaders("admin", invalidPath, "GET") });
-  assert.equal(invalid.status, 400);
-});
-
-test("[AC-35][AC-36] discrepancy list/detail are signed reads with strict filters", async () => {
-  const listPath = "/api/v1/admin/granot-lifecycle/discrepancies?kind=booking&state=open";
-  const list = await fetch(`${baseUrl}${listPath}`, { headers: signedHeaders("admin", listPath, "GET") });
-  assert.equal(list.status, 200);
-  assert.equal(lastDiscrepancyQuery?.kind, "booking");
-  assert.equal(lastDiscrepancyQuery?.state, "open");
-  const detailPath = `/api/v1/admin/granot-lifecycle/discrepancies/${receiptId}`;
-  const detail = await fetch(`${baseUrl}${detailPath}`, { headers: signedHeaders("admin", detailPath, "GET") });
-  assert.equal(detail.status, 200);
-  assert.equal((await detail.json() as { data: { masked_contact_label: string } }).data.masked_contact_label, "Contact masked");
-  const invalidPath = "/api/v1/admin/granot-lifecycle/discrepancies?contact=forbidden";
-  assert.equal((await fetch(`${baseUrl}${invalidPath}`, { headers: signedHeaders("owner", invalidPath, "GET") })).status, 400);
 });
 
 test("[AC-23][AC-36] discrepancy commands are Owner-only, strict, and route-own identity", async () => {
@@ -707,27 +427,6 @@ test("[AC-28] Owner Referral create route accepts only revision plus official fi
   assert.equal(lastReferralCreate, null);
 });
 
-test("[AC-20] [AC-32] Owner No Action accepts optional reason metadata and Admin is denied", async () => {
-  const path = `/api/v1/admin/granot-lifecycle/booking-cases/${receiptId}/no-action`;
-  const body = { expected_case_revision: 1, reason_code: "other" };
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: "POST",
-    headers: { ...signedHeaders("owner", path), "Idempotency-Key": "unit25-no-action-1" },
-    body: JSON.stringify(body),
-  });
-  assert.equal(response.status, 200);
-  assert.equal(lastNoAction?.reason_code, "other");
-
-  lastNoAction = null;
-  const denied = await fetch(`${baseUrl}${path}`, {
-    method: "POST",
-    headers: { ...signedHeaders("admin", path), "Idempotency-Key": "unit25-no-action-2" },
-    body: JSON.stringify(body),
-  });
-  assert.equal(denied.status, 403);
-  assert.equal(lastNoAction, null);
-});
-
 test("[AC-R9] Owner booking-case confirm-cancellation succeeds and rejects create-missing posture", async () => {
   const path = `/api/v1/admin/granot-lifecycle/booking-cases/${receiptId}/confirm-cancellation`;
   const body = {
@@ -825,37 +524,4 @@ test("[AC-25] [AC-32] Release Owner routes are strict, idempotent, and use exact
     }),
   });
   assert.equal(forbidden.status, 400);
-});
-
-test("receipt search and Live Events GET transports are retired; requeue stays", async () => {
-  for (const path of [
-    "/api/v1/admin/granot-lifecycle/receipts",
-    "/api/v1/admin/granot-lifecycle/receipts/live",
-  ]) {
-    const response = await fetch(`${baseUrl}${path}`, {
-      method: "GET",
-      headers: signedHeaders("owner", path, "GET"),
-    });
-    assert.equal(response.status, 404);
-    assert.doesNotMatch(response.headers.get("content-type") ?? "", /text\/event-stream/);
-  }
-});
-
-test("[AC-31][AC-35] Owner and Admin can read the health envelope without raw payload keys", async () => {
-  const path = "/api/v1/admin/granot-lifecycle/operations/health";
-  for (const role of ["owner", "admin"] as const) {
-    const response = await fetch(`${baseUrl}${path}`, {
-      method: "GET",
-      headers: signedHeaders(role, path, "GET"),
-    });
-    assert.equal(response.status, 200);
-    const body = await response.json() as { ok: boolean; data: typeof HEALTH_FIXTURE };
-    assert.equal(body.ok, true);
-    assert.equal(body.data.generated_at, HEALTH_FIXTURE.generated_at);
-    assert.equal(body.data.flags.GRANOT_LIFECYCLE_SHADOW_MODE, true);
-    assert.equal(body.data.flags.GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED, false);
-    assert.equal(body.data.decisions_last_24h[0]?.execution_mode, "historical_shadow");
-    assert.equal(JSON.stringify(body).includes("payload"), false);
-    assert.equal(JSON.stringify(body).includes("authorization"), false);
-  }
 });

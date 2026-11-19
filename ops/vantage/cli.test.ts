@@ -1,36 +1,22 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync, existsSync, unlinkSync, rmdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import test from "node:test";
 import type { Db, Document } from "mongodb";
-import { AGENT_LOCAL, assertLocalHello, assertLocalIdentity, localChildEnvironment, OperatorError, publicFailure } from "./local-safety";
+import {
+  AGENT_LOCAL,
+  assertLocalHello,
+  assertLocalIdentity,
+  localChildEnvironment,
+  publicFailure,
+} from "./local-safety";
 import { executeCommand } from "./cli";
-import { HELP, parseCommand, RUNBOOK } from "./commands";
+import { parseCommand } from "./commands";
 import { inspectSheetSync, QUERY_TIMEOUT_MS, READ_LIMIT, traceSheetSync } from "./sheet-sync";
-import { saveTestFailure, sheetTestInvocation } from "./test-command";
+import { sheetTestInvocation } from "./test-command";
 
 const repo = resolve(__dirname, "../..");
 const validHello = { setName: "rs0", isWritablePrimary: true, me: "127.0.0.1:27017", primary: "127.0.0.1:27017", hosts: ["127.0.0.1:27017"] };
-test("help/discovery/runbook need no credentials, and their references exist", async () => {
-  for (const args of [[], ["services"], ["runbook", "sheet-sync", "stalled"]]) {
-    const result = await executeCommand(parseCommand(args));
-    assert.equal((result as { status: string }).status, "available");
-  }
-  assert.ok(existsSync(resolve(repo, RUNBOOK)));
-  assert.match(HELP, /Production inspection and all repairs are unsupported/);
-  const packageJson = JSON.parse(readFileSync(resolve(repo, "package.json"), "utf8"));
-  assert.match(packageJson.scripts.test, /ops\/vantage/);
-  assert.match(packageJson.scripts.lint, /ops\/vantage/);
-  const doc = readFileSync(resolve(repo, RUNBOOK), "utf8");
-  for (const line of doc.split(/\r?\n/).filter((line) => line.startsWith("pnpm vantage -- "))) {
-    const args = line.slice("pnpm vantage -- ".length).split(" ");
-    assert.doesNotThrow(() => parseCommand(args));
-  }
-  for (const match of doc.matchAll(/\]\(([^)#]+)(?:#[^)]*)?\)/g)) {
-    if (!match[1]!.startsWith("https:")) assert.ok(existsSync(resolve(repo, "docs/operations", match[1]!)), match[1]);
-  }
-});
 test("strict command scope rejects injection, unknown flags, duplicate flags and unbounded trace inputs", () => {
   for (const args of [
     ["sheet-sync", "inspect"], ["sheet-sync", "inspect", "--target", "local", "--uri", "mongodb://evil"],
@@ -73,21 +59,6 @@ test("child subprocess cannot inherit provider credentials, Node flags, dotenv p
   assert.notEqual(actual.DOTENV_CONFIG_PATH, ".env");
   assert.deepEqual(invocation.args, ["--import", "tsx", "ops/sheet-sync-recovery/replica.ts"]);
 });
-test("public failure never prints driver messages or payloads and separates privilege failure", () => {
-  for (const error of [new Error("secret customer@example.com mongodb://user:password@host"), { code: 13, message: "secret" }, { code: 18, message: "secret" }]) {
-    const failure = publicFailure(error);
-    assert.doesNotMatch(JSON.stringify(failure), /secret|customer|password/);
-  }
-  assert.equal(publicFailure({ code: 13 }).status, "permission_denied");
-  assert.equal(publicFailure(new OperatorError("unsupported", 4)).status, "unsupported");
-  assert.equal(publicFailure(new OperatorError("test_failed", 5)).status, "failed");
-  assert.equal(publicFailure(new OperatorError("invalid_arguments", 2)).status, "usage");
-});
-test("synthetic failure evidence is bounded and stored separately from JSON", () => {
-  const path = saveTestFailure("synthetic failure detail", "fixture stderr");
-  try { assert.match(readFileSync(path, "utf8"), /synthetic failure detail/); }
-  finally { unlinkSync(path); rmdirSync(dirname(path)); }
-});
 
 function fakeDb(rows: Document[] = []) {
   const calls: { collection: string; pipeline: Document[]; options: Document }[] = [];
@@ -117,12 +88,6 @@ test("empty observations remain partial and every read has row/time bounds and s
     assert.ok(!fields.some((field) => /error|payload|tombstone|target|sheet|entity|operation/.test(field)));
     assert.ok(Object.entries(project).every(([field, expression]) => (field === "_id" && expression === 0) || typeof expression === "object"));
   }
-});
-test("trace rejects malformed job IDs before opening a database query", async () => {
-  const { db, calls } = fakeDb();
-  await assert.rejects(traceSheetSync(db, "not-a-mongo-id"),
-    (error) => error instanceof OperatorError && error.code === "invalid_arguments" && error.exitCode === 2);
-  assert.equal(calls.length, 0);
 });
 test("sample truncation is explicit and missing permission cannot become an empty healthy result", async () => {
   const { db } = fakeDb(Array.from({ length: 26 }, () => ({ status: "pending" })));

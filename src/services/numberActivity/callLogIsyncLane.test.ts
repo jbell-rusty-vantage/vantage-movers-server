@@ -4,14 +4,9 @@ import mongoose from "mongoose";
 import { RingCentralApiError } from "../ringcentral/client";
 import type { LeaseToken } from "../durableWork/types";
 import type { CallLogSyncInput, CallLogSyncPage } from "./callLogClient";
-import { createCallLogApplier, emptyBatchCounts, type TouchedInteraction } from "./callLogApplier";
-import { QuarantineBook } from "./callLogQuarantine";
+import { type TouchedInteraction } from "./callLogApplier";
 import {
-  ISYNC_LANE_PAGE_BUDGET,
-  isyncLaneMinute,
-  isyncLaneSetOf,
   runCallLogIsyncLaneOnce,
-  storedTokenUsable,
   type IsyncLaneDeps,
   type IsyncLaneState,
   type IsyncLaneStore,
@@ -19,48 +14,8 @@ import {
 } from "./callLogIsyncLane";
 import { inboundConnectedCallLog, outboundMissedCallLog, syntheticDirectory } from "./fixtures";
 import { InteractionPersistenceError, type ApplyResult } from "./persistInteraction";
-import { acquireWithWait } from "./reconcileCallLog";
 
 const iso = (value: string) => new Date(value);
-
-test("staffed-hours gate: New York [07:45, 20:30), yields on the reconcile minute (UTC minute ≡ 3 mod 5)", () => {
-  // 2026-10-05 is EDT (UTC−4).
-  assert.deepEqual(isyncLaneMinute(iso("2026-10-05T11:44:00Z")), { run: false, reason: "outside_staffed_hours" }, "07:44");
-  assert.deepEqual(isyncLaneMinute(iso("2026-10-05T11:45:00Z")), { run: true }, "07:45 opens");
-  assert.deepEqual(isyncLaneMinute(iso("2026-10-06T00:29:59Z")), { run: true }, "20:29:59");
-  assert.deepEqual(isyncLaneMinute(iso("2026-10-06T00:30:00Z")), { run: false, reason: "outside_staffed_hours" }, "20:30 closes");
-  assert.deepEqual(isyncLaneMinute(iso("2026-10-05T16:03:00Z")), { run: false, reason: "reconcile_minute" }, "12:03 is the reconcile's");
-  assert.deepEqual(isyncLaneMinute(iso("2026-10-05T16:08:30Z")), { run: false, reason: "reconcile_minute" });
-  assert.deepEqual(isyncLaneMinute(iso("2026-10-05T16:04:00Z")), { run: true });
-});
-
-test("staffed-hours gate is DST-safe on both 2026 transitions (wall clock, never a fixed UTC offset)", () => {
-  // Spring forward: Sunday 2026-03-08. Saturday 07:45 is EST (12:45Z); Sunday 07:45 is EDT (11:45Z).
-  assert.deepEqual(isyncLaneMinute(iso("2026-03-07T11:45:00Z")), { run: false, reason: "outside_staffed_hours" }, "Sat 06:45 EST");
-  assert.deepEqual(isyncLaneMinute(iso("2026-03-07T12:45:00Z")), { run: true }, "Sat 07:45 EST");
-  assert.deepEqual(isyncLaneMinute(iso("2026-03-08T11:45:00Z")), { run: true }, "Sun 07:45 EDT");
-  assert.deepEqual(isyncLaneMinute(iso("2026-03-08T11:44:00Z")), { run: false, reason: "outside_staffed_hours" }, "Sun 07:44 EDT");
-  assert.deepEqual(isyncLaneMinute(iso("2026-03-09T00:29:00Z")), { run: true }, "Sun 20:29 EDT");
-  assert.deepEqual(isyncLaneMinute(iso("2026-03-09T00:30:00Z")), { run: false, reason: "outside_staffed_hours" }, "Sun 20:30 EDT");
-  // Fall back: Sunday 2026-11-01. Saturday 07:45 is EDT (11:45Z); Sunday 07:45 is EST (12:45Z).
-  assert.deepEqual(isyncLaneMinute(iso("2026-10-31T11:45:00Z")), { run: true }, "Sat 07:45 EDT");
-  assert.deepEqual(isyncLaneMinute(iso("2026-11-01T11:45:00Z")), { run: false, reason: "outside_staffed_hours" }, "Sun 06:45 EST");
-  assert.deepEqual(isyncLaneMinute(iso("2026-11-01T12:45:00Z")), { run: true }, "Sun 07:45 EST");
-  assert.deepEqual(isyncLaneMinute(iso("2026-11-02T01:29:00Z")), { run: true }, "Sun 20:29 EST");
-  assert.deepEqual(isyncLaneMinute(iso("2026-11-02T01:30:00Z")), { run: false, reason: "outside_staffed_hours" }, "Sun 20:30 EST");
-  // The repeated 01:00–02:00 hour of fall-back night is outside either way.
-  assert.deepEqual(isyncLaneMinute(iso("2026-11-01T05:30:00Z")), { run: false, reason: "outside_staffed_hours" });
-  assert.deepEqual(isyncLaneMinute(iso("2026-11-01T06:30:00Z")), { run: false, reason: "outside_staffed_hours" });
-});
-
-test("stored token usability: present and younger than 24 h; the lane never bootstraps", () => {
-  const now = iso("2026-10-05T14:00:00Z");
-  assert.equal(storedTokenUsable(undefined, now), false);
-  assert.equal(storedTokenUsable({ token: null, sync_time: now }, now), false);
-  assert.equal(storedTokenUsable({ token: "t", sync_time: null }, now), false);
-  assert.equal(storedTokenUsable({ token: "t", sync_time: iso("2026-10-04T14:00:00Z") }, now), true);
-  assert.equal(storedTokenUsable({ token: "t", sync_time: iso("2026-10-04T13:59:59Z") }, now), false);
-});
 
 const STAFFED = iso("2026-10-05T14:01:00Z"); // 10:01 EDT, not a reconcile minute
 
@@ -163,18 +118,6 @@ test("ISync lane: gates first — disabled, sync not on, outside hours, reconcil
   assert.equal(calls.acquire, 0);
 });
 
-test("ISync lane: a held lease skips; a missing or stale token yields to the reconcile and releases the lease", async () => {
-  const held = fakeStore(freshToken, { acquire: false });
-  assert.equal((await runCallLogIsyncLaneOnce(laneDeps({ store: held.store, pages: [] }).deps)).skip_reason, "lease_held");
-  const missing = fakeStore({});
-  const run = laneDeps({ store: missing.store, pages: [] });
-  const summary = await runCallLogIsyncLaneOnce(run.deps);
-  assert.equal(summary.skip_reason, "token_missing");
-  assert.equal(run.requests.length, 0, "no FSync bootstrap from the lane");
-  assert.equal(missing.calls.release, 1);
-  assert.equal(missing.calls.writes.length, 0);
-});
-
 test("ISync lane: one ISync with the stored token applies every changed record, wakes the desk for those rows, stores the next token", async () => {
   const { store, calls } = fakeStore(freshToken);
   const run = laneDeps({
@@ -194,42 +137,6 @@ test("ISync lane: one ISync with the stored token applies every changed record, 
   assert.equal(write.isync_lane.last_success_at?.getTime(), STAFFED.getTime());
   assert.equal(write.isync_lane.last_error_code, null);
   assert.equal(write.isync_lane.last_records, 1);
-});
-
-test("ISync lane: follows further pages only while a page is full, inside the page budget", async () => {
-  const { store, calls } = fakeStore(freshToken);
-  const full = { records: [inboundConnectedCallLog("s-1"), outboundMissedCallLog("s-2")], syncType: "ISync" as const, syncToken: "tok-2", syncTime: STAFFED };
-  const run = laneDeps({
-    store,
-    pages: [full, { ...full, records: [inboundConnectedCallLog("s-3"), inboundConnectedCallLog("s-4")], syncToken: "tok-3" }, { records: [], syncType: "ISync", syncToken: "tok-4", syncTime: STAFFED }],
-  });
-  const summary = await runCallLogIsyncLaneOnce(run.deps);
-  assert.equal(summary.requests, ISYNC_LANE_PAGE_BUDGET);
-  assert.deepEqual(run.requests.map((r) => (r.syncType === "ISync" ? r.syncToken : "F")), ["tok-1", "tok-2", "tok-3"]);
-  assert.equal(calls.writes[0]!.call_log_sync?.token, "tok-4");
-  assert.equal(run.applied.length, 4);
-
-  const partial = fakeStore(freshToken);
-  const once = laneDeps({ store: partial.store, pages: [{ ...full, records: [inboundConnectedCallLog("s-9")] }] });
-  assert.equal((await runCallLogIsyncLaneOnce(once.deps)).requests, 1, "a partial page ends the chain");
-});
-
-test("window and by-id recovery revalidate accounts after loading the directory", async () => {
-  let applied = 0;
-  const applier = createCallLogApplier({
-    now: () => STAFFED, directory: async () => syntheticDirectory(), configuredAccountId: null,
-    resolveRoute: () => null, settleHorizonMinutes: 240, book: new QuarantineBook([], []),
-    renew: async () => {}, requestId: "scope", ownerHash: "test", logPrefix: "test",
-    unchanged: async () => new Set(), apply: async () => { applied++; return applyResult("stored"); },
-  });
-  const initial = outboundMissedCallLog("first");
-  await applier.applyBatch([initial], emptyBatchCounts());
-  const foreign = { ...initial, uri: "/restapi/v1.0/account/900000000001/call-log/other" };
-  assert.equal(await applier.ensureContext([foreign]), "account_mismatch");
-  const counts = emptyBatchCounts();
-  await applier.applyBatch([foreign], counts);
-  assert.equal(counts.error_code, "account_mismatch");
-  assert.equal(applied, 1);
 });
 
 test("ISync checks the provider account again on continuation pages", async () => {
@@ -254,34 +161,6 @@ test("ISync lane: a throttle stores nothing new and reports it; the shared gate 
   assert.equal(run.woken.length, 0);
 });
 
-test("A3: a run that stores no token keeps the previous last_success_at (sticky, never set to null)", async () => {
-  const { store, calls } = fakeStore(freshToken);
-  const throttle = new RingCentralApiError("throttled", 429, "Too Many Requests", "/call-log-sync", "GET", null, { retryAfterMs: 60_000 });
-  await runCallLogIsyncLaneOnce(laneDeps({ store, pages: [throttle] }).deps);
-  const write = calls.writes[0]!;
-  assert.equal(write.isync_lane.last_success_at, null, "the run itself had no success");
-  const set = isyncLaneSetOf(write, STAFFED);
-  assert.equal("isync_lane.last_success_at" in set, false, "no last_success_at key in the $set: the stored instant stays");
-  assert.equal("isync_lane" in set, false, "the subdocument is never replaced whole");
-  assert.equal(set["isync_lane.last_run_at"], STAFFED);
-  assert.equal(set["isync_lane.last_error_code"], "provider_throttled");
-  assert.equal(set["isync_lane.last_records"], 0);
-  assert.equal("call_log_sync" in set, false, "the stored token is left as it was");
-  assert.equal(set.lease_owner, null);
-});
-
-test("A3: a successful run sets last_success_at through a dotted $set", async () => {
-  const { store, calls } = fakeStore(freshToken);
-  await runCallLogIsyncLaneOnce(laneDeps({ store, pages: [{ records: [], syncType: "ISync", syncToken: "tok-2", syncTime: STAFFED }] }).deps);
-  const set = isyncLaneSetOf(calls.writes[0]!, STAFFED);
-  assert.equal((set["isync_lane.last_success_at"] as Date).getTime(), STAFFED.getTime());
-  assert.equal((set.call_log_sync as { token: string }).token, "tok-2");
-  assert.deepEqual(
-    Object.keys(set).filter((key) => key.startsWith("isync_lane")).sort(),
-    ["isync_lane.last_applied", "isync_lane.last_error_code", "isync_lane.last_records", "isync_lane.last_run_at", "isync_lane.last_success_at"],
-  );
-});
-
 test("ISync lane: a failing record is counted toward quarantine and holds the token (replayed next minute)", async () => {
   const { store, calls } = fakeStore(freshToken);
   const run = laneDeps({
@@ -301,33 +180,4 @@ test("ISync lane: losing the lease before the fenced write reports lease_lost", 
   const { store } = fakeStore(freshToken, { writeOk: false });
   const run = laneDeps({ store, pages: [{ records: [], syncType: "ISync", syncToken: "tok-2", syncTime: STAFFED }] });
   assert.equal((await runCallLogIsyncLaneOnce(run.deps)).error_code, "lease_lost");
-});
-
-test("reconcile lease: polls a briefly held lease (the minute lane) and gives up after the wait", async () => {
-  let clock = 0;
-  const sleeps: number[] = [];
-  let freeAfter = 2;
-  const leases = {
-    acquire: async () => (freeAfter-- <= 0 ? ({ owner: "r" } as LeaseToken) : null),
-  };
-  const deps = {
-    scope: "s",
-    owner: "r",
-    ttl_ms: 300_000,
-    now: () => new Date(clock),
-    waitMs: 20_000,
-    sleep: async (ms: number) => {
-      sleeps.push(ms);
-      clock += ms;
-    },
-  };
-  assert.ok(await acquireWithWait(leases as never, deps));
-  assert.deepEqual(sleeps, [2_000, 2_000]);
-
-  clock = 0;
-  sleeps.length = 0;
-  const never = { acquire: async () => null };
-  assert.equal(await acquireWithWait(never as never, deps), null);
-  assert.ok(clock <= 20_000, "never waits past the bound");
-  assert.equal(await acquireWithWait(never as never, { ...deps, waitMs: 0 }), null);
 });

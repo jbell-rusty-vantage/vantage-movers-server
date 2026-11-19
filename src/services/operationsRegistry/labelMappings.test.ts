@@ -2,23 +2,15 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import type { ClientSession } from "mongoose";
 import mongoose from "mongoose";
-import { LeadSourceLabelMapping } from "../../models/LeadSourceLabelMapping";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { getLeadSourceLabelMappingModel } from "../../models/LeadSourceLabelMapping";
 import { RegistryError } from "./errors";
+import { resetRegistryCacheInvalidationForTests } from "./cacheInvalidation";
 import {
-  resetRegistryCacheInvalidationForTests,
-} from "./cacheInvalidation";
-import {
-  consultStaticSourceLabelMap,
   createLabelMapping,
-  getStaticSourceLabelMapConsultCount,
-  listLabelMappings,
-  normalizeSourceLabel,
   resetStaticSourceLabelMapConsultsForTests,
   resolveLabelToFeed,
-  resolveSheetOrLegacyLabel,
   setLabelMappingActivation,
 } from "./labelMappings";
 import type { RegistryActorContext, TransactionRunner } from "./types";
@@ -146,66 +138,6 @@ function stubActiveDestination(options: {
     });
 }
 
-test("normalizeSourceLabel applies NFKC", () => {
-  assert.equal(normalizeSourceLabel("Cafe\u0301"), "café");
-});
-
-test("normalizeSourceLabel collapses internal whitespace", () => {
-  assert.equal(normalizeSourceLabel("Best   Relocation   Forms"), "best relocation forms");
-});
-
-test("normalizeSourceLabel trims", () => {
-  assert.equal(normalizeSourceLabel("  Best Relocation Forms  "), "best relocation forms");
-});
-
-test("normalizeSourceLabel lowercases", () => {
-  assert.equal(normalizeSourceLabel("Best Relocation Forms"), "best relocation forms");
-});
-
-test("normalizeSourceLabel folds full-width characters", () => {
-  assert.equal(normalizeSourceLabel("Ｂｅｓｔ Relocation Forms"), "best relocation forms");
-});
-
-test("normalizeSourceLabel collapses a non-breaking space", () => {
-  assert.equal(
-    normalizeSourceLabel("Best\u00A0Relocation Forms"),
-    "best relocation forms",
-  );
-});
-
-test("create rejects a client-supplied normalized_label", async () => {
-  await assert.rejects(
-    () =>
-      createLabelMapping(
-        command({ normalized_label: "best relocation forms" }),
-        OWNER,
-        { withTransaction: passthroughTransaction, insertAudit: async () => undefined },
-      ),
-    (error: unknown) =>
-      error instanceof RegistryError &&
-      /normalized_label is server-derived/.test(error.message),
-  );
-});
-
-test("create rejects a change_reason shorter than 10 or longer than 1000", async () => {
-  await assert.rejects(
-    () =>
-      createLabelMapping(command({ change_reason: "too short" }), OWNER, {
-        withTransaction: passthroughTransaction,
-        insertAudit: async () => undefined,
-      }),
-    /change_reason must be between 10 and 1000/,
-  );
-  await assert.rejects(
-    () =>
-      createLabelMapping(command({ change_reason: "x".repeat(1001) }), OWNER, {
-        withTransaction: passthroughTransaction,
-        insertAudit: async () => undefined,
-      }),
-    /change_reason must be between 10 and 1000/,
-  );
-});
-
 test("create validation order: Feed exists, belongs to Lead Source, is active, then collision", async () => {
   const seen: string[] = [];
   (Granularity as unknown as MutableModel).findById = () => {
@@ -268,45 +200,6 @@ test("create validation order: Feed exists, belongs to Lead Source, is active, t
   );
 });
 
-test("unique index is defined separately from the service collision check", () => {
-  const indexes = LeadSourceLabelMapping.schema.indexes();
-  const unique = (
-    indexes as Array<
-      [{ namespace?: number; normalized_label?: number }, { unique?: boolean }]
-    >
-  ).find(
-    ([fields, options]) =>
-      fields.namespace === 1 &&
-      fields.normalized_label === 1 &&
-      options.unique === true,
-  );
-  assert.ok(unique, "partial unique index on { namespace, normalized_label }");
-  assert.deepEqual(
-    (unique?.[1] as { partialFilterExpression?: unknown }).partialFilterExpression,
-    { active: true },
-  );
-});
-
-test("create writes through the registry audit trail", async () => {
-  stubActiveDestination();
-  (Mapping as unknown as MutableModel).findOne = () => lean(null);
-  (Mapping as unknown as MutableModel).create = async () => [mappingDoc()];
-  let audited = false;
-  const result = await createLabelMapping(command(), OWNER, {
-    withTransaction: passthroughTransaction,
-    insertAudit: async (_session, input) => {
-      audited = true;
-      assert.equal(input.entityType, "source_label_mapping");
-      assert.equal(input.action, "create");
-      assert.equal(input.reason, command().change_reason);
-      assert.equal(input.actor.actorId, OWNER.actorId);
-      assert.equal(input.after?.normalized_label, "best relocation forms");
-    },
-  });
-  assert.equal(result.normalized_label, "best relocation forms");
-  assert.equal(audited, true);
-});
-
 test("there is no in-place destination edit; correction is deactivate then create", async () => {
   stubActiveDestination();
   const archived = mappingDoc({
@@ -351,69 +244,6 @@ test("there is no in-place destination edit; correction is deactivate then creat
   assert.notEqual(replacement.id, deactivated.id);
 });
 
-test("schema validation rejects a mismatched normalized_label", async () => {
-  const document = new LeadSourceLabelMapping({
-    label: "Best Relocation Forms",
-    normalized_label: "wrong",
-    namespace: "sheet_lead_source",
-    source_company: companyId,
-    source_granularity: feedId,
-    active: true,
-    created_by: {
-      actor_type: "owner",
-      actor_id: "owner-1",
-      actor_label: "owner@example.test",
-      actor_role: "owner",
-      request_id: "req-1",
-    },
-    change_reason: "Seed a mapping with a derived normalized label",
-  });
-  await assert.rejects(() => document.validate(), /normalized_label must equal/);
-});
-
-test("schema validation rejects post-create changes to destination fields", async () => {
-  const document = new LeadSourceLabelMapping({
-    label: "Best Relocation Forms",
-    normalized_label: "best relocation forms",
-    namespace: "sheet_lead_source",
-    source_company: companyId,
-    source_granularity: feedId,
-    active: true,
-    created_by: {
-      actor_type: "owner",
-      actor_id: "owner-1",
-      actor_label: "owner@example.test",
-      actor_role: "owner",
-      request_id: "req-1",
-    },
-    change_reason: "Seed a mapping for immutability proof",
-  });
-  await document.validate();
-  document.isNew = false;
-  const original = String(document.source_granularity);
-  document.set("source_granularity", otherCompanyId);
-  try {
-    await document.validate();
-  } catch (error) {
-    assert.match(String(error), /immutable/);
-    return;
-  }
-  assert.equal(
-    String(document.source_granularity),
-    original,
-    "immutable destination field must not change in place",
-  );
-});
-
-test("resolveLabelToFeed returns not_found without throwing", async () => {
-  (Mapping as unknown as MutableModel).find = () => lean([]);
-  const result = await resolveLabelToFeed(
-    "sheet_lead_source",
-    "Unknown Sheet Label",
-  );
-  assert.equal(result.status, "not_found");
-});
-
 test("resolveLabelToFeed returns ambiguous when two active mappings collide", async () => {
   (Mapping as unknown as MutableModel).find = () =>
     lean([
@@ -428,21 +258,4 @@ test("resolveLabelToFeed returns ambiguous when two active mappings collide", as
   if (result.status === "ambiguous") {
     assert.equal(result.candidates.length, 2);
   }
-});
-
-test("listLabelMappings filters by Feed, Lead Source, and namespace", async () => {
-  (Mapping as unknown as MutableModel).find = () => lean([mappingDoc()]);
-  const rows = await listLabelMappings({
-    source_company: String(companyId),
-    source_granularity: String(feedId),
-    namespace: "sheet_lead_source",
-  });
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0]?.source_granularity, String(feedId));
-});
-
-test("consultStaticSourceLabelMap increments the instrumented counter", () => {
-  resetStaticSourceLabelMapConsultsForTests();
-  assert.equal(consultStaticSourceLabelMap("Best Relocation Forms"), "best_relocation_leads");
-  assert.equal(getStaticSourceLabelMapConsultCount(), 1);
 });

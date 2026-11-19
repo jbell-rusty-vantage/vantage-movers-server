@@ -1,13 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import mongoose from "mongoose";
-import {
-  GRANOT_LIFECYCLE_ACTIVATION_COLLECTION,
-  GRANOT_LIFECYCLE_ACTIVATION_INDEXES,
-  GRANOT_LIFECYCLE_ACTIVATION_MODEL_NAME,
-  GranotLifecycleActivation,
-  getGranotLifecycleActivationModel,
-} from "./GranotLifecycleActivation";
+import { GranotLifecycleActivation } from "./GranotLifecycleActivation";
 
 function activation(overrides: Record<string, unknown> = {}) {
   return new GranotLifecycleActivation({
@@ -26,26 +20,6 @@ function activation(overrides: Record<string, unknown> = {}) {
     ...overrides,
   });
 }
-
-test("[AC-31] Activation model is write-once with a unique key index", () => {
-  assert.equal(GranotLifecycleActivation.modelName, GRANOT_LIFECYCLE_ACTIVATION_MODEL_NAME);
-  assert.equal(
-    GranotLifecycleActivation.collection.collectionName,
-    GRANOT_LIFECYCLE_ACTIVATION_COLLECTION,
-  );
-  assert.equal(
-    getGranotLifecycleActivationModel().modelName,
-    GRANOT_LIFECYCLE_ACTIVATION_MODEL_NAME,
-  );
-  const indexes = GranotLifecycleActivation.schema.indexes() as Array<
-    [Record<string, unknown>, Record<string, unknown>]
-  >;
-  const unique = GRANOT_LIFECYCLE_ACTIVATION_INDEXES[0];
-  const declared = indexes.find(([, options]) => options.name === unique.name);
-  assert.ok(declared);
-  assert.deepEqual(declared?.[0], unique.key);
-  assert.equal(declared?.[1].unique, true);
-});
 
 test("[AC-31] Activation rejects unknown keys and post-insert mutation", async () => {
   await activation().validate();

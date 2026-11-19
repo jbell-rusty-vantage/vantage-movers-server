@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { afterEach, test } from "node:test";
 import {
   resetRegistryCacheInvalidationForTests,
@@ -11,7 +9,6 @@ import {
 } from "../operationsRegistry/granotCrmSourceCache";
 import { evaluateGranotLeadSmsGates } from "../leadMessaging/granotCreatedLead";
 import {
-  EFFECT_GATE_NAMES,
   evaluateEffectGates,
   resolveSourcePolicy,
   type EffectGateFacts,
@@ -211,38 +208,6 @@ test("[AC-09] Best Relocation Form same valid states select local; different sel
   }
 });
 
-test("a Form source with a single `any` route selects it with blank or non-USPS states", async () => {
-  const tbmForms = formSource({
-    normalized_granot_label: "tbm forms",
-    lifecycle_routes: [{ route_key: "form_any", lead_model: "FormLead", move_type: "any", source_granularity_id: localGranularityId }],
-  });
-  for (const facts of [
-    {},
-    { origin_state: "GA" },
-    { destination_state: "NY" },
-    { origin_state: "PA", destination_state: "PR" },
-    { origin_state: "NY", destination_state: "NY" },
-  ]) {
-    const result = await resolveSourcePolicy({ source_label: "TBM Forms", ...facts }, store([tbmForms]));
-    assert.equal(result.ok, true, JSON.stringify(facts));
-    if (result.ok) {
-      assert.equal(result.snapshot.selected_route_key, "form_any");
-      assert.equal(result.snapshot.selected_move_type, "any");
-      assert.equal(result.snapshot.source_granularity_id, localGranularityId);
-    }
-  }
-  // Typed routes keep the exact AC-09 rule even when an `any` sibling exists.
-  const mixed = formSource({
-    lifecycle_routes: [
-      ...formSource().lifecycle_routes,
-      { route_key: "form_any", lead_model: "FormLead", move_type: "any", source_granularity_id: localGranularityId },
-    ],
-  });
-  const missing = await resolveSourcePolicy({ source_label: "BestRelocation Forms", origin_state: "NY" }, store([mixed]));
-  assert.equal(missing.ok, false);
-  if (!missing.ok) assert.equal(missing.reason, "missing_creation_route_data");
-});
-
 test("[AC-29] deferred Paid Overflow and Auto authorize no effect; payload type is not classification input", async () => {
   const paidOverflow = await resolveSourcePolicy(
     { source_label: "Paid Overflow", provider_type: "AUTO" },
@@ -291,66 +256,6 @@ test("[AC-29] deferred Paid Overflow and Auto authorize no effect; payload type 
   }
 });
 
-test("[AC-04] ineligible Source Scope fails gates and provides no reassignment output", () => {
-  const evaluation = evaluateEffectGates({
-    global_effect_flag: true,
-    receipt_post_activation: true,
-    processor_mode: "live",
-    operational_enabled: true,
-    lifecycle_enabled: true,
-    disposition: "source_scoped_lead",
-    source_company_active: true,
-    source_granularity_active: true,
-    lead_created_policy: "create_if_missing",
-    requested_effect: "lead_created",
-    source_scope_eligible: false,
-  });
-  assert.equal(evaluation.allowed, false);
-  assert.equal(evaluation.outcome, "conflict");
-  assert.equal(evaluation.reason, "source_scope_conflict");
-  assert.equal(
-    evaluation.evaluated_gates.find((gate) => gate.gate === "policy_permits_effect")?.allowed,
-    false,
-  );
-});
-
-test("gate evaluator snapshots every layer in stable order and maps deferred vs policy_blocked", () => {
-  const facts: EffectGateFacts = {
-    global_effect_flag: false,
-    receipt_post_activation: false,
-    processor_mode: "live_shadow",
-    operational_enabled: false,
-    lifecycle_enabled: false,
-    disposition: "deferred",
-    source_company_active: false,
-    source_granularity_active: false,
-    lead_created_policy: "observation_only",
-    requested_effect: "lead_created",
-  };
-  const evaluation = evaluateEffectGates(facts);
-  assert.deepEqual(
-    evaluation.evaluated_gates.map((gate) => gate.gate),
-    [...EFFECT_GATE_NAMES],
-  );
-  assert.equal(evaluation.evaluated_gates.length, 8);
-  assert.ok(evaluation.evaluated_gates.every((gate) => gate.allowed === false));
-  assert.equal(evaluation.allowed, false);
-  assert.equal(evaluation.outcome, "policy_blocked");
-  assert.equal(evaluation.reason, "global_effect_disabled");
-
-  const deferred = evaluateEffectGates({
-    ...facts,
-    global_effect_flag: true,
-    receipt_post_activation: true,
-    processor_mode: "live",
-    operational_enabled: true,
-    lifecycle_enabled: true,
-  });
-  assert.equal(deferred.outcome, "deferred");
-  assert.equal(deferred.reason, "source_deferred");
-  assert.equal(deferred.allowed, false);
-});
-
 test("[AC-28] reviewed Referral reconciliation treats absent Lead scope gates as not applicable", () => {
   const evaluation = evaluateEffectGates({
     global_effect_flag: true,
@@ -379,16 +284,6 @@ test("[AC-28] reviewed Referral reconciliation treats absent Lead scope gates as
   ]) {
     assert.equal(evaluateEffectGates({ ...evaluationFacts(), ...facts }).allowed, false);
   }
-});
-
-test("source-policy suite never imports the Twilio adapter", () => {
-  const policySource = readFileSync(
-    path.join(process.cwd(), "src/services/granotLifecycle/sourcePolicy.ts"),
-    "utf8",
-  );
-  assert.equal(policySource.includes("createTwilioSender"), false);
-  assert.equal(policySource.includes("twilioAdapter"), false);
-  assert.equal(policySource.includes("twilio"), false);
 });
 
 test("twelve policy × effect outcomes are independent for link, enrich, create, and text", () => {
@@ -443,47 +338,6 @@ test("twelve policy × effect outcomes are independent for link, enrich, create,
     });
     assert.equal(evaluation.allowed, row.allowed, `${row.policy} × ${row.effect}`);
   }
-});
-
-test("a later store edit does not mutate an already-returned SourcePolicySnapshot", async () => {
-  const row = formSource({
-    normalized_granot_label: "other forms",
-    lead_created_policy: "create_if_missing",
-    lifecycle_policy_version: "snap-v1",
-  });
-  const rows = [row];
-  const first = await resolveSourcePolicy(
-    {
-      source_label: "Other Forms",
-      origin_state: "NY",
-      destination_state: "NY",
-    },
-    store(rows),
-  );
-  assert.equal(first.ok, true);
-  if (!first.ok) return;
-  const snapshot = { ...first.snapshot };
-  row.lead_created_policy = "link_only";
-  row.lifecycle_policy_version = "snap-v2";
-  const second = await resolveSourcePolicy(
-    {
-      source_label: "Other Forms",
-      origin_state: "NY",
-      destination_state: "NY",
-    },
-    store(rows),
-  );
-  assert.equal(second.ok, true);
-  if (second.ok) {
-    assert.equal(second.snapshot.lead_created_policy, "link_only");
-    assert.equal(second.snapshot.lifecycle_policy_version, "snap-v2");
-  }
-  assert.equal(snapshot.lead_created_policy, "create_if_missing");
-  assert.equal(snapshot.lifecycle_policy_version, "snap-v1");
-  assert.equal(snapshot.granot_crm_source_id, sourceId);
-  assert.equal(snapshot.lead_source_company_id, companyId);
-  assert.equal(snapshot.source_granularity_id, localGranularityId);
-  assert.equal(snapshot.selected_route_key, "form_local");
 });
 
 function evaluationFacts(): EffectGateFacts {

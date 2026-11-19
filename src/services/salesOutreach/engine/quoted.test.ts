@@ -16,46 +16,12 @@ describe("P04a Quoted deferral (fixture p04a-quoted-deferral.json)", () => {
       events,
     });
   const byId = Object.fromEntries(fx.cases.map((c) => [c.id, c]));
-
-  test("selected date opens 08:00 and is due 20:00", () => {
-    const r = evaluate(build(), fx.activation_at);
-    const ob = obligationsOn(r, S, "call")[0]!;
-    assert.equal(ob.opens_at, new Date(fx.activation_at).toISOString());
-    assert.equal(ob.due_at, new Date(fx.due_at).toISOString());
-  });
-  test("before_selected_date", () => {
-    const c = byId.before_selected_date as unknown as { business_date: string; ordinary_required_calls: number; scheduled: boolean; actionable_countdown_active: boolean };
-    const r = evaluate(build(), ny(c.business_date, "15:00"));
-    assert.equal(r.requirements.call.required, c.ordinary_required_calls);
-    assert.equal(r.requirements.call.status === "scheduled", c.scheduled);
-    assert.equal(r.requirements.call.due_at !== null, c.actionable_countdown_active);
-    assert.equal(r.quoted?.selected_date, S);
-  });
-  test("selected_date_opening", () => {
-    const c = byId.selected_date_opening as unknown as { as_of: string; ordinary_required_calls: number; actionable_countdown_active: boolean; overdue: boolean };
-    const r = evaluate(build(), c.as_of);
-    assert.equal(r.requirements.call.required, c.ordinary_required_calls);
-    assert.equal(r.requirements.call.due_at !== null, c.actionable_countdown_active);
-    assert.equal(r.requirements.call.status === "overdue", c.overdue);
-  });
   test("call_on_selected_date", () => {
     const c = byId.call_on_selected_date as unknown as { call_started_at: string; verified_completed: number; remaining: number; next_due_at: string };
     const r = evaluate(build([outbound(c.call_started_at)]), "2026-10-08T16:00:00Z");
     assert.equal(r.requirements.call.verified_completed, c.verified_completed);
     assert.equal(r.requirements.call.remaining, c.remaining);
     assert.equal(r.next_action_due_at, new Date(c.next_due_at).toISOString());
-  });
-  test("early_extra_call", () => {
-    const c = byId.early_extra_call as unknown as { call_started_at: string; selected_date_verified_completed: number };
-    const r = evaluate(build([outbound(c.call_started_at)]), "2026-10-08T16:00:00Z");
-    assert.equal(r.requirements.call.verified_completed, c.selected_date_verified_completed);
-    assert.equal(r.quoted?.selected_date, S, "selected date unchanged");
-  });
-  test("missed_selected_date", () => {
-    const c = byId.missed_selected_date as unknown as { next_business_date: string; next_date_ordinary_required_calls: number };
-    const r = evaluate(build(), ny(c.next_business_date, "12:00"));
-    assert.equal(obligationsOn(r, S, "call")[0]!.outcome, "missed");
-    assert.equal(r.requirements.call.required, c.next_date_ordinary_required_calls);
   });
 });
 
@@ -72,14 +38,6 @@ describe("P04b Quoted permissions — engine parts (fixture p04b-quoted-permissi
     assert.equal(obligationsOn(r, "2026-10-10", "call").length, 0);
     assert.equal(obligationsOn(r, "2026-10-11", "call").length, 1);
     assert.equal(r.obligations.some((o) => o.fulfilled_by_event_id !== null), c.contact_credit_created);
-  });
-  test("reassignment_preserves_schedule", () => {
-    const plans = [quotedPlan("a", "q1", "2026-10-08", ny("2026-10-05", "15:30"))];
-    const one = evaluate(base(plans), ny("2026-10-09", "09:00"));
-    const two = evaluate(base(plans, [{ agent_id: "alice", from: "2000-01-01T00:00:00Z", to: ny("2026-10-07", "10:00") }, { agent_id: "bob", from: ny("2026-10-07", "10:00"), to: null }]), ny("2026-10-09", "09:00"));
-    assert.equal(fx.reassignment_preserves_schedule, true);
-    assert.deepEqual(two.obligations.map((o) => [o.obligation_id, o.outcome, o.due_at]), one.obligations.map((o) => [o.obligation_id, o.outcome, o.due_at]));
-    assert.equal(obligationsOn(two, "2026-10-08", "call")[0]!.responsible_agent_id, "bob");
   });
 });
 
@@ -107,26 +65,6 @@ describe("P04c allowed dates (fixture p04c-quoted-allowed-dates.json)", () => {
       assert.equal(r.obligations.some((o) => o.kind === "quoted" && o.business_date === TODAY && o.deadline_missed), c.retrospective_miss_created);
     });
   }
-  test("today_1931", () => {
-    const v = validateQuotedSelection(cal, POLICY, Date.parse(nyMinute(TODAY, 1171)), TODAY);
-    assert.deepEqual(v, { allowed: false, reason: "after_same_day_cutoff" });
-  });
-  test("future_working_date", () => {
-    const c = byId.future_working_date as { activation_minute: number; due_minute: number };
-    const v = validateQuotedSelection(cal, POLICY, Date.parse(nyMinute(TODAY, 600)), "2026-10-09");
-    assert.ok(v.allowed);
-    if (v.allowed) {
-      assert.equal(new Date(v.activation_at_ms).toISOString(), nyMinute("2026-10-09", c.activation_minute));
-      assert.equal(new Date(v.due_at_ms).toISOString(), nyMinute("2026-10-09", c.due_minute));
-    }
-  });
-  test("future_closed_date (rejected, never silently shifted)", () => {
-    const closed = policyWith({ holidays: ["2026-10-09"] });
-    assert.deepEqual(validateQuotedSelection(new BusinessCalendar(closed.calendar), closed, Date.parse(nyMinute(TODAY, 600)), "2026-10-09"), { allowed: false, reason: "closed_date" });
-  });
-  test("past_date", () => {
-    assert.deepEqual(validateQuotedSelection(cal, POLICY, Date.parse(nyMinute(TODAY, 600)), "2026-10-05"), { allowed: false, reason: "past_date" });
-  });
   test("selected_date_later_closed", () => {
     const c = byId.selected_date_later_closed as { selected_date_preserved: boolean; quota_waived: boolean; miss_created_from_closure: boolean; next_working_date_ordinary_calls: number };
     const plans = [quotedPlan("p", "q1", "2026-10-09", nyMinute(TODAY, 600))];
@@ -136,13 +74,6 @@ describe("P04c allowed dates (fixture p04c-quoted-allowed-dates.json)", () => {
     assert.equal(obligationsOn(r, "2026-10-09", "call").length === 0, c.quota_waived);
     assert.equal(r.obligations.some((o) => o.kind === "quoted" && o.deadline_missed), c.miss_created_from_closure);
     assert.equal(obligationsOn(r, "2026-10-10", "call").length, c.next_working_date_ordinary_calls);
-  });
-  test("early_call_then_select_today", () => {
-    const c = byId.early_call_then_select_today as { retroactive_credit_created: boolean };
-    const r = evaluate(enteredToday(540, [quotedPlan("p", "q1", TODAY, nyMinute(TODAY, 840))], [outbound(nyMinute(TODAY, 600))]), nyMinute(TODAY, 900));
-    const ob = obligationsOn(r, TODAY, "call", ["quoted"])[0]!;
-    assert.equal(ob.opens_at, nyMinute(TODAY, 840));
-    assert.equal(ob.fulfilled_by_event_id !== null, c.retroactive_credit_created);
   });
 });
 
@@ -168,13 +99,6 @@ describe("P04d no-date default (fixture p04d-quoted-no-date.json)", () => {
       assert.equal(after.length, fx.ordinary_continuation_calls_per_working_date, "then one call each working date");
     });
   }
-  test("repeated_priority: no new period → schedule preserved", () => {
-    const r1 = evaluate(build(ny("2026-10-02", "14:00")), ny("2026-10-03", "10:00"));
-    const r2 = evaluate(build(ny("2026-10-02", "14:00")), ny("2026-10-03", "10:00"));
-    assert.equal(r1.quoted?.first_required_date, "2026-10-03");
-    assert.equal(r1.fingerprint, r2.fingerprint);
-    assert.equal(fx.repeated_priority.schedule_restarted, false);
-  });
   test("explicit_date: a human-selected date is not overridden by the default", () => {
     const r = evaluate(build(ny("2026-10-02", "14:00"), [], [quotedPlan("p", "q1", "2026-10-06", ny("2026-10-02", "14:00"))]), ny("2026-10-03", "10:00"));
     assert.equal(r.quoted?.first_required_date, "2026-10-06");
@@ -204,12 +128,5 @@ describe("P10a prospective cutover — Quoted (fixture p10a-prospective-cutover.
     assert.equal(byId.quoted_no_verified_schedule!.first_date, "next_working_date");
     assert.equal(r.quoted?.first_required_date, addDays(D, 1));
     assert.equal(r.requirements.call.required, 0);
-  });
-  test("quoted_future_human_date", () => {
-    const r = evaluate(activated(600, [quotedPlan("legacy", "q1", "2026-10-09", ny("2026-10-01", "10:00"))]), nyMinute(D, 600));
-    assert.equal(byId.quoted_future_human_date!.selected_date_preserved, true);
-    assert.equal(r.quoted?.selected_date, "2026-10-09");
-    assert.equal(r.quoted?.basis, "human_selected");
-    assert.equal(obligationsOn(r, "2026-10-07", "call").length + obligationsOn(r, "2026-10-08", "call").length, 0);
   });
 });

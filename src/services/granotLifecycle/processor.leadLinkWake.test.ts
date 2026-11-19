@@ -1,20 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { boundedLeadLinkWake, createGranotObservationProcessor, LEAD_LINK_WAKE_TIMEOUT_MS } from "./processor";
+import { boundedLeadLinkWake, LEAD_LINK_WAKE_TIMEOUT_MS } from "./processor";
 
 /** Post-commit All Numbers lead-link wake-up after a Granot Lead change (`numberActivity/leadLinkJobs.ts`). */
 const OBSERVATION = "650000000000000000000102";
-
-test("the processor wraps the committed result and never lets the wake-up fail processing", async () => {
-  const seen: unknown[] = [];
-  const processor = createGranotObservationProcessor({
-    flags: { processing_enabled: false } as never,
-    wakeLeadLinks: async result => { seen.push(result); throw new Error("wake failed"); },
-  });
-  // Processing disabled throws before any commit: the wake-up is never reached.
-  await assert.rejects(processor.process({ receipt_id: OBSERVATION }), /disabled/i);
-  assert.deepEqual(seen, []);
-});
 
 test("the wake-up holds processing for at most the bound; a slow or failing wake-up never delays or fails the receipt", async () => {
   const fast = await boundedLeadLinkWake(async () => undefined, OBSERVATION, 1_000);

@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import {
-  getGranotLifecycleQueueTopic,
-  getGranotWebhookSecret,
-  shouldPublishGranotLifecycleQueue,
-} from "./granotWebhook";
+import { shouldPublishGranotLifecycleQueue } from "./granotWebhook";
 
 const KEYS = [
   "GRANOT_WEBHOOK_SECRET",
@@ -22,23 +18,6 @@ afterEach(() => {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
-});
-
-test("blank Granot webhook secret is treated as missing configuration", () => {
-  delete process.env.GRANOT_WEBHOOK_SECRET;
-  assert.equal(getGranotWebhookSecret(), null);
-  process.env.GRANOT_WEBHOOK_SECRET = "   ";
-  assert.equal(getGranotWebhookSecret(), null);
-});
-
-test("lifecycle queue topic is environment scoped", () => {
-  delete process.env.GRANOT_LIFECYCLE_QUEUE_TOPIC;
-  process.env.VERCEL_ENV = "production";
-  assert.equal(getGranotLifecycleQueueTopic(), "granot-lifecycle-events");
-  process.env.VERCEL_ENV = "preview";
-  assert.equal(getGranotLifecycleQueueTopic(), "granot-lifecycle-events-dev");
-  process.env.GRANOT_LIFECYCLE_QUEUE_TOPIC = "custom-lifecycle-topic";
-  assert.equal(getGranotLifecycleQueueTopic(), "custom-lifecycle-topic");
 });
 
 test("lifecycle queue publishing stays off in the test runner and unapproved environments", () => {

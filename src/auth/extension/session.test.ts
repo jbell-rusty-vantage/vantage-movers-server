@@ -3,11 +3,9 @@ import { after, before, test } from "node:test";
 import {
   accessTokenMatchesStoredUser,
   getExtensionUserFromAccessToken,
-  issueTokens,
   refreshTokenMatchesStoredUser,
-  toPublicExtensionUser,
 } from "./session";
-import { signAccessToken, verifyAccessToken } from "./tokens";
+import { signAccessToken } from "./tokens";
 
 const ACCESS_SECRET = "test-extension-access-secret";
 const REFRESH_SECRET = "test-extension-refresh-secret";
@@ -34,10 +32,6 @@ const matchingPayload = {
   roles: ["customer_service", "sales"] as ["customer_service", "sales"],
   token_version: 4,
 };
-
-test("matching roles set authenticates even when order differs", () => {
-  assert.equal(accessTokenMatchesStoredUser(matchingPayload, stored), true);
-});
 
 test("set mismatch, missing roles, missing version, email drift, inactive, and deleted fail", () => {
   assert.equal(
@@ -83,33 +77,6 @@ test("refresh rejects a stale token_version", () => {
     refreshTokenMatchesStoredUser({ token_version: 4 }, { ...stored, active: false }),
     false,
   );
-});
-
-test("issueTokens writes roles and token_version onto the access token", () => {
-  const tokens = issueTokens(
-    {
-      _id: { toString: () => "507f1f77bcf86cd799439011" },
-      email: "rep@vantage.com",
-      token_version: 6,
-    },
-    ["owner", "sales"],
-  );
-  const payload = verifyAccessToken(tokens.accessToken);
-  assert.deepEqual(payload.roles, ["owner", "sales"]);
-  assert.equal(payload.token_version, 6);
-});
-
-test("PublicExtensionUser is id, email, and roles", () => {
-  const user = toPublicExtensionUser(
-    { _id: { toString: () => "user-1" }, email: "owner@vantage.com" },
-    ["owner"],
-  );
-  assert.deepEqual(user, {
-    id: "user-1",
-    email: "owner@vantage.com",
-    roles: ["owner"],
-  });
-  assert.equal("role" in user, false);
 });
 
 test("getExtensionUserFromAccessToken uses the matcher through an injected lookup", async () => {

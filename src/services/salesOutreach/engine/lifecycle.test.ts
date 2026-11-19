@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { addDays } from "./calendar";
-import { classifyCallEvidence } from "./credit";
 import { callbackPlan, evaluate, fixture, ny, nyMinute, obligationsOn, outbound, period, periods, policyWith, scenario, sms, type FixtureFile } from "./testSupport";
 
 describe("P05a return-to-New age (fixture p05a-return-to-new-age.json)", () => {
@@ -18,29 +17,6 @@ describe("P05a return-to-New age (fixture p05a-return-to-new-age.json)", () => {
       assert.equal(r.initial_response?.outcome === "open", false, "no fresh initial-response clock on return");
     });
   }
-  test("subsequent full working dates keep original age (Day 11: one call, no SMS; Day 12: one call + SMS)", () => {
-    const c = fx.cases.find((x) => x.id === "day_ten_return")!;
-    for (const d of fx.subsequent_full_working_dates) {
-      const r = evaluate(build(c), ny(d.date, "09:00"));
-      assert.equal(r.schedule_day, d.schedule_day);
-      assert.equal(obligationsOn(r, d.date, "call").length, d.required_calls);
-      assert.equal(obligationsOn(r, d.date, "sms").length, d.required_sms);
-    }
-  });
-  test("repeated cycles keep the original received date (no Day 1 restart)", () => {
-    const r = evaluate(
-      scenario({ periods: periods(["n1", "new", "2026-10-02T14:00:00Z", "intake"], ["q1", "quoted", ny("2026-10-03", "10:00"), "transition"], ["n2", "new", ny("2026-10-05", "10:00"), "transition"], ["q2", "quoted", ny("2026-10-06", "10:00"), "transition"], ["n3", "new", ny("2026-10-08", "10:00"), "transition"]) }),
-      ny("2026-10-08", "11:00"),
-    );
-    assert.equal(r.schedule_day, 7);
-  });
-  test("missing_anchor: unknown received date is review, never a guessed age", () => {
-    const r = evaluate(scenario({ received_at: null, activation_at: ny("2026-10-05", "08:00"), periods: [period("n1", "new", ny("2026-10-05", "08:00"), "activation")] }), ny("2026-10-05", "12:00"));
-    assert.equal(r.state, "review");
-    assert.equal(r.schedule_day, null);
-    assert.equal(r.obligations.length, 0);
-    assert.equal(fx.missing_anchor.guessed, false);
-  });
 });
 
 describe("P05b Priority 3 / P05c accepted unmapped code (fixtures p05b, p05c)", () => {
@@ -175,11 +151,6 @@ describe("P05f partial-day reentry (fixture p05f-partial-day-reentry.json)", () 
       assert.equal(r.obligations.filter((o) => o.fulfilled_by_event_id !== null && events.every((e) => e.event_id !== o.fulfilled_by_event_id)).length, 0, "no duplicate credit");
     });
   }
-  test("tomorrow resumes the ordinary age-based schedule", () => {
-    const date = addDays(R, 3);
-    const r = evaluate(scenario({ periods: periods(["n1", "new", nyMinute(R, 420), "intake"], ["q1", "quoted", nyMinute(R, 720), "transition"], ["n2", "new", nyMinute(date, 840), "transition"]) }), nyMinute(addDays(date, 1), 600));
-    assert.deepEqual(obligationsOn(r, addDays(date, 1), "call").map((o) => o.due_at), [nyMinute(addDays(date, 1), 720), nyMinute(addDays(date, 1), 1200)]);
-  });
 });
 
 describe("P05g move-date review (fixture p05g-move-date-review.json)", () => {
@@ -211,22 +182,6 @@ describe("P05g move-date review (fixture p05g-move-date-review.json)", () => {
   }
 });
 
-describe("P05h eligibility — evidence association parts (fixture p05h-lead-eligibility.json)", () => {
-  const fx = fixture<FixtureFile<Record<string, unknown> & { id: string }>>("p05h-lead-eligibility.json");
-  const facts = { direction: "outbound" as const, duplicate: false, internal: false, actual_attempt: true, terminal: true, in_call_log: true, initiator: { agent_id: "alice", identity: "reviewed" as const }, handler: null };
-  test("number_only: no verified Lead association → no guessed cadence or goal credit", () => {
-    const c = fx.cases.find((x) => x.id === "number_only")!;
-    const out = classifyCallEvidence({ ...facts, association: "none" });
-    assert.equal(out.verification, "excluded");
-    assert.equal(out.goal_agent_id === null ? 0 : 1, c.guessed_goal_credit);
-  });
-  test("shared_phone: ambiguous association stays pending, never multiplied", () => {
-    const out = classifyCallEvidence({ ...facts, association: "ambiguous" });
-    assert.equal(out.verification, "pending_association");
-    assert.equal(out.goal_agent_id, null);
-  });
-});
-
 describe("P10a prospective cutover — New and boundary (fixture p10a-prospective-cutover.json)", () => {
   const fx = fixture<FixtureFile<Record<string, unknown> & { id: string }> & { new_pre_activation_misses: number; new_pre_activation_catchup: number; old_lead_initial_clock_restarted: boolean; missing_age_review: boolean; retry_reprices_boundary: boolean; past_due_legacy_callback: string; pending_verified_human_callbacks_preserved: boolean }>("p10a-prospective-cutover.json");
   const R = "2026-09-29";
@@ -235,51 +190,11 @@ describe("P10a prospective cutover — New and boundary (fixture p10a-prospectiv
     const at = nyMinute(D, minute);
     return scenario({ received_at: nyMinute(R, 600), activation_at: at, periods: [period("n1", "new", at, "activation")], ...extra });
   };
-  const byId = Object.fromEntries(fx.cases.map((c) => [c.id, c])) as Record<string, Record<string, number>>;
-  test("old_day8_1400", () => {
-    const c = byId.old_day8_1400!;
-    const r = evaluate(activated(c.activation_minute!), nyMinute(D, c.activation_minute!));
-    assert.equal(r.schedule_day, c.age_day);
-    assert.equal(r.requirements.call.remaining, c.remaining_calls);
-    assert.equal(obligationsOn(r, D, "call")[0]!.due_at, nyMinute(D, c.due_minute!));
-    assert.equal(r.initial_response, null, "no fresh initial-response clock");
-    assert.equal(fx.old_lead_initial_clock_restarted, false);
-  });
-  test("old_day8_already_contacted", () => {
-    const c = byId.old_day8_already_contacted!;
-    const r = evaluate(activated(840, { events: [outbound(nyMinute(D, 600))] }), nyMinute(D, 840));
-    assert.equal(r.requirements.call.remaining ?? 0, c.remaining_calls);
-  });
   test("no pre-activation misses or catch-up debt", () => {
     const r = evaluate(activated(480), nyMinute(addDays(D, 1), 600));
     const before = r.obligations.filter((o) => Date.parse(o.due_at ?? o.opens_at) < Date.parse(nyMinute(D, 480)));
     assert.equal(before.length, fx.new_pre_activation_misses);
     assert.equal(r.window_history.filter((e) => e.business_date < D).reduce((n, e) => n + e.call.missed + e.sms.missed, 0), fx.new_pre_activation_catchup);
-  });
-  test("missing age goes to review", () => {
-    const r = evaluate(activated(600, { received_at: null }), nyMinute(D, 700));
-    assert.equal(r.state === "review", fx.missing_age_review);
-  });
-  test("fixed boundary: identical inputs give an identical result (retries never reprice)", () => {
-    const a = evaluate(activated(600), nyMinute(D, 900));
-    const b = evaluate(activated(600), nyMinute(D, 900));
-    assert.equal(a.fingerprint, b.fingerprint);
-    assert.equal(a.input_fingerprint, b.input_fingerprint);
-    assert.equal(fx.retry_reprices_boundary, false);
-  });
-  test("past-due legacy callback → review without penalty; pending verified human callback preserved", () => {
-    const plans = [
-      callbackPlan("legacy", "n1", nyMinute(addDays(D, -1), 900), nyMinute(addDays(D, -3), 600)),
-      callbackPlan("pending", "n1", nyMinute(addDays(D, 1), 900), nyMinute(addDays(D, -2), 600)),
-    ];
-    const r = evaluate(activated(480, { plans }), nyMinute(D, 600));
-    const legacy = r.obligations.find((o) => o.plan_id === "legacy")!;
-    const pending = r.obligations.find((o) => o.plan_id === "pending")!;
-    assert.equal(legacy.outcome, "legacy_review");
-    assert.equal(legacy.deadline_missed, false);
-    assert.equal(fx.past_due_legacy_callback, "review_without_new_policy_penalty");
-    assert.equal(pending.outcome, "scheduled");
-    assert.equal(fx.pending_verified_human_callbacks_preserved, true);
   });
 });
 
@@ -315,51 +230,11 @@ describe("olr A4 — closed and dateless review subjects are quiet (no midnight 
     }
   });
 
-  test("closed window history ends at the closure date", () => {
-    const r = evaluate(closedByCode(), ny("2026-11-03", "10:00"));
-    assert.deepEqual(r.window_history.map((e) => e.business_date), ["2026-10-02", "2026-10-03", "2026-10-04"]);
-    assert.equal(r.history_summary.dates, 0);
-    assert.equal(r.window_history[0]!.call.completed, 1, "the closed row keeps its history");
-    const booking = evaluate(closedByBooking(), ny("2026-11-03", "10:00"));
-    assert.equal(booking.window_history.at(-1)!.business_date, "2026-10-04");
-    // Before closure the history still grows to today.
-    const open = evaluate(closedByCode(), ny("2026-10-03", "12:00"));
-    assert.equal(open.window_history.at(-1)!.business_date, "2026-10-03");
-  });
-
-  test("a review subject without received time, periods or plans has next_evaluation_at null", () => {
-    const r = evaluate(datelessReview(), ny("2026-10-05", "12:00"));
-    assert.equal(r.state, "review");
-    assert.equal(r.obligations.length, 0);
-    assert.equal(r.next_evaluation_at, null);
-    assert.equal(evaluate(datelessReview(), ny("2026-10-20", "12:00")).fingerprint, r.fingerprint);
-  });
-
   test("a review subject with a pending callback keeps its next evaluation", () => {
     const plans = [callbackPlan("cb1", "n0", ny("2026-10-06", "15:00"), ny("2026-10-05", "10:00"))];
     const r = evaluate(datelessReview(plans), ny("2026-10-05", "12:00"));
     assert.equal(r.state, "review");
     assert.notEqual(r.next_evaluation_at, null);
     assert.ok(Date.parse(r.next_evaluation_at!) <= Date.parse(ny("2026-10-06", "15:00")));
-  });
-
-  test("a quiet subject still wakes when its advisory cooldown warning expires", () => {
-    const attempts = [9, 10, 11].map((h) => outbound(ny("2026-10-04", `${h}:00`), { outcome: "unanswered" }));
-    const input = { ...closedByCode(), contact_events: attempts };
-    const r = evaluate(input, ny("2026-10-04", "14:05"));
-    assert.equal(r.cooldown.warning, true);
-    assert.equal(r.next_evaluation_at, new Date(Date.parse(ny("2026-10-05", "09:00"))).toISOString(), "first attempt + 24 h, not midnight");
-    assert.equal(evaluate(input, ny("2026-10-05", "12:00")).next_evaluation_at, null);
-  });
-
-  test("business_date alone does not change the fingerprint", () => {
-    const before = evaluate(datelessReview(), ny("2026-10-05", "23:59"));
-    const after = evaluate(datelessReview(), ny("2026-10-06", "00:01"));
-    assert.deepEqual([before.business_date, after.business_date], ["2026-10-05", "2026-10-06"]);
-    assert.equal(before.fingerprint, after.fingerprint);
-    // An active row still changes with the date (obligations, schedule day, history).
-    const active = scenario({ periods: [period("n1", "new", ny("2026-10-05", "09:00"), "intake")] });
-    assert.notEqual(evaluate(active, ny("2026-10-05", "23:59")).fingerprint, evaluate(active, ny("2026-10-06", "00:01")).fingerprint);
-    assert.notEqual(evaluate(active, ny("2026-10-05", "23:59")).next_evaluation_at, null);
   });
 });

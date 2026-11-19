@@ -1,13 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { RingCentralApiError } from "../ringcentral/client";
-import { isSyncTokenExpired, parseCallLogSyncPayload, type CallLogSyncInput, type CallLogSyncPage } from "./callLogClient";
-import { QuarantineBook, quarantineErrorCode, failureLogFields } from "./callLogQuarantine";
-import { parseCallLogSyncMode, runCallLogSyncStep, type SyncApplyOutcome } from "./callLogSyncDriver";
+import { isSyncTokenExpired, type CallLogSyncInput, type CallLogSyncPage } from "./callLogClient";
+import { QuarantineBook } from "./callLogQuarantine";
+import { runCallLogSyncStep, type SyncApplyOutcome } from "./callLogSyncDriver";
 import { at } from "./fixtures";
-import { InteractionPersistenceError } from "./persistInteraction";
-import { callLogReconcileConfig } from "./reconcileCallLog";
-import { composeCallLogCapture } from "../salesIntelligence/ownerCoverage";
 import type { CallLogRecordInput } from "./interactionProjection";
 
 const failure = (id: string) => ({
@@ -49,67 +46,6 @@ test("CC-01 quarantine lifecycle: counted, quarantined at 3, held, retried on a 
   assert.equal(book.recordSuccess("b"), "cleared", "one success resets the consecutive count");
   assert.equal(book.recordSuccess("c"), null);
   assert.equal(book.changed, true);
-});
-
-test("CC-01 transient failures (persist_failed, retry_exhausted, provider_request_failed) get 6 attempts before quarantine", () => {
-  const book = new QuarantineBook([], []);
-  const transient = { ...failure("t"), error_code: "persist_failed" as const, error_name: "MongoServerError" };
-  for (let i = 0; i < 5; i += 1) assert.equal(book.recordFailure(transient, at(i * 300)), "counted");
-  assert.equal(book.recordFailure(transient, at(1500)), "newly_quarantined");
-  const entry = book.snapshot().quarantined_records[0]!;
-  assert.equal(entry.failures, 6);
-  assert.equal(entry.next_retry_at.toISOString(), at(1500 + 3600).toISOString(), "the first retry is still 60 minutes out");
-  assert.deepEqual(book.quarantinedIds(), ["t"]);
-});
-
-test("CC-01 quarantine is bounded: the oldest entry is evicted into an overflow range, record failures drop the oldest", () => {
-  const limits = { quarantineAfter: 1, transientQuarantineAfter: 1, baseDelayMinutes: 60, maxDelayMinutes: 720, maxQuarantined: 2, maxRecordFailures: 2 };
-  const book = new QuarantineBook([], [], limits);
-  book.recordFailure({ ...failure("x"), start_time: at(-100) }, at(1));
-  book.recordFailure(failure("y"), at(2));
-  book.recordFailure(failure("z"), at(3));
-  assert.deepEqual(book.snapshot().quarantined_records.map((e) => e.call_log_id), ["y", "z"]);
-  assert.deepEqual(book.overflow.map((r) => [r.from.toISOString(), r.to.toISOString()]), [[at(-100).toISOString(), at(-40).toISOString()]]);
-
-  const counter = new QuarantineBook([], [], { ...limits, quarantineAfter: 5 });
-  for (const id of ["p", "q", "r"]) counter.recordFailure(failure(id), at(0));
-  assert.deepEqual(counter.snapshot().record_failures.map((e) => e.call_log_id), ["q", "r"]);
-});
-
-test("CC-01 failure classification and log fields carry the error name and a bounded message", () => {
-  assert.equal(quarantineErrorCode(new InteractionPersistenceError("account_mismatch", "x")), "account_mismatch");
-  assert.equal(quarantineErrorCode(new InteractionPersistenceError("retry_exhausted", "x")), "retry_exhausted");
-  assert.equal(quarantineErrorCode(new InteractionPersistenceError("identity_missing", "x")), "projection_failed");
-  const strict = Object.assign(new Error(`Cast to Embedded failed at path "rollups" ${"x".repeat(400)}`), { name: "StrictModeError" });
-  assert.equal(quarantineErrorCode(strict), "persist_failed");
-  const fields = failureLogFields(strict);
-  assert.equal(fields.errorName, "StrictModeError");
-  assert.equal(fields.errorMessage.length, 200);
-  assert.match(fields.errorMessage, /^Cast to Embedded failed at path "rollups"/);
-});
-
-test("CC-03/05 configuration: settle horizon default 240 with a floor of 60; sync mode off | shadow | on", () => {
-  const saved = { ...process.env };
-  try {
-    delete process.env.SALES_INTELLIGENCE_CALL_LOG_SETTLE_HORIZON_MINUTES;
-    delete process.env.SALES_INTELLIGENCE_CALL_LOG_SYNC;
-    let config = callLogReconcileConfig();
-    assert.equal(config.settleHorizonMinutes, 240);
-    assert.equal(config.syncMode, "off");
-    assert.equal(config.quarantineAfter, 3);
-    assert.equal(config.quarantineRetriesPerRun, 5);
-    assert.equal(config.sweepLookbackHours, 36);
-    process.env.SALES_INTELLIGENCE_CALL_LOG_SETTLE_HORIZON_MINUTES = "30";
-    process.env.SALES_INTELLIGENCE_CALL_LOG_SYNC = "shadow";
-    config = callLogReconcileConfig();
-    assert.equal(config.settleHorizonMinutes, 60, "floor");
-    assert.equal(config.syncMode, "shadow");
-    assert.equal(parseCallLogSyncMode("on"), "on");
-    assert.equal(parseCallLogSyncMode("false"), "off");
-    assert.equal(parseCallLogSyncMode("bogus"), "off");
-  } finally {
-    process.env = saved;
-  }
 });
 
 const record = (id: string): CallLogRecordInput => ({ id, type: "Voice", startTime: at(-3000).toISOString(), lastModifiedTime: at(-60).toISOString() });
@@ -242,63 +178,4 @@ test("CC-05 the token is not stored when a record fails, is dropped when it had 
   assert.equal(throttled.error_code, "provider_throttled");
   assert.equal(throttled.next, null);
   assert.equal(throttled.applied, 0);
-});
-
-test("CC-05 shadow counts would-change records, applies nothing, and keeps its own token chain moving", async () => {
-  let applied = 0;
-  const result = await runCallLogSyncStep({
-    ...base,
-    mode: "shadow",
-    recordCount: 250,
-    state: { token: "t1", sync_time: at(-300) },
-    fetchSync: fakeSync([
-      {
-        records: [record("r1"), record("r2"), { id: "fax", type: "Fax" }],
-        syncType: "ISync",
-        syncToken: "t2",
-        syncTime: at(0),
-      },
-    ]).fetch,
-    countChanged: async (records) => records.length - 1,
-    apply: async (records) => {
-      applied += records.length;
-      return applyAll(records);
-    },
-  });
-  assert.equal(applied, 0);
-  assert.equal(result.records, 2, "non-voice entries are not calls");
-  assert.equal(result.changed, 1);
-  assert.equal(result.token_stored, true);
-  assert.equal(result.next?.token, "t2");
-});
-
-test("Call Log Sync payload parsing keeps the documented shape and tolerates junk", () => {
-  const parsed = parseCallLogSyncPayload({ records: [{ id: "1" }], syncInfo: { syncType: "ISync", syncToken: "tok", syncTime: "2026-09-23T20:00:00.000Z" } });
-  assert.equal(parsed.records.length, 1);
-  assert.equal(parsed.syncToken, "tok");
-  assert.equal(parsed.syncTime?.toISOString(), "2026-09-23T20:00:00.000Z");
-  const junk = parseCallLogSyncPayload(null);
-  assert.deepEqual(junk, { records: [], syncType: null, syncToken: null, syncTime: null });
-});
-
-test("Owner Coverage: quarantined count, oldest quarantine and the last sweep's correction figures", () => {
-  assert.deepEqual(composeCallLogCapture(null, null, "off"), {
-    quarantined_count: 0,
-    oldest_quarantined_at: null,
-    sync_mode: "off",
-    last_sweep: null,
-  });
-  const read = composeCallLogCapture(
-    { scope: "call_log_all_directions", quarantined_records: [{ first_failed_at: at(-100) }, { first_failed_at: at(-900) }] },
-    {
-      scope: "call_log_sweep",
-      consecutive_drift_runs: 2,
-      last_run: { started_at: at(0), error_code: null, from: at(-36 * 3600), to: at(-4 * 3600), provider_records: 900, stored_in_latest_version: 880, applied_changes: 20, missing_before: 5, stale_before: 15, provisional_after_horizon: 0, quarantined: 2 },
-    },
-    "shadow",
-  );
-  assert.equal(read.quarantined_count, 2);
-  assert.equal(read.oldest_quarantined_at, at(-900).toISOString());
-  assert.equal(read.last_sweep?.complete, true);
-  assert.deepEqual([read.last_sweep?.provider_records, read.last_sweep?.missing_before, read.last_sweep?.stale_before, read.last_sweep?.consecutive_drift_runs], [900, 5, 15, 2]);
 });

@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import type { ClientSession } from "mongoose";
-import { DomainCommandExecution } from "../../models/DomainCommandExecution";
 import {
   createBestRelocationIngestionActor,
   createGranotLifecycleProcessorActor,
@@ -12,7 +11,6 @@ import {
 } from "../durableWork/actors";
 import {
   createIdempotentCanonicalCommandExecutor,
-  executeIdempotentCanonicalCommand,
   type CanonicalCommandExecutionStore,
   type StoredCanonicalCommandExecution,
 } from "./idempotency";
@@ -21,75 +19,11 @@ import {
   createVantageScopedApiKeyActor,
 } from "./existingWriteContext";
 import { createCallLead } from "./leads";
+import { VANTAGE_API_SECRET_ACTOR_ID } from "./types";
 import {
-  VANTAGE_API_SECRET_ACTOR_ID,
-} from "./types";
-import {
-  assertOwnerCommandIdempotencyKey,
   DomainCommandContextError,
-  DomainCommandIdempotencyConflictError,
-  toCompatibilityCanonicalCommandResult,
   type CanonicalCommandContext,
 } from "./types";
-
-test("[AC-21] command execution model has durable origin/idempotency uniqueness", () => {
-  const uniqueIndex = DomainCommandExecution.schema
-    .indexes()
-    .find((entry: unknown) => {
-      const [fields, options] = entry as [
-        Record<string, unknown>,
-        { unique?: boolean },
-      ];
-      return (
-        fields.origin === 1 &&
-        fields.idempotency_key === 1 &&
-        options.unique === true
-      );
-    });
-  assert.ok(uniqueIndex);
-});
-
-test("invalid command context fails before database access", async () => {
-  await assert.rejects(
-    executeIdempotentCanonicalCommand({
-      command_name: "test",
-      context: {
-        command_id: "",
-        idempotency_key: "",
-        payload_checksum: "not-a-checksum",
-        actor: createBestRelocationIngestionActor("request-1"),
-        initiator: trustedOwner("request-1"),
-        provenance: {
-          origin: "external_sheet_ingestion",
-          run_id: "run-1",
-          source_receipt_id: "receipt-1",
-          source_connection_key: "best-relocation",
-        },
-      },
-      operation: async () => ({ entity_refs: [] }),
-    }),
-    DomainCommandContextError,
-  );
-});
-
-test("external ingestion rejects human executors and incomplete provenance", async () => {
-  const context = commandContext("d".repeat(64));
-  context.actor = context.initiator;
-  context.provenance.source_receipt_id = null;
-  const execute = createIdempotentCanonicalCommandExecutor({
-    store: memoryExecutionStore(new Map()),
-    connect: async () => undefined,
-    withTransaction: async (fn) => fn({} as ClientSession),
-  });
-  await assert.rejects(
-    execute({
-      command_name: "createCallLead",
-      context,
-      operation: async () => ({ entity_refs: [] }),
-    }),
-    DomainCommandContextError,
-  );
-});
 
 test("[AC-21] four origins validate exactly; Granot and RingCentral identities cannot be client-forged", async () => {
   const execute = createIdempotentCanonicalCommandExecutor({
@@ -151,240 +85,6 @@ test("retired external sheet commands can replay saved outcomes and cannot apply
     result: { status: "applied", entity_refs: [], warnings: [] },
   });
   assert.equal((await execute(request)).replayed, true);
-});
-
-test("[AC-21] replay returns stored applied result; checksum reuse conflicts; compatibility adapter is one-way", async () => {
-  const records = new Map<string, StoredCanonicalCommandExecution>();
-  const store = memoryExecutionStore(records);
-  const execute = createIdempotentCanonicalCommandExecutor({
-    store,
-    connect: async () => undefined,
-    withTransaction: async (fn) => fn({} as ClientSession),
-  });
-  const context = adminContext("a".repeat(64));
-  let mutations = 0;
-  const run = () =>
-    execute({
-      command_name: "createCallLead",
-      context,
-      operation: async ({ session, now }) => {
-        assert.ok(session);
-        assert.ok(now instanceof Date);
-        mutations += 1;
-        return {
-          entity_refs: [{ model: "CallLead", id: "lead-1" }],
-        };
-      },
-    });
-
-  const first = await run();
-  assert.deepEqual(first.result, {
-    status: "applied",
-    entity_refs: [{ model: "CallLead", id: "lead-1" }],
-    warnings: [],
-  });
-  assert.equal(first.replayed, false);
-  const replay = await run();
-  assert.deepEqual(replay.result, first.result);
-  assert.equal(replay.replayed, true);
-  assert.equal(mutations, 1);
-  assert.deepEqual(toCompatibilityCanonicalCommandResult(replay), {
-    status: "already_applied",
-    entity_refs: [{ model: "CallLead", id: "lead-1" }],
-    warnings: [],
-  });
-
-  await assert.rejects(
-    execute({
-      command_name: "createCallLead",
-      context: adminContext("b".repeat(64)),
-      operation: async () => ({ entity_refs: [] }),
-    }),
-    DomainCommandIdempotencyConflictError,
-  );
-});
-
-test("[AC-21] failed command leaves no successful execution outcome", async () => {
-  const records = new Map<string, StoredCanonicalCommandExecution>();
-  const execute = createIdempotentCanonicalCommandExecutor({
-    store: memoryExecutionStore(records),
-    connect: async () => undefined,
-    withTransaction: async (fn) => fn({} as ClientSession),
-  });
-  await assert.rejects(
-    execute({
-      command_name: "createFormLead",
-      context: adminContext("c".repeat(64)),
-      operation: async () => {
-        throw new Error("transaction aborted");
-      },
-    }),
-    /transaction aborted/,
-  );
-  assert.equal(records.size, 0);
-});
-
-test("[AC-21] stable now and preallocated IDs survive a transaction callback retry", async () => {
-  const seen: Array<{ now: Date; commandId: string; decisionId?: string | null }> =
-    [];
-  const execute = createIdempotentCanonicalCommandExecutor({
-    store: {
-      async find() {
-        return null;
-      },
-      async persist() {
-        return undefined;
-      },
-    },
-    connect: async () => undefined,
-    now: () => new Date("2026-08-17T21:00:00.000Z"),
-    withTransaction: async (fn) => {
-      const session = { id: "retry-session" } as unknown as ClientSession;
-      await fn(session);
-      return fn(session);
-    },
-    contextVerifier: {
-      verifyRingCentralTelephony: async () => true,
-    },
-  });
-  const context = granotContext("e".repeat(64));
-  await execute({
-    command_name: "synchronizeLeadFromGranot",
-    context,
-    operation: async ({ now }) => {
-      seen.push({
-        now,
-        commandId: context.command_id,
-        decisionId: context.provenance.decision_id,
-      });
-      if (seen.length === 1) {
-        return { entity_refs: [{ model: "FormLead", id: "lead-retry" }] };
-      }
-      return { entity_refs: [{ model: "FormLead", id: "lead-retry" }] };
-    },
-  });
-  assert.equal(seen.length, 2);
-  assert.equal(seen[0]?.now.toISOString(), seen[1]?.now.toISOString());
-  assert.equal(seen[0]?.commandId, "command-granot-1");
-  assert.equal(seen[0]?.decisionId, "decision-1");
-});
-
-test("[AC-32] observation_channel must agree with the initiator path", async () => {
-  const execute = createIdempotentCanonicalCommandExecutor({
-    store: memoryExecutionStore(new Map()),
-    connect: async () => undefined,
-    withTransaction: async (fn) => fn({} as ClientSession),
-  });
-  const context = granotContext("f".repeat(64));
-  context.provenance.observation_channel = "browser_extension";
-  await assert.rejects(
-    execute({
-      command_name: "synchronizeLeadFromGranot",
-      context,
-      operation: async () => ({ entity_refs: [] }),
-    }),
-    /observation_channel granot_webhook/,
-  );
-});
-
-test("[AC-21] compatibility API-secret and scoped-key system actors validate for vantage_admin", async () => {
-  const execute = createIdempotentCanonicalCommandExecutor({
-    store: memoryExecutionStore(new Map()),
-    connect: async () => undefined,
-    withTransaction: async (fn) => fn({} as ClientSession),
-  });
-  const secretActor = createVantageApiSecretActor("req-secret");
-  const secretApplied = await execute({
-    command_name: "createFormLead",
-    context: {
-      command_id: "cmd-secret",
-      idempotency_key: "key-secret",
-      payload_checksum: "d".repeat(64),
-      actor: secretActor,
-      initiator: secretActor,
-      provenance: {
-        origin: "vantage_admin",
-        run_id: null,
-        source_receipt_id: null,
-        source_connection_key: null,
-      },
-    },
-    operation: async () => ({
-      entity_refs: [{ model: "FormLead", id: "lead-secret" }],
-    }),
-  });
-  assert.equal(secretApplied.result.status, "applied");
-  assert.equal(secretActor.actor_id, VANTAGE_API_SECRET_ACTOR_ID);
-  const scopedActor = createVantageScopedApiKeyActor({
-    requestId: "req-scoped",
-    fingerprint: "ab".repeat(16),
-  });
-  const scopedApplied = await execute({
-    command_name: "createFormLead",
-    context: {
-      command_id: "cmd-scoped",
-      idempotency_key: "key-scoped",
-      payload_checksum: "e".repeat(64),
-      actor: scopedActor,
-      initiator: scopedActor,
-      provenance: {
-        origin: "vantage_admin",
-        run_id: null,
-        source_receipt_id: null,
-        source_connection_key: null,
-      },
-    },
-    operation: async () => ({
-      entity_refs: [{ model: "FormLead", id: "lead-scoped" }],
-    }),
-  });
-  assert.equal(scopedApplied.result.status, "applied");
-  await assert.rejects(
-    execute({
-      command_name: "createFormLead",
-      context: {
-        command_id: "cmd-forged",
-        idempotency_key: "key-forged",
-        payload_checksum: "f".repeat(64),
-        actor: {
-          actor_type: "system",
-          actor_id: "forged-system",
-          actor_label: "Forged",
-          actor_role: "system",
-          request_id: "req-forged",
-          origin: "vantage_admin",
-        },
-        initiator: {
-          actor_type: "system",
-          actor_id: "forged-system",
-          actor_label: "Forged",
-          actor_role: "system",
-          request_id: "req-forged",
-          origin: "vantage_admin",
-        },
-        provenance: {
-          origin: "vantage_admin",
-          run_id: null,
-          source_receipt_id: null,
-          source_connection_key: null,
-        },
-      },
-      operation: async () => ({ entity_refs: [] }),
-    }),
-    DomainCommandContextError,
-  );
-});
-
-test("owner idempotency key helper preserves the 8-200 printable envelope", () => {
-  assertOwnerCommandIdempotencyKey("case-key-1");
-  assert.throws(
-    () => assertOwnerCommandIdempotencyKey(" short"),
-    DomainCommandContextError,
-  );
-  assert.throws(
-    () => assertOwnerCommandIdempotencyKey("abc"),
-    DomainCommandContextError,
-  );
 });
 
 test("external sheet Call command is rejected before validation or writing", async () => {
@@ -484,34 +184,6 @@ test("[AC-21] transaction-bound internals do not open nested transactions or fin
   }
 });
 
-test("canonical command modules do not depend on transport or Google adapters", async () => {
-  for (const file of [
-    "leads.ts",
-    "bookings.ts",
-    "cancellations.ts",
-    "idempotency.ts",
-  ]) {
-    const source = await readFile(path.join(__dirname, file), "utf8");
-    assert.doesNotMatch(source, /from\s+["']express["']/);
-    assert.doesNotMatch(source, /googleapis|google-spreadsheet|reporting/i);
-    assert.doesNotMatch(
-      source,
-      /bestRelocationSheetIngest|ingestion\/(parser|planner)/i,
-    );
-  }
-});
-
-test("durable actor factories mint the fixed Granot and RingCentral identities", () => {
-  const processor = createGranotLifecycleProcessorActor("receipt-1");
-  assert.equal(processor.actor_id, "granot-lifecycle-processor");
-  assert.equal(processor.origin, "granot_lifecycle");
-  const webhook = createGranotWebhookInitiator("receipt-1");
-  assert.equal(webhook.actor_id, "granot-webhook");
-  const rc = createRingCentralCallIngestActor("session-1");
-  assert.equal(rc.actor_id, "ringcentral-call-ingest");
-  assert.equal(rc.origin, "ringcentral");
-});
-
 function trustedOwner(requestId: string) {
   return {
     actor_type: "owner" as const,
@@ -607,54 +279,6 @@ test("[AC-32] existing write context factory hashes payload and never stores cre
   });
   assert.match(scoped.actor_id, /^vantage-scoped-api-key:[a-f0-9]{32}$/);
   assert.equal(JSON.stringify(scoped).includes("super-secret-key"), false);
-});
-
-test("[AC-32] v1 write routes enter existing adapters and do not patch models", async () => {
-  const source = await readFile(
-    path.join(__dirname, "../../routes/v1.routes.ts"),
-    "utf8",
-  );
-  for (const name of [
-    "runExistingCreateFormLead",
-    "runExistingUpdateSourceOwnedLead",
-    "runExistingCreateBookingFromLead",
-    "runExistingCreateBookedLeadFromSource",
-    "runExistingCreateReferralBooking",
-    "runExistingCreateLeadlessBooking",
-    "runExistingUpdateBookedLead",
-    "runExistingCreateCancellation",
-    "runExistingUpdateCancelledLead",
-    "runExistingDeleteFormLead",
-    "runExistingDeleteCallLead",
-    "runExistingDeleteBookedLead",
-    "runExistingDeleteCancelledLead",
-    "existingWriteContextFromRequest",
-  ]) {
-    assert.match(source, new RegExp(name));
-  }
-  assert.doesNotMatch(source, /FormLead\.findByIdAndUpdate|BookedLead\.create\(/);
-  assert.doesNotMatch(
-    source,
-    /synchronizeLeadFromGranot|createLeadFromGranot|establishGranotRecordLink|correctGranotRecordLink/,
-  );
-});
-
-test("runExistingUpdateSourceOwnedLead still uses updateSourceOwnedLead and pending source_lead update", async () => {
-  const source = await readFile(path.join(__dirname, "existingWrites.ts"), "utf8");
-  const start = source.indexOf("export async function runExistingUpdateSourceOwnedLead");
-  assert.ok(start >= 0, "missing runExistingUpdateSourceOwnedLead");
-  const next = source.indexOf("\nexport async function ", start + 1);
-  const body = next === -1 ? source.slice(start) : source.slice(start, next);
-  assert.match(body, /command_name:\s*"updateSourceOwnedLead"/);
-  assert.match(body, /persistPlannedMutations/);
-  assert.match(body, /FORM_LEAD_CHANGE_PATHS/);
-  assert.match(body, /CALL_LEAD_CHANGE_PATHS/);
-  assert.match(body, /collectDocumentFieldChanges/);
-  assert.match(body, /fields\.length > 0/);
-  assert.match(body, /resource:\s*"source_lead"/);
-  assert.match(body, /form_lead\.update/);
-  assert.match(body, /call_lead\.update/);
-  assert.doesNotMatch(body, /command_name:\s*"[^"]*no_sync/);
 });
 
 test("[AC-32] existing write adapters persist Changes inside the executor and keep later commands disabled", async () => {

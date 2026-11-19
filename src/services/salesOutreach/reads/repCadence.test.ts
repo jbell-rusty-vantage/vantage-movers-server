@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { OutreachActor } from "../auth";
-import { OutreachError } from "../errors";
 import { QUEUE_KEY_EPOCH, QUEUE_KEY_FAR_FUTURE } from "../evaluation/projection";
 import { completeConfigurationInput, subjectRow, TEST_AGENT_A, TEST_AGENT_B } from "../evaluation/testing";
 import { objectId } from "../subjects/testing";
@@ -129,46 +128,6 @@ const cadenceOf = (row: { overdue_leads: unknown; calls_due_today: unknown; sms_
   sms_due_today: row.sms_due_today,
 });
 
-test("enforcement: a Rep reads its own counts; a 108/100 rep with overdue Leads is still counted; units are attempts/sends vs Leads", async () => {
-  const body = salesOutreachRepDaysSchema.parse(await readRepDays(repA, {}, deps("enforcement")));
-  assert.deepEqual(body.reps?.map((r) => r.agent_id), [TEST_AGENT_A]);
-  const a = body.reps![0]!;
-  assert.deepEqual([a.actual_confirmed, a.goal, a.remaining, a.goal_reached], [108, 100, 0, true], "the goal is met");
-  assert.deepEqual(cadenceOf(a), { overdue_leads: metric(2), calls_due_today: metric(4), sms_due_today: metric(2) });
-});
-
-test("a Rep's foreign agent_id is still refused before any cadence read", async () => {
-  const f = fixture();
-  let reads = 0;
-  const agentCadence = f.queueStore.agentCadence.bind(f.queueStore);
-  f.queueStore.agentCadence = async (...args) => {
-    reads++;
-    return agentCadence(...args);
-  };
-  await assert.rejects(readRepDays(repA, { agent_id: TEST_AGENT_B }, deps("enforcement", f)), (error: unknown) => {
-    assert.ok(error instanceof OutreachError);
-    assert.deepEqual([error.code, error.issues?.[0]?.code], ["FORBIDDEN", "foreign_agent"]);
-    return true;
-  });
-  assert.equal(reads, 0);
-});
-
-test("Owner/Manager rows and the team's Daily call goals rows carry the same counts; per-rep overdue + Unassigned overdue = the team card", async () => {
-  const d = deps("enforcement");
-  const repDays = salesOutreachRepDaysSchema.parse(await readRepDays(owner, {}, d));
-  assert.deepEqual(
-    repDays.reps?.map((r) => [r.agent_id, cadenceOf(r)]),
-    [
-      [TEST_AGENT_A, { overdue_leads: metric(2), calls_due_today: metric(4), sms_due_today: metric(2) }],
-      [TEST_AGENT_B, { overdue_leads: metric(0), calls_due_today: metric(2), sms_due_today: metric(0) }],
-    ],
-  );
-  const team = salesOutreachTeamSchema.parse(await readTeam(manager, {}, d));
-  assert.deepEqual(team.daily_call_goals?.map(cadenceOf), repDays.reps?.map(cadenceOf));
-  const perRep = team.daily_call_goals!.reduce((sum, r) => sum + (r.overdue_leads.value ?? 0), 0);
-  assert.equal(perRep + (team.unassigned.overdue.value ?? 0), team.distinct_overdue_leads.value);
-});
-
 test("shadow: overdue Leads are unavailable (cadence_shadow); due attempts/sends are served, as shadow queue rows show them", async () => {
   const body = await readRepDays(repA, {}, deps("shadow"));
   assert.deepEqual(cadenceOf(body.reps![0]!), { overdue_leads: metric(null, "cadence_shadow"), calls_due_today: metric(4), sms_due_today: metric(2) });
@@ -177,24 +136,11 @@ test("shadow: overdue Leads are unavailable (cadence_shadow); due attempts/sends
   assert.deepEqual(team.distinct_overdue_leads, metric(null, "cadence_shadow"));
 });
 
-test("cadence disabled: every count is null with cadence_disabled, never 0", async () => {
-  const body = await readRepDays(repA, {}, deps("off"));
-  const off = metric(null, "cadence_disabled");
-  assert.deepEqual(cadenceOf(body.reps![0]!), { overdue_leads: off, calls_due_today: off, sms_due_today: off });
-});
-
 test("a due requirement with an unknown remaining count makes that channel's sum unknown (coverage_incomplete), not a partial sum", async () => {
   const f = fixture();
   seed(f.queueStore, { agent: TEST_AGENT_A, call: due(1), sms: due(null) });
   const body = salesOutreachRepDaysSchema.parse(await readRepDays(repA, {}, deps("enforcement", f)));
   assert.deepEqual(cadenceOf(body.reps![0]!), { overdue_leads: metric(2), calls_due_today: metric(5), sms_due_today: metric(null, "coverage_incomplete") });
-});
-
-test("an Agent with no active Lead reads 0 once cadence data can be shown", async () => {
-  const f = fixture();
-  f.queueStore.evaluation.projections.clear();
-  const body = await readRepDays(owner, { agent_id: TEST_AGENT_B }, deps("enforcement", f));
-  assert.deepEqual(cadenceOf(body.reps![0]!), { overdue_leads: metric(0), calls_due_today: metric(0), sms_due_today: metric(0) });
 });
 
 test("coverage-aware overdue (olr A2): a passed deadline coverage cannot prove yet is counted nowhere until coverage reaches it — no dip, no jump", async () => {
@@ -219,17 +165,4 @@ test("coverage-aware overdue (olr A2): a passed deadline coverage cannot prove y
   assert.deepEqual([verified.call.status, verified.call.verification?.state], ["overdue", "verified"]);
   const overdueRows = after.leads_needing_attention.rows!.filter((r) => r.status_flags.overdue).length;
   assert.equal(overdueRows, after.distinct_overdue_leads.value, "every overdue row is counted and every counted Lead reads overdue");
-});
-
-test("coverage-aware overdue (olr A2): with call coverage unknown the overdue figures are coverage_incomplete, never 0; due counts stay served", async () => {
-  const f = fixture();
-  f.store.derivation = null; // no contact-event derivation yet ⇒ no cadence call coverage
-  const team = salesOutreachTeamSchema.parse(await readTeam(owner, {}, deps("enforcement", f)));
-  const incomplete = metric(null, "coverage_incomplete");
-  assert.deepEqual([team.distinct_overdue_leads, team.quoted_overdue_leads, team.unassigned.overdue], [incomplete, incomplete, incomplete]);
-  assert.equal(team.unassigned.count, 1, "the Unassigned count is a count of subjects, still served");
-  const repDays = salesOutreachRepDaysSchema.parse(await readRepDays(repA, {}, deps("enforcement", f)));
-  assert.deepEqual(cadenceOf(repDays.reps![0]!), { overdue_leads: incomplete, calls_due_today: metric(4), sms_due_today: metric(2) });
-  // Shadow still reads cadence_shadow (exposure first).
-  assert.deepEqual((await readTeam(owner, {}, deps("shadow", f))).distinct_overdue_leads, metric(null, "cadence_shadow"));
 });

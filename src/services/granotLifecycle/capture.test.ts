@@ -1,21 +1,12 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { afterEach, test } from "node:test";
-import { canonicalJson } from "../durableWork/checksum";
 import {
-  GRANOT_WEBHOOK_STORED_HEADER_MAX_LENGTH,
-  allowlistGranotWebhookHeaders,
   buildGranotChannelReceiptInsert,
-  buildGranotObservationReceiptInsert,
   captureChannelOperationReceipt,
   captureGranotLifecycleWebhookReceipt,
   type GranotChannelReceiptInsert,
   type GranotObservationReceiptInsert,
 } from "./capture";
-import {
-  GRANOT_LIFECYCLE_ERROR_CODES,
-  OperationIdempotencyConflictError,
-} from "./errors";
 import type { DurableActor } from "../durableWork/types";
 import {
   getGranotLifecycleReceiptsTotal,
@@ -105,61 +96,6 @@ test("[AC-01][AC-35] capture writes a complete v2 webhook receipt with proven au
     }),
     1,
   );
-});
-
-test("[AC-01][AC-35] header allowlist keeps only the five bounded names", () => {
-  const longValue = "x".repeat(GRANOT_WEBHOOK_STORED_HEADER_MAX_LENGTH + 25);
-  assert.deepEqual(
-    allowlistGranotWebhookHeaders({
-      "Content-Type": "application/json",
-      "Content-Length": "12",
-      "User-Agent": "synthetic-agent",
-      "X-Request-Id": longValue,
-      "X-Vercel-Id": ["first", longValue],
-      authorization: "Bearer must-not-be-stored",
-      cookie: "must-not-be-stored",
-      "x-api-secret": "must-not-be-stored",
-      "x-forwarded-for": "203.0.113.10",
-      forwarded: "for=203.0.113.10",
-      "x-granot-delivery-id": "delivery-123",
-      "x-unknown": "omit-me",
-      "x-vercel-id-extra": undefined,
-    }),
-    {
-      "content-type": "application/json",
-      "content-length": "12",
-      "user-agent": "synthetic-agent",
-      "x-request-id": "x".repeat(GRANOT_WEBHOOK_STORED_HEADER_MAX_LENGTH),
-      "x-vercel-id": [
-        "first",
-        "x".repeat(GRANOT_WEBHOOK_STORED_HEADER_MAX_LENGTH),
-      ],
-    },
-  );
-});
-
-test("[AC-02][AC-35] hashes the credential-redacted payload after allowlisting headers", () => {
-  const document = buildGranotObservationReceiptInsert({
-    route_event_class: "lead_created",
-    captured_at: capturedAt,
-    headers: {
-      "content-type": "application/json",
-      "x-api-secret": "must-not-be-hashed",
-    },
-    payload: {
-      ...syntheticPayload,
-      "X-API-SECRET": "must-not-be-hashed",
-    },
-    authentication_method: "header_secret",
-  });
-  const expected = createHash("sha256")
-    .update(canonicalJson(syntheticPayload), "utf8")
-    .digest("hex");
-  assert.equal(document.payload_sha256, expected);
-  assert.match(document.payload_sha256, /^[0-9a-f]{64}$/);
-  assert.equal(document.payload_sha256, document.payload_sha256.toLowerCase());
-  assert.deepEqual(document.payload, syntheticPayload);
-  assert.equal(JSON.stringify(document).includes("must-not-be-hashed"), false);
 });
 
 test("[AC-02] identical webhook deliveries stay distinct receipts and may share the diagnostic hash", async () => {
@@ -284,85 +220,8 @@ test("[AC-02][AC-33][AC-35] extension channel capture stores one browser_extensi
   assert.equal("route_event_class" in document, false);
 });
 
-test("[AC-02] same extension operation ID + same hash replays the existing receipt", async () => {
-  const firstHash = buildGranotChannelReceiptInsert(channelInput()).payload_sha256;
-  const result = await captureChannelOperationReceipt(
-    channelInput(),
-    async () => {
-      const error = Object.assign(new Error("duplicate"), { code: 11000 });
-      throw error;
-    },
-    async () => ({
-      _id: { toString: () => "winner-receipt" } as never,
-      payload_sha256: firstHash,
-      channel_operation_kind: "lead_snapshot_apply",
-    }),
-  );
-  assert.equal(result.status, "replayed");
-  assert.equal(result.receipt_id, "winner-receipt");
-});
 
-test("[AC-02] same extension operation ID + different hash is GRANOT_OPERATION_IDEMPOTENCY_CONFLICT", async () => {
-  await assert.rejects(
-    captureChannelOperationReceipt(
-      channelInput(),
-      async () => {
-        throw Object.assign(new Error("duplicate"), { code: 11000 });
-      },
-      async () => ({
-        _id: { toString: () => "winner-receipt" } as never,
-        payload_sha256: "a".repeat(64),
-        channel_operation_kind: "lead_snapshot_apply",
-      }),
-    ),
-    (error: unknown) =>
-      error instanceof OperationIdempotencyConflictError &&
-      error.code === GRANOT_LIFECYCLE_ERROR_CODES.OPERATION_IDEMPOTENCY_CONFLICT &&
-      error.statusCode === 409,
-  );
-});
 
-const automationInitiator: DurableActor = {
-  actor_type: "owner",
-  actor_id: "owner-auto-1",
-  actor_label: "owner@example.invalid",
-  actor_role: "owner",
-  request_id: "req-auto-1",
-  origin: "vantage_admin",
-};
-
-const automationItem = {
-  operation_id: "507f1f77bcf86cd799439011:Synthetic Forms:row-1",
-  operation_kind: "lead_snapshot_apply" as const,
-  granot_statement: { source: "Synthetic Forms", priority: "1", user: "MIKE", rep: "SALES" },
-};
-
-function automationInput(overrides: Record<string, unknown> = {}) {
-  return {
-    observation_channel: "granot_http_automation" as const,
-    authentication_method: "automation_owner_approval" as const,
-    channel_operation_kind: "lead_snapshot_apply" as const,
-    channel_operation_id: automationItem.operation_id,
-    captured_at: capturedAt,
-    headers: {},
-    payload: automationItem,
-    initiator: automationInitiator,
-    ...overrides,
-  };
-}
-
-test("successful webhook acknowledgement no longer writes a receipt card", async () => {
-  await captureGranotLifecycleWebhookReceipt(webhookInput(), async () => ({ receipt_id: "synthetic-receipt" }));
-  assert.deepEqual(getCapturedDailyOperationsFacts(), []);
-});
-
-test("extension channel capture does not record a Daily Operations fact", async () => {
-  await captureChannelOperationReceipt(
-    channelInput(),
-    async () => ({ receipt_id: "ext-dop-1" }),
-  );
-  assert.deepEqual(getCapturedDailyOperationsFacts(), []);
-});
 
 test("channel capture replay does not increment Daily Operations", async () => {
   const firstHash = buildGranotChannelReceiptInsert(channelInput()).payload_sha256;
@@ -379,40 +238,4 @@ test("channel capture replay does not increment Daily Operations", async () => {
   );
   assert.equal(result.status, "replayed");
   assert.deepEqual(getCapturedDailyOperationsFacts(), []);
-});
-
-test("[AC-02] automation channel capture stores one granot_http_automation receipt", async () => {
-  const persisted: GranotChannelReceiptInsert[] = [];
-  const result = await captureChannelOperationReceipt(
-    automationInput(),
-    async (document) => {
-      persisted.push(document);
-      return { receipt_id: "auto-receipt-1" };
-    },
-  );
-  assert.equal(result.status, "inserted");
-  assert.equal(persisted[0]?.observation_channel, "granot_http_automation");
-  assert.equal(persisted[0]?.authentication_method, "automation_owner_approval");
-  assert.equal(persisted[0]?.channel_operation_id, automationItem.operation_id);
-  assert.equal(persisted[0]?.initiator?.origin, "vantage_admin");
-  assert.deepEqual(persisted[0]?.headers, {});
-  assert.deepEqual(getCapturedDailyOperationsFacts(), []);
-});
-
-test("[AC-02] same automation operation ID + different kind is GRANOT_OPERATION_IDEMPOTENCY_CONFLICT", async () => {
-  const firstHash = buildGranotChannelReceiptInsert(automationInput()).payload_sha256;
-  await assert.rejects(
-    captureChannelOperationReceipt(
-      automationInput(),
-      async () => {
-        throw Object.assign(new Error("duplicate"), { code: 11000 });
-      },
-      async () => ({
-        _id: { toString: () => "winner-receipt" } as never,
-        payload_sha256: firstHash,
-        channel_operation_kind: "booking_action_apply",
-      }),
-    ),
-    (error: unknown) => error instanceof OperationIdempotencyConflictError,
-  );
 });

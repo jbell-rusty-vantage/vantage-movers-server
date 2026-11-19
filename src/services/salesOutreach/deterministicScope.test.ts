@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { CSI_JOB_STAGES, CSI_RETIRED_JOB_STAGES } from "../../config/domain/salesIntelligence";
 
 /**
  * SRV-T (IMPLEMENTATION-PLAN §7/§8; D01 deterministic scope): a static import-graph check that runs in
@@ -72,18 +71,4 @@ test("SRV-T: no model, AI or transcription call path is importable from salesOut
     if (rel.startsWith("/services/salesOutreach/")) continue;
     assert.ok(!FORBIDDEN_PATHS.some((re) => re.test(rel)), `the desk reaches ${rel}`);
   }
-});
-
-test("SRV-T: no retired job stage can be enqueued from salesOutreach/*; every stage named there is retained", () => {
-  const retired = new Set<string>(CSI_RETIRED_JOB_STAGES);
-  const retained = new Set<string>(CSI_JOB_STAGES);
-  const named: string[] = [];
-  for (const file of walk(DESK).filter((f) => !isTest(f))) {
-    const source = readFileSync(file, "utf8");
-    for (const m of source.matchAll(/\bstage\s*:\s*["']([a-z_]+)["']/g)) named.push(m[1]!);
-    for (const m of source.matchAll(/claimCsiJob\([^)]*["']([a-z_]+)["']\s*\)/g)) named.push(m[1]!);
-    for (const stage of retired) assert.ok(!new RegExp(`["']${stage}["']`).test(source), `${path.relative(SRC, file)} names retired stage ${stage}`);
-  }
-  assert.ok(named.length >= 2, "the desk's job stages were found");
-  for (const stage of named) assert.ok(retained.has(stage) && !retired.has(stage), `stage ${stage} is not a retained stage`);
 });

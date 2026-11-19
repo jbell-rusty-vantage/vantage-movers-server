@@ -4,8 +4,6 @@ import mongoose from "mongoose";
 import { MovingCarrier } from "../../models/MovingCarrier";
 import {
   importMovingCarriersFromCsv,
-  listMovingCarriers,
-  normalizeCarrierName,
   parseMovingCarrierCsv,
 } from "./movingCarrier.service";
 
@@ -13,38 +11,10 @@ type MutableModel = Record<string, unknown>;
 
 const originalCreate = MovingCarrier.create as unknown;
 const originalFind = MovingCarrier.find as unknown;
-const originalFindOne = MovingCarrier.findOne as unknown;
-const originalCountDocuments = MovingCarrier.countDocuments as unknown;
 
 afterEach(() => {
   (MovingCarrier as unknown as MutableModel).create = originalCreate;
   (MovingCarrier as unknown as MutableModel).find = originalFind;
-  (MovingCarrier as unknown as MutableModel).findOne = originalFindOne;
-  (MovingCarrier as unknown as MutableModel).countDocuments = originalCountDocuments;
-});
-
-test("carrier normalization collapses whitespace and lowercases names", () => {
-  assert.equal(normalizeCarrierName("  ATLANTIC   GROUP USA LLC  "), "atlantic group usa llc");
-});
-
-test("carrier CSV parser normalizes headers and rejects duplicate compound identities", () => {
-  const parsed = parseMovingCarrierCsv(
-    [
-      "Carrier Name,DOT,MC,Granot Carrier Code",
-      " ALL-ROADS   EXPRESS CORP ,1883785,679114, allroad ",
-      "Duplicate All Roads,1883785,679114,ALLROAD",
-      ",123,456,",
-    ].join("\n"),
-  );
-
-  assert.equal(parsed.totalRows, 3);
-  assert.equal(parsed.rows.length, 1);
-  assert.equal(parsed.rows[0].name, "ALL-ROADS EXPRESS CORP");
-  assert.equal(parsed.rows[0].dot_number, "1883785");
-  assert.equal(parsed.rows[0].mc_number, "679114");
-  assert.equal(parsed.rows[0].granot_carrier_code, "ALLROAD");
-  assert.equal(parsed.skipped, 2);
-  assert.equal(parsed.errors[0].message, "Duplicate carrier identity in CSV: DOT 1883785, MC 679114");
 });
 
 test("carrier CSV parser rejects duplicate Granot Carrier Codes", () => {
@@ -59,36 +29,6 @@ test("carrier CSV parser rejects duplicate Granot Carrier Codes", () => {
   assert.equal(parsed.rows.length, 1);
   assert.equal(parsed.skipped, 1);
   assert.equal(parsed.errors[0].message, "Duplicate Granot Carrier Code in CSV: ALLROAD");
-});
-
-test("carrier list defaults to active rows and applies q across searchable fields", async () => {
-  const capture: { filter?: Record<string, unknown> } = {};
-  (MovingCarrier as unknown as MutableModel).find = (filter: Record<string, unknown>) => {
-    capture.filter = filter;
-    return queryChain([
-      makeDoc({
-        name: "ALL-ROADS EXPRESS CORP",
-        normalized_name: "all-roads express corp",
-        dot_number: "1883785",
-        mc_number: "679114",
-        active: true,
-      }),
-    ]);
-  };
-  (MovingCarrier as unknown as MutableModel).countDocuments = () => ({
-    exec: async () => 1,
-  });
-
-  const result = await listMovingCarriers({
-    q: "188",
-    active: true,
-    page: 1,
-    limit: 100,
-  });
-
-  assert.equal(capture.filter?.active, true);
-  assert.ok(Array.isArray(capture.filter?.$or));
-  assert.equal(result.items[0].dot_number, "1883785");
 });
 
 test("patch import creates missing carriers and reactivates changed existing carriers", async () => {

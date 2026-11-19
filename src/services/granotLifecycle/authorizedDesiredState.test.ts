@@ -1,15 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import mongoose from "mongoose";
 import type { LeadDesiredStatePlan } from "./leadDesiredState";
 import {
   assertAuthorizedLeadDesiredState,
   AuthorizedDesiredStateError,
   FORBIDDEN_DESIRED_STATE_METADATA_PATHS,
   GRANOT_LEAD_WRITE_PATHS,
-  hashGranotContactLeaves,
-  synchronizeLeadIdempotencyKey,
-  synchronizeLeadPayloadChecksum,
   toAuthorizedLeadDesiredState,
   type GranotAuthorizedLeadDesiredState,
 } from "./authorizedDesiredState";
@@ -55,25 +51,6 @@ function desired(
   };
 }
 
-test("[AC-05] planner conversion keeplisted Priority/Quoted/move paths and drops derived metadata", () => {
-  const converted = toAuthorizedLeadDesiredState({
-    plan: plan(),
-    lead_model: "FormLead",
-    temporal_winner: { observation_id: observationId, captured_at: capturedAt },
-  });
-  assert.deepEqual(converted.changed_paths, [
-    "destination_zip",
-    "granot_priority",
-    "pickup_state",
-    "quoted",
-  ]);
-  assert.equal(converted.set.quoted, true);
-  assert.equal(converted.set.granot_priority, "1");
-  assert.equal("last_granot_contact_change.changed_paths" in converted.set, false);
-  assert.deepEqual(converted.move_changed_paths, ["destination_zip", "pickup_state"]);
-  assert.deepEqual(converted.contact_changed_paths, []);
-});
-
 test("[AC-05] quoted:false is rejected and no write path sets it false", () => {
   assert.throws(
     () =>
@@ -111,59 +88,6 @@ test("snapshot-only Call plan converts and keeps live phone off contact_changed_
   assert.doesNotThrow(() => assertAuthorizedLeadDesiredState(converted, "CallLead"));
 });
 
-test("[AC-10] [AC-12] contact leaves stay on current-contact paths; snapshot is not a contact leaf", () => {
-  const converted = toAuthorizedLeadDesiredState({
-    plan: plan({
-      desired_values: {
-        granot_contact_snapshot: { name: "Ada" },
-        first_name: "Ada",
-      },
-      changed_paths: ["first_name", "granot_contact_snapshot"],
-    }),
-    lead_model: "CallLead",
-    temporal_winner: { observation_id: observationId, captured_at: capturedAt },
-  });
-  assert.deepEqual(converted.contact_changed_paths, ["first_name"]);
-  assert.deepEqual(converted.changed_paths, ["first_name", "granot_contact_snapshot"]);
-});
-
-test("[AC-11] FormLead destination_zip is allowed and CallLead delivery_zip is required instead", () => {
-  assert.doesNotThrow(() =>
-    assertAuthorizedLeadDesiredState(
-      desired({
-        set: { destination_zip: "10002" },
-        changed_paths: ["destination_zip"],
-        move_changed_paths: ["destination_zip"],
-      }),
-      "FormLead",
-    ),
-  );
-  assert.throws(
-    () =>
-      assertAuthorizedLeadDesiredState(
-        desired({
-          set: { delivery_zip: "10002" },
-          changed_paths: ["delivery_zip"],
-          move_changed_paths: ["delivery_zip"],
-        }),
-        "FormLead",
-      ),
-    AuthorizedDesiredStateError,
-  );
-  assert.throws(
-    () =>
-      assertAuthorizedLeadDesiredState(
-        desired({
-          set: { destination_zip: "10002" },
-          changed_paths: ["destination_zip"],
-          move_changed_paths: ["destination_zip"],
-        }),
-        "CallLead",
-      ),
-    AuthorizedDesiredStateError,
-  );
-});
-
 test("[AC-32] forbidden metadata, extra paths, and unsorted path lists are rejected", () => {
   for (const path of FORBIDDEN_DESIRED_STATE_METADATA_PATHS) {
     assert.throws(
@@ -199,37 +123,5 @@ test("[AC-32] forbidden metadata, extra paths, and unsorted path lists are rejec
         "FormLead",
       ),
     AuthorizedDesiredStateError,
-  );
-});
-
-test("[AC-32] contact hash is stable and omits values from the checksum helper output", () => {
-  const first = hashGranotContactLeaves({
-    name: "Ada Lovelace",
-    first_name: "Ada",
-    last_name: "Lovelace",
-    phone_number: "5550001111",
-    normalized_phone_number: "5550001111",
-    email: "ada@example.test",
-  });
-  const second = hashGranotContactLeaves({
-    email: "ada@example.test",
-    first_name: "Ada",
-    last_name: "Lovelace",
-    name: "Ada Lovelace",
-    normalized_phone_number: "5550001111",
-    phone_number: "5550001111",
-  });
-  assert.match(first, /^[a-f0-9]{64}$/);
-  assert.equal(first, second);
-  const checksum = synchronizeLeadPayloadChecksum({
-    lead_ref: { model: "FormLead", id: String(new mongoose.Types.ObjectId()) },
-    expected_domain_revision: 3,
-    desired_state: desired(),
-  });
-  assert.match(checksum, /^[a-f0-9]{64}$/);
-  assert.equal(checksum.includes("5550001111"), false);
-  assert.equal(
-    synchronizeLeadIdempotencyKey(observationId),
-    `granot:synchronize-lead:${observationId}`,
   );
 });

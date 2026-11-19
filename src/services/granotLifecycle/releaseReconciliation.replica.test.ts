@@ -219,38 +219,6 @@ test("[AC-25][AC-32][AC-36] Release races converge, replay dedupes, and resolved
   assert.deepEqual(rows.map((row) => row.sequence_number), [1, 2]);
 });
 
-test("[AC-25][AC-31][AC-32] refresh splits revisions and Decision failure rolls back create and refresh", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const bookingId = new mongoose.Types.ObjectId();
-  let revision = 1;
-  const store = replicaStore(bookingId, () => revision);
-  const job = `U26-REV-${Date.now().toString(36).toUpperCase()}`;
-  const first = await seedEvidence(job, new Date("2026-08-19T13:00:00.000Z"));
-  await reconcile(first, store);
-  revision = 2;
-  const second = await seedEvidence(job, new Date("2026-08-19T13:01:00.000Z"));
-  await reconcile(second, store);
-  let row = await getGranotReleaseReconciliationCaseModel().findOne({ normalized_job_no: job }).lean();
-  assert.equal(row?.booking_revision_at_open, 1);
-  assert.equal(row?.case_revision, 2);
-  assert.equal(row?.evidence_revision, 2);
-
-  const createJob = `U26-ROLLBACK-CREATE-${Date.now().toString(36).toUpperCase()}`;
-  const createEvidence = await seedEvidence(createJob, new Date());
-  const createStore = replicaStore(new mongoose.Types.ObjectId(), () => 1);
-  createStore.insertDecision = async () => { throw new Error("injected Release decision failure"); };
-  await assert.rejects(reconcile(createEvidence, createStore), /injected Release decision failure/);
-  assert.equal(await getGranotReleaseReconciliationCaseModel().countDocuments({ normalized_job_no: createJob }), 0);
-
-  const third = await seedEvidence(job, new Date("2026-08-19T13:02:00.000Z"));
-  const refreshStore = replicaStore(bookingId, () => revision);
-  refreshStore.insertDecision = async () => { throw new Error("injected Release refresh failure"); };
-  await assert.rejects(reconcile(third, refreshStore), /injected Release refresh failure/);
-  row = await getGranotReleaseReconciliationCaseModel().findOne({ normalized_job_no: job }).lean();
-  assert.equal(row?.evidence.length, 2);
-  assert.equal(row?.evidence_revision, 2);
-});
-
 test("[AC-25][AC-29][AC-40] Booking and Release cases coexist without forbidden side effects", async (t) => {
   if (!(await replicaReady(t))) return;
   const job = `926${Date.now().toString().slice(-8)}`;

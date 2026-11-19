@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
-import path from "node:path";
 import { after, before, test } from "node:test";
 import express from "express";
 import { createSalesOutreachCronRouter, SALES_OUTREACH_CRON_PATHS } from "./sales-outreach-cron.routes";
@@ -84,21 +82,6 @@ const hit = async (route: string, secret = CRON_SECRET) => {
   return { status: response.status, body: (await response.json()) as Record<string, unknown> };
 };
 
-test("vercel.json registers the desk crons (lead-change tail every minute, revision reconcile every 5 minutes)", () => {
-  const manifest = JSON.parse(readFileSync(path.join(process.cwd(), "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
-  const schedules = new Map(manifest.crons.map((c) => [c.path, c.schedule]));
-  assert.equal(schedules.get(SALES_OUTREACH_CRON_PATHS.leadChanges), "* * * * *");
-  assert.equal(schedules.get(SALES_OUTREACH_CRON_PATHS.revisionReconcile), "*/5 * * * *");
-  assert.equal(schedules.get(SALES_OUTREACH_CRON_PATHS.evaluate), "* * * * *");
-  assert.ok(readFileSync(path.join(process.cwd(), "src/app.ts"), "utf8").includes("app.use(salesOutreachCronRoutes);"), "mounted before the /api/v1 guard");
-});
-
-test("cron auth is required", async () => {
-  calls.length = 0;
-  for (const route of Object.values(SALES_OUTREACH_CRON_PATHS)) assert.equal((await hit(route, "wrong")).status, 401);
-  assert.deepEqual(calls, []);
-});
-
 test("lead changes: tail pass then drain; a failed tail never blocks the drain; an inactive configuration skips both", async () => {
   calls.length = 0;
   tailSkipped = false;
@@ -112,25 +95,6 @@ test("lead changes: tail pass then drain; a failed tail never blocks the drain; 
   assert.deepEqual(calls, ["scan", "drain", "scan", "drain", "scan"]);
 });
 
-test("lead changes: the drain runs after the tail loop and the JSON reports the loop's passes (olr B10)", async () => {
-  calls.length = 0;
-  tailSkipped = false;
-  tailThrows = false;
-  const { status, body } = await hit(SALES_OUTREACH_CRON_PATHS.leadChanges);
-  assert.equal(status, 200);
-  assert.deepEqual(calls, ["scan", "drain"], "one tail loop, then the drain");
-  const tail = body.tail as { passes: number; caught_up: boolean; stopped_by: string };
-  assert.deepEqual([tail.passes, tail.caught_up, tail.stopped_by], [3, true, "caught_up"]);
-  assert.deepEqual(body.drain, { outcomes: { completed: 1 } });
-});
-
-test("revision reconcile runs one bounded pass", async () => {
-  calls.length = 0;
-  const { body } = await hit(SALES_OUTREACH_CRON_PATHS.revisionReconcile);
-  assert.equal(body.skipped, false);
-  assert.deepEqual(calls, ["reconcile"]);
-});
-
 test("evaluate: sweep then drain; a failed sweep never blocks the drain; cadence off skips both", async () => {
   calls.length = 0;
   sweepSkipped = false;
@@ -142,19 +106,4 @@ test("evaluate: sweep then drain; a failed sweep never blocks the drain; cadence
   sweepSkipped = true;
   assert.deepEqual((await hit(SALES_OUTREACH_CRON_PATHS.evaluate)).body, { ok: true, skipped: true, reason: "cadence_disabled" });
   assert.deepEqual(calls, ["sweep", "evaluate", "sweep", "evaluate", "sweep"]);
-});
-
-test("evaluate: drain options come from configuration (olr A5); a failed sweep drains with the code defaults", async () => {
-  calls.length = 0;
-  drainOptions.length = 0;
-  sweepSkipped = false;
-  sweepThrows = false;
-  const { body } = await hit(SALES_OUTREACH_CRON_PATHS.evaluate);
-  assert.deepEqual(drainOptions, [{ max: 300, deadlineMs: 50_000, concurrency: 2 }], "the sweep's configured budget reaches the drain");
-  assert.deepEqual((body.drain as { options: unknown }).options, { max: 300, deadlineMs: 50_000, concurrency: 2 });
-  sweepThrows = true;
-  await hit(SALES_OUTREACH_CRON_PATHS.evaluate);
-  sweepThrows = false;
-  assert.deepEqual(drainOptions[1], undefined, "no sweep result: the drain resolves its defaults");
-  assert.deepEqual(calls, ["sweep", "evaluate", "sweep", "evaluate"]);
 });

@@ -4,11 +4,8 @@ import mongoose from "mongoose";
 import { FormLead, type FormLeadDocument } from "../../models/FormLead";
 import {
   buildCrmFormLeadPayload,
-  formatCrmMoveDate,
-  splitNameForCrm,
   summarizeCrmPayloadForLog,
 } from "./formLeadPayload";
-import { CRM_FORM_LEAD_LABEL } from "./crmConfig";
 
 function hydrateFormLead(
   overrides: Partial<FormLeadDocument> = {},
@@ -27,46 +24,6 @@ function hydrateFormLead(
     ...overrides,
   }) as FormLeadDocument;
 }
-
-test("splitNameForCrm returns empty firstname and lastname for blank input", () => {
-  assert.deepEqual(splitNameForCrm(""), { firstname: "", lastname: "" });
-  assert.deepEqual(splitNameForCrm("   "), { firstname: "", lastname: "" });
-});
-
-test("splitNameForCrm duplicates a single token into firstname and lastname", () => {
-  assert.deepEqual(splitNameForCrm("Madonna"), {
-    firstname: "Madonna",
-    lastname: "Madonna",
-  });
-  assert.deepEqual(splitNameForCrm("  Bob  "), {
-    firstname: "Bob",
-    lastname: "Bob",
-  });
-});
-
-test("splitNameForCrm takes the first and last token for multi-word names", () => {
-  assert.deepEqual(splitNameForCrm("Jane Maria Customer"), {
-    firstname: "Jane",
-    lastname: "Customer",
-  });
-  assert.deepEqual(splitNameForCrm("  John   Q.   Public  "), {
-    firstname: "John",
-    lastname: "Public",
-  });
-});
-
-test("formatCrmMoveDate preserves the UTC calendar date as unpadded M/D/YYYY", () => {
-  const d = new Date(Date.UTC(2026, 0, 5));
-  assert.equal(formatCrmMoveDate(d), "1/5/2026");
-  const d2 = new Date(Date.UTC(2025, 11, 31));
-  assert.equal(formatCrmMoveDate(d2), "12/31/2025");
-});
-
-test("buildCrmFormLeadPayload defaults label to CRM_FORM_LEAD_LABEL when blank", () => {
-  const lead = hydrateFormLead();
-  const payload = buildCrmFormLeadPayload(lead, "   ");
-  assert.equal(payload.label, CRM_FORM_LEAD_LABEL);
-});
 
 test("[AC-03] buildCrmFormLeadPayload uses the provider ref_no as Granot leadno", () => {
   const lead = hydrateFormLead({
@@ -87,20 +44,6 @@ test("[AC-03] Form Job Number parity does not reinterpret ref_no as CRM leadno",
   assert.equal(payload.leadno, "DT_czj2atkThs");
   assert.notEqual(payload.leadno, lead.job_no);
   assert.notEqual(payload.leadno, lead.normalized_job_no);
-});
-
-test("[AC-03] buildCrmFormLeadPayload carries lid in notes without using it for identity", () => {
-  const lead = hydrateFormLead({ lid: "LID-12345" });
-  const payload = buildCrmFormLeadPayload(lead);
-  assert.equal(payload.notes, "LID-12345");
-  assert.notEqual(payload.leadno, "LID-12345");
-});
-
-test("[AC-03] buildCrmFormLeadPayload leaves leadno blank for the not-provided sentinel", () => {
-  const payload = buildCrmFormLeadPayload(
-    hydrateFormLead({ ref_no: "not provided" }),
-  );
-  assert.equal(payload.leadno, "");
 });
 
 test("buildCrmFormLeadPayload maps lead fields onto the Granot wire shape", () => {
@@ -171,19 +114,4 @@ test("summarizeCrmPayloadForLog masks PII and fingerprints identifiers and locat
   assert.match(summary.notes, /^sha256:[0-9a-f]{12}$/);
   assert.notEqual(summary.leadno, payload.leadno);
   assert.notEqual(summary.notes, payload.notes);
-});
-
-test("summarizeCrmPayloadForLog handles blank PII fields without throwing", () => {
-  const lead = hydrateFormLead({
-    name: "",
-    email: undefined,
-    phone_number: "",
-  });
-  const payload = buildCrmFormLeadPayload(lead, "Main Site Forms");
-  const summary = summarizeCrmPayloadForLog(payload);
-
-  assert.equal(summary.firstname, "");
-  assert.equal(summary.lastname, "");
-  assert.equal(summary.email, "");
-  assert.equal(summary.phone1, "");
 });

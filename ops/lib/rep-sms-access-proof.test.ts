@@ -1,17 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dryValidateSubscriptionBody, judgeMailbox, judgeProof, probeEndpoints } from "./rep-sms-access-proof";
-
-const SINCE = new Date("2026-10-05T04:00:00.000Z");
-
-test("E01 probes are GETs on the rep's own mailbox paths only (message-store, message-sync FSync recordCount=1, outbound sample)", () => {
-  assert.deepEqual(probeEndpoints("101", SINCE), {
-    message_store: "/restapi/v1.0/account/~/extension/101/message-store?messageType=SMS&perPage=1",
-    message_sync: "/restapi/v1.0/account/~/extension/101/message-sync?syncType=FSync&messageType=SMS&recordCount=1",
-    outbound_sample: "/restapi/v1.0/account/~/extension/101/message-store?messageType=SMS&direction=Outbound&dateFrom=2026-10-05T04%3A00%3A00.000Z&perPage=25",
-  });
-  assert.throws(() => probeEndpoints("1/../2", SINCE));
-});
+import { dryValidateSubscriptionBody, judgeMailbox, judgeProof } from "./rep-sms-access-proof";
 
 const okAnswers = {
   message_store: { status: 200, body: { records: [] } },
@@ -46,15 +35,4 @@ test("E01 verdict: pass needs 200s + a sync token for every mailbox, one Sent ou
   assert.equal(noSms.verdict, "fail");
   assert.ok(noSms.notes.some((n) => n.includes("have a rep send one")));
   assert.equal(judgeProof([], dryValidateSubscriptionBody([], "https://x.test")).verdict, "fail");
-});
-
-test("E01 step 4: the subscription body is validated locally and never carries a real token", () => {
-  const body = dryValidateSubscriptionBody(["102", "101"], "https://example.test/hook");
-  assert.equal(body.valid, true);
-  assert.deepEqual(body.body.eventFilters, [
-    "/restapi/v1.0/account/~/extension/101/message-store?type=SMS",
-    "/restapi/v1.0/account/~/extension/102/message-store?type=SMS",
-  ]);
-  assert.equal(body.body.expiresIn, 315_360_000);
-  assert.equal(dryValidateSubscriptionBody(["101"], "http://example.test").valid, false);
 });

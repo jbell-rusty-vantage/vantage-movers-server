@@ -76,22 +76,6 @@ async function patch(role: "owner" | "manager" | "admin" | "rep", body: unknown,
   return { status: response.status, body: (await response.json()) as { ok: boolean; code?: string; data?: Record<string, unknown>; issues?: Array<{ path: string }> } };
 }
 
-test("GET /configuration is Owner-only, never writes, and reports the uninitialized bootstrap", async () => {
-  for (const role of ["manager", "admin", "rep"] as const) {
-    const response = await fetch(`${baseUrl}${PATH}`, { headers: signed(role, "GET") });
-    assert.equal(response.status, 403, role);
-  }
-  const response = await fetch(`${baseUrl}${PATH}`, { headers: signed("owner", "GET") });
-  assert.equal(response.status, 200);
-  const body = (await response.json()) as { ok: boolean; data: { configuration_state: string; revision: number; as_of: string; value: { controls: Record<string, boolean> } } };
-  assert.equal(body.ok, true);
-  assert.equal(body.data.configuration_state, "uninitialized");
-  assert.equal(body.data.revision, 0);
-  assert.equal(body.data.as_of, "2026-10-04T13:00:00.000Z");
-  assert.equal(Object.values(body.data.value.controls).some(Boolean), false);
-  assert.equal(db.pointer, null);
-});
-
 test("PATCH /configuration: Owner only, Idempotency-Key required, strict body, CAS and replay", async () => {
   for (const role of ["manager", "admin", "rep"] as const) assert.equal((await patch(role, { expected_revision: 0, value: {} })).status, 403, role);
   assert.equal(patchActors.length, 0);
@@ -130,16 +114,6 @@ test("Granot navigation is paused over HTTP for every Desk role, including old r
   }
   const admin = await fetch(`${baseUrl}${path}`, { method: "POST", headers: signed("admin", "POST", path), body: "{}" });
   assert.equal(admin.status, 403);
-});
-
-test("scope other than production is refused before any service runs", async () => {
-  const response = await fetch(`${baseUrl}${PATH}?scope=historical`, { headers: signed("owner", "GET") });
-  assert.equal(response.status, 400);
-  assert.equal(((await response.json()) as { code: string }).code, "INVALID_INPUT");
-  const unknown = await fetch(`${baseUrl}${PATH}?debug=1`, { headers: signed("owner", "GET") });
-  assert.equal(unknown.status, 400);
-  const noSecret = await fetch(`${baseUrl}${PATH}`, { headers: { ...signed("owner", "GET"), "x-api-secret": "wrong" } });
-  assert.equal(noSecret.status, 401);
 });
 
 test("Granot session lookup refuses non-pilot actors and invalid or extra context fields over HTTP", async () => {

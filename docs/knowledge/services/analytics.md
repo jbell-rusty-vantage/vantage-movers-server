@@ -177,7 +177,7 @@ Company variants: `resolveSourceCompany` + config label/aliases + `SOURCE_LABEL_
 - Lead Messages / successful-text statuses: [`lead-messaging.md`](./lead-messaging.md)
 - RingCentral ops reconcile: `ringcentral/analytics-reconcile.service.ts`
 
-Tests: `analytics.service.test.ts` (query schema, booked prefix + employee snapshot, receiver-agent and SMS-conversion reports, CSV flatten); `smsConversion.service.test.ts` (origin rows); `adminDatabaseScope.test.ts` and `v1-admin-database-scope.routes.test.ts` (retired scopes return 400).
+`analytics.service.test.ts` covers Booking source attribution and CSV totals. `smsConversion.service.test.ts` checks successful-text denominators and official Booking references. `v1-admin-database-scope.routes.test.ts` covers rejection of retired database scopes.
 
 
 Call lead cost and compatibility CSV totals apply `billableCallLeadFilter` before grouping: `reportingEligibleCallLeadFilter` accepts saved RingCentral qualification, the closed 69-ID native Best Relocation historical manifest, or the protected final stamp with matching canonical company/feed IDs; unmatched, Form Fill, effective duplicate and confirmed bad-call facts use the same policy as live Insights. These compatibility totals retain their existing stamped-price provenance; live Insights continues using current feed rates. Custom Reporting's existing versioned quality columns agree with the disposition without a schema version change. Official Booking/Cancellation aggregation is unchanged.

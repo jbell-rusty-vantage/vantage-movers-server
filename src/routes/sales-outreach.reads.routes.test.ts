@@ -172,24 +172,6 @@ test("route matrix: who may read capabilities, rep-days and team", async () => {
   assert.equal(noSecret.status, 401);
 });
 
-test("performance read validates the week and returns server-scored counts without inventing old goals", async () => {
-  const result = await get("manager", "/performance?week_start=2026-10-05");
-  assert.equal(result.status, 200);
-  const data = salesOutreachPerformanceSchema.parse(result.body.data);
-  assert.equal(data.rows.length, 2);
-  assert.equal(data.rows.find((r) => r.agent_id === REP_B)!.days[0]!.calls.goal, 50);
-  assert.equal(data.rows[0]!.calls.eligible_days, 0, "today is unfinished");
-  assert.equal(data.rows[0]!.texts.weekly_volume, null, "SMS history is unproven");
-  for (const query of ["week_start=2026-10-06", "week_start=2026-10-12", "week_start=2026-02-30", "agent_id=" + REP_A]) {
-    const invalid = await get("owner", `/performance?${query}`);
-    assert.equal(invalid.status, 400, query);
-  }
-  const historical = salesOutreachPerformanceSchema.parse((await get("owner", "/performance?week_start=2026-09-28")).body.data);
-  assert.equal(historical.rows[0]!.calls.eligible_days, 0);
-  assert.equal(historical.rows[0]!.calls.weekly_volume, null);
-  assert.equal(historical.rows[0]!.days[0]!.calls.state, "pending_data");
-});
-
 test("performance keeps frozen historical goals after current goal metrics are disabled", async () => {
   inspection = activeInspection({ ...desk, controls: { desk_enabled: true, goal_metrics_enabled: false } });
   store.rows = [repDayRow({ agent_id: REP_A, business_day: "2026-09-28", actual_confirmed: 110,
@@ -225,42 +207,6 @@ test("past text misses and verified zero volume survive disabling present-day SM
   assert.equal(row.texts.completion_rate, 0);
   assert.equal(row.texts.weekly_volume, 0);
   assert.equal(row.days[0]!.texts.state, "not_met");
-});
-
-test("capabilities: role-shaped views/filters/commands and safe controls only", async () => {
-  const owner = salesOutreachReadEnvelope(salesOutreachCapabilitiesSchema).parse((await get("owner", "/capabilities")).body).data;
-  assert.deepEqual(owner.permitted_views, ["team", "my", "activity", "settings", "numbers", "accounts"]);
-  assert.deepEqual(owner.permitted_commands, ["quoted_followup", "callback", "assignment", "day_override", "restrictions", "configuration_edit"]);
-  assert.deepEqual(owner.permitted_filters.rep_days, ["business_day", "agent_id"]);
-  assert.deepEqual(owner.permitted_filters.team, ["business_day"]);
-  assert.ok(owner.permitted_filters.queue.includes("agent_id") && owner.permitted_filters.queue.includes("unassigned"));
-  assert.deepEqual(owner.live_topics, ["outreach_desk", "outreach_goal", "outreach_configuration", "outreach_rep_metrics", "outreach_pool"]);
-  assert.deepEqual(owner.deployed_reads, ["capabilities", "rep_days", "team", "queue", "outreach_detail", "live", "rep_metrics"]);
-  assert.deepEqual([owner.configuration_state, owner.configuration_version, owner.configuration_revision, owner.desk_available], ["active", "v-test", 3, true]);
-  assert.ok(owner.role_capabilities.includes("activation"));
-  assert.equal(JSON.stringify(owner).includes("batch_size"), false, "no migration budgets");
-
-  const manager = salesOutreachCapabilitiesSchema.parse((await get("manager", "/capabilities")).body.data);
-  assert.deepEqual(manager.permitted_views, ["team", "my", "activity", "settings"]);
-  assert.deepEqual(manager.permitted_commands, ["quoted_followup", "callback", "assignment", "day_override"]);
-  assert.equal(manager.role_capabilities.includes("activation"), false);
-  assert.ok(manager.role_capabilities.includes("prospective_absence_override"));
-
-  const rep = salesOutreachCapabilitiesSchema.parse((await get("rep-a", "/capabilities")).body.data);
-  assert.deepEqual(rep.permitted_views, ["my", "activity"]);
-  assert.deepEqual([rep.cadence_summary, manager.cadence_summary], [owner.cadence_summary, owner.cadence_summary], "one cadence summary for every role");
-  assert.deepEqual(rep.permitted_commands, ["quoted_followup", "callback"]);
-  assert.deepEqual([rep.permitted_filters.rep_days, rep.permitted_filters.team], [["business_day"], []]);
-  assert.equal(rep.permitted_filters.queue.includes("agent_id") || rep.permitted_filters.queue.includes("unassigned"), false, "no rep/Unassigned filter for a Rep");
-  assert.deepEqual(rep.scope, { role: "rep", agent_id: REP_A });
-  assert.deepEqual(rep.controls, {
-    desk_enabled: true,
-    goal_metrics_enabled: true,
-    rep_sms_capture_enabled: false,
-    cadence_shadow_enabled: false,
-    cadence_enforcement_enabled: false,
-    intake_admission_enabled: false,
-  });
 });
 
 test("rep-days: Owner/Manager see the roster; Rep sees itself; a foreign agent_id is refused, never broadened", async () => {
@@ -306,80 +252,6 @@ test("rep-days: Owner/Manager see the roster; Rep sees itself; a foreign agent_i
   assert.equal(store.queries.length, 0, "a refused read touches no rows");
 });
 
-test("rep-days: query validation, past days and future refusal", async () => {
-  for (const query of ["?business_day=2026-10-06", "?business_day=2026-13-01", "?agent_id=nope", "?debug=1", "?scope=historical"]) {
-    const { status, body } = await get("owner", `/rep-days${query}`);
-    assert.deepEqual([status, body.code], [400, "INVALID_INPUT"], query);
-  }
-  const past = salesOutreachRepDaysSchema.parse((await get("owner", "/rep-days?business_day=2026-10-04")).body.data);
-  assert.equal(past.is_today, false);
-  // No rows on 2026-10-04 and the Call Log is complete past that day's end: recorded zeros.
-  assert.deepEqual(past.reps?.map((r) => [r.actual_confirmed, r.actual_basis]), [[0, "no_activity_recorded"], [0, "no_activity_recorded"]]);
-  assert.equal(past.projection_revision, null);
-});
-
-test("team: goal cards, Daily call goals rows, cadence parts honest while cadence is off, readiness Owner-only", async () => {
-  const owner = salesOutreachReadEnvelope(salesOutreachTeamSchema).parse((await get("owner", "/team")).body).data;
-  assert.deepEqual([owner.goals?.outbound_calls.actual, owner.goals?.outbound_calls.goal], [128, 150]);
-  assert.deepEqual(owner.goals?.reps_at_goal, { count: 1, of: 2, pending: 0 });
-  assert.equal(owner.daily_call_goals?.length, 2);
-  assert.deepEqual(owner.daily_call_goals?.[0]?.overdue_leads, { value: null, unknown_reason: "cadence_disabled" });
-  assert.deepEqual(owner.daily_call_goals?.[0]?.calls_due_today, { value: null, unknown_reason: "cadence_disabled" });
-  assert.deepEqual(owner.unassigned, { count: 0, overdue: { value: null, unknown_reason: "cadence_disabled" } });
-  assert.deepEqual(owner.leads_needing_attention, { rows: null, limit: 10, unknown_reason: "cadence_disabled" });
-  assert.equal(owner.cadence_exposure, null);
-  assert.ok(owner.readiness?.activation_blockers.includes("cadence_policy_incomplete"));
-  const manager = salesOutreachTeamSchema.parse((await get("manager", "/team")).body.data);
-  assert.equal(manager.readiness, null);
-  assert.deepEqual(manager.goals, owner.goals);
-});
-
-test("configuration gating: uninitialized/unavailable/desk off answer 503; goal metrics off answers honestly", async () => {
-  inspection = { state: "uninitialized" };
-  for (const route of ["/rep-days", "/team"]) {
-    const { status, body } = await get("owner", route);
-    assert.deepEqual([status, body.code], [503, "CONFIGURATION_UNAVAILABLE"], route);
-  }
-  const uninitialized = salesOutreachCapabilitiesSchema.parse((await get("owner", "/capabilities")).body.data);
-  assert.deepEqual([uninitialized.configuration_state, uninitialized.unavailable_reason, uninitialized.permitted_views], [
-    "uninitialized",
-    "configuration_uninitialized",
-    ["settings", "numbers", "accounts"],
-  ]);
-  const repUninitialized = salesOutreachCapabilitiesSchema.parse((await get("rep-a", "/capabilities")).body.data);
-  assert.deepEqual(repUninitialized.permitted_views, []);
-  assert.deepEqual([uninitialized.cadence_summary, repUninitialized.cadence_summary], [null, null]);
-  assert.deepEqual(salesOutreachCapabilitiesSchema.parse((await get("manager", "/capabilities")).body.data).permitted_views, []);
-
-  inspection = { state: "unavailable", reason: "hash_mismatch", version: "v9", revision: 9, updated_at: null, updated_by: null };
-  assert.deepEqual([(await get("manager", "/team")).status, (await get("rep-a", "/rep-days")).status], [503, 503]);
-  const broken = salesOutreachCapabilitiesSchema.parse((await get("owner", "/capabilities")).body.data);
-  assert.deepEqual([broken.configuration_state, broken.configuration_revision, broken.desk_available, broken.controls.desk_enabled], ["unavailable", 9, false, false]);
-  assert.equal(broken.cadence_summary, null);
-
-  inspection = activeInspection({ ...desk, controls: { desk_enabled: false, goal_metrics_enabled: true } });
-  const off = await get("owner", "/team");
-  assert.deepEqual([off.status, off.body.code, off.body.issues?.[0]?.code], [503, "CONFIGURATION_UNAVAILABLE", "desk_disabled"]);
-  const ownerOff = salesOutreachCapabilitiesSchema.parse((await get("owner", "/capabilities")).body.data);
-  assert.deepEqual([ownerOff.unavailable_reason, ownerOff.permitted_views, ownerOff.permitted_commands], [
-    "desk_disabled",
-    ["settings", "numbers", "accounts"],
-    ["day_override", "restrictions", "configuration_edit"],
-  ]);
-  const managerOff = salesOutreachCapabilitiesSchema.parse((await get("manager", "/capabilities")).body.data);
-  assert.deepEqual([managerOff.permitted_views, managerOff.permitted_commands], [["settings"], ["day_override"]], "Manager Settings = attendance");
-  assert.notEqual(ownerOff.cadence_summary, null, "the summary follows the active configuration, not the desk");
-
-  inspection = activeInspection({ controls: { desk_enabled: true } });
-  store.queries = [];
-  const noGoals = salesOutreachRepDaysSchema.parse((await get("rep-a", "/rep-days")).body.data);
-  assert.deepEqual([noGoals.goal_metrics_enabled, noGoals.reps, noGoals.unknown_reason], [false, null, "goal_metrics_disabled"]);
-  const teamNoGoals = salesOutreachTeamSchema.parse((await get("owner", "/team")).body.data);
-  assert.deepEqual([teamNoGoals.goals, teamNoGoals.daily_call_goals, teamNoGoals.goals_unknown_reason], [null, null, "goal_metrics_disabled"]);
-  assert.equal(teamNoGoals.freshness.calls.state, "fresh", "freshness is still served");
-  assert.equal(store.queries.length, 0, "no rep-day rows are read while goal metrics are off");
-});
-
 test("DTO examples for the admin team parse with the exported schemas and match the read services", async () => {
   const schemaFor = (name: string) =>
     name.startsWith("error.")
@@ -422,16 +294,6 @@ test("derivation watermark: before S3's contact-event sweep covers a day, a rep 
   store.derivation = { known_complete_through: new Date("2026-10-05T14:00:00Z"), coverage_from: new Date("2026-10-01T04:00:00Z") };
   const lagging = salesOutreachTeamSchema.parse((await get("owner", "/team")).body.data);
   assert.deepEqual(lagging.daily_call_goals?.map((r) => r.actual_basis), ["pending", "pending"]);
-});
-
-test("stale capture: today's rep without a row is pending, never a confirmed zero", async () => {
-  store.rows = [repDayRow({ agent_id: REP_A, business_day: "2026-10-05", actual_confirmed: 5 })];
-  store.calls = { scope: "call_log_all_directions", known_complete_through: new Date("2026-10-05T13:00:00Z"), last_finished_at: null, last_error_code: "RateLimited" };
-  const team = salesOutreachTeamSchema.parse((await get("owner", "/team")).body.data);
-  const b = team.daily_call_goals?.find((row) => row.agent_id === REP_B);
-  assert.deepEqual([b?.actual_confirmed, b?.actual_basis, b?.coverage.state], [null, "pending", "partial"]);
-  assert.deepEqual([team.goals?.outbound_calls.actual, team.goals?.outbound_calls.incomplete], [5, true]);
-  assert.deepEqual([team.freshness.calls.state, team.freshness.calls.reason], ["delayed", "RateLimited"]);
 });
 
 

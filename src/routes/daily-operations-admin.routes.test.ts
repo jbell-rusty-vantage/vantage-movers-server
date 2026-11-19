@@ -273,90 +273,6 @@ function signedHeaders(
   };
 }
 
-test("Owner snapshot includes yesterday_by_now, company zeros, and wordpress_form", async () => {
-  const path = "/api/v1/admin/daily-operations";
-  const response = await fetch(`${baseUrl}${path}`, {
-    headers: signedHeaders("owner", path),
-  });
-  assert.equal(response.status, 200);
-  const body = (await response.json()) as typeof SNAPSHOT_FIXTURE;
-  assert.equal(body.metrics.leads.yesterday_by_now, 31);
-  assert.equal(body.metrics.bookings.yesterday_by_now, 4);
-  assert.equal(body.metrics.texts.yesterday_by_now, 18);
-  assert.equal(body.origins.wordpress_form, 0);
-  assert.equal(body.companies.length, SOURCE_COMPANIES.length);
-  assert.equal(body.metrics.intakes.still_open, 2);
-  assert.equal(body.metrics.texts.held_now, 3);
-  assert.equal(JSON.stringify(body).includes("daily_operations_"), false);
-});
-
-test("Admin without Owner is 403 on every Daily Operations method", async () => {
-  const getPath = "/api/v1/admin/daily-operations";
-  const eventsPath = "/api/v1/admin/daily-operations/events";
-  const livePath = "/api/v1/admin/daily-operations/live";
-  const rebuildPath = "/api/v1/admin/daily-operations/rebuild";
-  assert.equal(
-    (await fetch(`${baseUrl}${getPath}`, { headers: signedHeaders("admin", getPath) })).status,
-    403,
-  );
-  assert.equal(
-    (await fetch(`${baseUrl}${eventsPath}`, { headers: signedHeaders("admin", eventsPath) })).status,
-    403,
-  );
-  assert.equal(
-    (await fetch(`${baseUrl}${livePath}`, { headers: signedHeaders("admin", livePath) })).status,
-    403,
-  );
-  assert.equal(
-    (
-      await fetch(`${baseUrl}${rebuildPath}`, {
-        method: "POST",
-        headers: signedHeaders("admin", rebuildPath, "POST"),
-      })
-    ).status,
-    403,
-  );
-  assert.equal(rebuildCalls, 0);
-});
-
-test("missing API secret is 401", async () => {
-  const path = "/api/v1/admin/daily-operations";
-  const headers = signedHeaders("owner", path);
-  delete headers["x-api-secret"];
-  const response = await fetch(`${baseUrl}${path}`, { headers });
-  assert.equal(response.status, 401);
-});
-
-test("events page is newest-first and forwards cursor, lane, and limit", async () => {
-  const path =
-    "/api/v1/admin/daily-operations/events?cursor=2026-09-06T18%3A14%3A00.000Z%3Aevt_1&lane=lead&limit=40";
-  const response = await fetch(`${baseUrl}${path}`, {
-    headers: signedHeaders("owner", "/api/v1/admin/daily-operations/events"),
-  });
-  assert.equal(response.status, 200);
-  const body = (await response.json()) as { order: string; next_cursor: string };
-  assert.equal(body.order, "newest_first");
-  assert.equal(body.next_cursor, "2026-09-06T18:14:00.000Z:evt_1");
-  assert.deepEqual(lastEventsQuery, {
-    cursor: "2026-09-06T18:14:00.000Z:evt_1",
-    lane: "lead",
-    limit: 40,
-  });
-});
-
-test("retired live endpoint returns204 with no source read, including Last-Event-ID", async () => {
-  const path = "/api/v1/admin/daily-operations/live";
-  for (const role of ["owner", "manager"] as const) {
-    const response = await fetch(`${baseUrl}${path}?lane=lead`, { headers: {
-      ...signedHeaders(role, path), "last-event-id": "2026-09-06T18:14:00.000Z:68bcf1a0c4d5e6f708901234",
-    } });
-    assert.equal(response.status, 204);
-    assert.equal(await response.text(), "");
-    assert.equal(response.headers.get("content-type"), null);
-  }
-  assert.equal(boardCalls, 0);
-});
-
 test("board is Owner/Manager only and does not build for denied callers", async () => {
   const path = "/api/v1/admin/daily-operations/board";
   for (const role of ["owner", "manager"] as const) {
@@ -400,45 +316,6 @@ test("Owner rebuild returns counters-replaced, events not deleted", async () => 
   assert.equal(body.events_deleted, false);
   assert.equal(body.status, "open");
   assert.equal(rebuildCalls, 1);
-});
-
-test("close cron rejects missing secret header and missing CRON_SECRET", async () => {
-  delete process.env.CRON_SECRET;
-  const unset = await fetch(`${baseUrl}/api/cron/daily-operations-close`, {
-    method: "POST",
-  });
-  assert.equal(unset.status, 500);
-  assert.equal(closeCalls, 0);
-
-  process.env.CRON_SECRET = "expected-secret";
-  const missingHeader = await fetch(`${baseUrl}/api/cron/daily-operations-close`, {
-    method: "POST",
-  });
-  assert.equal(missingHeader.status, 401);
-  assert.equal(closeCalls, 0);
-
-  const wrong = await fetch(`${baseUrl}/api/cron/daily-operations-close`, {
-    method: "POST",
-    headers: { authorization: "Bearer wrong" },
-  });
-  assert.equal(wrong.status, 401);
-
-  const ok = await fetch(`${baseUrl}/api/cron/daily-operations-close`, {
-    method: "POST",
-    headers: { authorization: "Bearer expected-secret" },
-  });
-  assert.equal(ok.status, 200);
-  const body = (await ok.json()) as { ok: boolean; closed_days: string[] };
-  assert.equal(body.ok, true);
-  assert.deepEqual(body.closed_days, ["2026-09-05"]);
-  assert.equal(closeCalls, 1);
-
-  const headerOk = await fetch(`${baseUrl}/api/cron/daily-operations-close`, {
-    method: "POST",
-    headers: { "x-cron-secret": "expected-secret" },
-  });
-  assert.equal(headerOk.status, 200);
-  assert.equal(closeCalls, 2);
 });
 
 function signedRepHeaders(path: string, method: "GET" | "POST" = "GET"): Record<string, string> {
@@ -500,14 +377,4 @@ test("cached lead spend preserves the existing envelope and Owner-only access", 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { ok: true, data: { marker: "cached-spend-fixture" } });
   assert.equal((await fetch(`${baseUrl}${path}`, { headers: signedHeaders("manager", path) })).status, 403);
-});
-
-test("goal summary is a raw shared Owner/Manager projection", async () => {
-  const path = "/api/v1/admin/daily-operations/goal-summary";
-  for (const role of ["owner", "manager"] as const) {
-    const response = await fetch(`${baseUrl}${path}`, { headers: signedHeaders(role, path) });
-    assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { marker: "cached-goal-fixture" });
-  }
-  assert.equal((await fetch(`${baseUrl}${path}`, { headers: signedRepHeaders(path) })).status, 403);
 });

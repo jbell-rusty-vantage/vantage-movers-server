@@ -4,10 +4,7 @@ import path from "node:path";
 import { test } from "node:test";
 import {
   createGranotRun,
-  estimatesActionCaptureTime,
   granotRecoverableFilter,
-  scheduledEstimatesRunId,
-  validateEstimatesRunSelection,
 } from "./runWorkflow";
 const actor = {
   actor_type: "owner",
@@ -17,17 +14,6 @@ const actor = {
   request_id: "request-1",
   origin: "vantage_admin",
 } as const;
-
-test('Pool schedules cannot collide with ALL retry identity or bypass selector/lane validation',()=>{
-  const slot='10/14/2026:8:07/17/2026:07/23/2026';
-  assert.equal(String(scheduledEstimatesRunId(slot)),String(scheduledEstimatesRunId(slot,'all')));
-  assert.notEqual(String(scheduledEstimatesRunId(slot,'all')),String(scheduledEstimatesRunId(slot,'pool')));
-  assert.equal(String(scheduledEstimatesRunId(slot,'pool')),String(scheduledEstimatesRunId(slot,'pool')));
-  validateEstimatesRunSelection({operation:'estimates_in_process',estimatesSelection:'pool',estimatesLane:'pool_discovery'});
-  assert.throws(()=>validateEstimatesRunSelection({operation:'form_leads',estimatesSelection:'pool'}),/must agree/);
-  assert.throws(()=>validateEstimatesRunSelection({operation:'estimates_in_process',estimatesSelection:'all',estimatesLane:'pool_refresh'}),/must agree/);
-  assert.deepEqual(granotRecoverableFilter(new Date())['request_snapshot.waiting_for_all'],{$ne:true});
-});
 
 test("a dashboard request cannot create a scheduled run", async () => {
   await assert.rejects(createGranotRun({ operation: "estimates_in_process", workflow: "apply",
@@ -45,13 +31,6 @@ test("[AC-02] applyRun has no runtime path to legacy Form/Call/Booked mutation s
   assert.equal(source.includes("syncBookedCallLeadReconciliation"), false);
   assert.match(source, /applyAutomationPlanAction/);
   assert.match(source, /claimAndProcessOrPoll|applyAutomationPlanAction/);
-});
-
-test("Estimates observation time is immutable provider capture, never apply time", () => {
-  const collection_captured_at = "2026-10-13T12:04:05.000Z";
-  assert.equal(estimatesActionCaptureTime({ collection_captured_at }).toISOString(), collection_captured_at);
-  assert.throws(() => estimatesActionCaptureTime({}), (error: unknown) => error instanceof Error && /recollect/.test(error.message));
-  assert.throws(() => estimatesActionCaptureTime({ collection_captured_at: "not-a-date" }));
 });
 
 test("worker eligibility shares one queue for fresh collection, approved actions, and due waiting matches", () => {

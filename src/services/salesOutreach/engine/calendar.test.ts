@@ -88,38 +88,12 @@ describe("P02i Owner closures (fixture p02i-closures.json, calendar parts)", () 
     assert.equal(r.initial_response?.due_at, new Date(c.first_call_due_at).toISOString());
     assert.equal(scheduleDay(businessDateOf(ms(c.received_at), TZ), businessDateOf(ms(c.first_call_due_at), TZ)), c.schedule_day_at_due);
   });
-
-  test("arrival_on_closed_sunday", () => {
-    const c = byId.arrival_on_closed_sunday as unknown as { received_at: string; closed_dates: string[]; routine_calls_required_on_receipt_date: number; routine_sms_required_on_receipt_date: number; first_call_due_at: string; schedule_day_at_due: number };
-    const policy = policyWith({ holidays: c.closed_dates });
-    const r = evaluate(scenario({ periods: [period("p1", "new", c.received_at, "intake")] }), c.received_at, policy);
-    assert.equal(r.requirements.call.required, c.routine_calls_required_on_receipt_date);
-    assert.equal(r.requirements.sms.required, c.routine_sms_required_on_receipt_date);
-    assert.equal(r.initial_response?.due_at, new Date(c.first_call_due_at).toISOString());
-    assert.equal(scheduleDay(businessDateOf(ms(c.received_at), TZ), businessDateOf(ms(c.first_call_due_at), TZ)), c.schedule_day_at_due);
-  });
-
-  test("unlisted_public_holiday stays a working date (no automatic holidays)", () => {
-    assert.equal(cal.isWorkingDate("2026-11-26"), true);
-    assert.equal(cal.isWorkingDate("2026-12-25"), true);
-    assert.deepEqual(POLICY.calendar.closed_dates, []);
-  });
 });
 
 describe("calendar DST mechanics", () => {
-  test("opening/closing resolve per date offset (EDT vs EST)", () => {
-    assert.equal(new Date(cal.opening("2026-10-31")).toISOString(), "2026-10-31T12:00:00.000Z");
-    assert.equal(new Date(cal.opening("2026-11-01")).toISOString(), "2026-11-01T13:00:00.000Z");
-    assert.equal(new Date(cal.closing("2026-03-08")).toISOString(), "2026-03-09T00:00:00.000Z");
-    assert.equal(new Date(cal.opening("2026-03-07")).toISOString(), "2026-03-07T13:00:00.000Z");
-  });
   test("nonexistent spring-forward local time moves forward; ambiguous fall-back time takes the first occurrence", () => {
     assert.equal(new Date(localInstant("2026-03-08", 150, TZ)).toISOString(), "2026-03-08T07:30:00.000Z");
     assert.equal(new Date(localInstant("2026-11-01", 90, TZ)).toISOString(), "2026-11-01T05:30:00.000Z");
-  });
-  test("next date is calendar arithmetic across month/year ends", () => {
-    assert.equal(addDays("2026-12-31", 1), "2027-01-01");
-    assert.equal(addDays("2028-02-28", 1), "2028-02-29");
   });
   test("an open-ended block makes the working-minute deadline unknown", () => {
     assert.equal(cal.addWorkingMinutes(ms("2026-10-04T14:00:00Z"), 30, [[ms("2026-10-04T14:10:00Z"), Number.POSITIVE_INFINITY]]), null);

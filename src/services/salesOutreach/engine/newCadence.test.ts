@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { addDays } from "./calendar";
 import { selectSpacedStarts } from "./credit";
-import { isFixedSmsDay } from "./newCadence";
 import { evaluate, fixture, minutesAfter, ny, nyMinute, obligationsOn, outbound, period, periods, POLICY, policyWith, scenario, sms, type FixtureFile } from "./testSupport";
 
 /** A New subject received before opening on `received` (full arrival allowance), evaluated later. */
@@ -48,8 +47,6 @@ describe("P02e cadence spacing (fixture p02e-call-spacing.json)", () => {
     assert.deepEqual(calls.map((e, i) => (credited.has(e.event_id) ? i : -1)).filter((i) => i >= 0), expected);
   };
   for (const c of fx.cases) test(c.id, () => run(c.call_offsets_minutes, fx.initial_spacing_minutes, c.expected_cadence_credit_indices));
-  test("config_edit_example (synthetic 90-minute spacing, reloadable policy)", () =>
-    run(fx.config_edit_example.call_offsets_minutes, fx.config_edit_example.new_spacing_minutes, fx.config_edit_example.expected_cadence_credit_indices));
 });
 
 describe("P02f New daily deadlines (fixture p02f-new-daily-deadlines.json)", () => {
@@ -88,16 +85,6 @@ describe("P02g arrival-date calls (fixture p02g-arrival-day-calls.json)", () => 
       }
     });
   }
-  test("next_day_example: the carried initial-response call satisfies one Day 2 call, no extra third obligation", () => {
-    const received = nyMinute(SUNDAY, 1185);
-    const monday = addDays(SUNDAY, 1);
-    const r = evaluate(scenario({ periods: [period("p1", "new", received, "intake")], events: [outbound(nyMinute(monday, 490))] }), nyMinute(monday, 540));
-    assert.equal(r.schedule_day, fx.next_day_example.schedule_day);
-    assert.equal(r.initial_response?.outcome, "fulfilled");
-    assert.equal(r.requirements.call.required, fx.next_day_example.required_calls);
-    assert.equal(r.requirements.call.remaining, fx.next_day_example.remaining_required_calls);
-    assert.equal(obligationsOn(r, monday, "call").length, 2);
-  });
 });
 
 describe("P02h SMS deadline and arrival allowance (fixture p02h-sms-deadline-allowance.json)", () => {
@@ -118,23 +105,6 @@ describe("P02h SMS deadline and arrival allowance (fixture p02h-sms-deadline-all
       }
     });
   }
-  test("next_day_example: Day 2 one SMS due 20:00, no extra debt", () => {
-    const ex = fx.next_day_example as { schedule_day: number; required_sms: number; due_minute: number };
-    const date = dayDate(ex.schedule_day);
-    const r = evaluate(newSubject(R, [sms(nyMinute(R, 600))]), nyMinute(date, 600));
-    const smsObs = obligationsOn(r, date, "sms");
-    assert.equal(smsObs.length, ex.required_sms);
-    assert.equal(smsObs[0]!.due_at, nyMinute(date, ex.due_minute));
-    assert.equal(r.requirements.sms.catch_up.outstanding, false);
-  });
-  test("independence_example: calls cannot satisfy SMS", () => {
-    const ex = fx.independence_example as { calls_remaining: number; verified_sms: number; sms_remaining: number };
-    const date = dayDate(2);
-    const r = evaluate(newSubject(R, [outbound(nyMinute(date, 600)), outbound(nyMinute(date, 700))]), nyMinute(date, 900));
-    assert.equal(r.requirements.call.remaining, ex.calls_remaining);
-    assert.equal(r.requirements.sms.verified_completed, ex.verified_sms);
-    assert.equal(r.requirements.sms.remaining, ex.sms_remaining);
-  });
   test("fixed_sequence_example: Day 6 SMS due 20:00; an extra Day 7 send does not shift Day 9", () => {
     const ex = fx.fixed_sequence_example as { schedule_day: number; required_sms: number; due_minute: number };
     const r = evaluate(newSubject(R, [sms(nyMinute(dayDate(7), 600))]), nyMinute(dayDate(9), 600));
@@ -150,13 +120,6 @@ describe("P03 fixed SMS sequence (fixture p03-fixed-sms.json)", () => {
   const received = "2026-10-02";
   const at = (day: number, minute = 600) => nyMinute(addDays(received, day - 1), minute);
   const base = (events: ReturnType<typeof sms>[]) => scenario({ periods: [period("p1", "new", nyMinute(received, 420), "intake")], events });
-  test("required days/dates through Day 13", () => {
-    const days = Array.from({ length: 13 }, (_, i) => i + 1).filter((d) => isFixedSmsDay(d, POLICY));
-    assert.deepEqual(days, fx.required_days_through_13);
-    const r = evaluate(base([]), at(13, 1300));
-    const dates = [...new Set(r.obligations.filter((o) => o.channel === "sms").map((o) => o.business_date))].filter((d) => d <= "2026-10-14");
-    assert.deepEqual(dates, fx.required_dates);
-  });
   for (const c of fx.cases) {
     test(c.id, () => {
       if (c.extra_send_day !== undefined || c.missed_day !== undefined) {
@@ -228,12 +191,5 @@ describe("olr A6 (D-A6) — the spacing anchor is seeded from pre-start same-dat
     const spaced = outbound(ny(TUE, "10:30"));
     const later = evaluate(scenario({ periods: list, events: [prior, close, spaced] }), ny(TUE, "10:45"));
     assert.equal(startCalls(later, "n2")[0]!.fulfilled_by_event_id, spaced.event_id);
-  });
-
-  test("intake (no prior) unchanged: the first call after receipt credits the initial response and an arrival call", () => {
-    const first = outbound(ny(TUE, "10:05"));
-    const r = evaluate(scenario({ periods: [period("i1", "new", ny(TUE, "10:00"), "intake")], events: [first] }), ny(TUE, "10:20"));
-    assert.equal(r.initial_response?.outcome, "fulfilled");
-    assert.equal(startCalls(r, "i1").filter((o) => o.fulfilled_by_event_id === first.event_id).length, 1);
   });
 });

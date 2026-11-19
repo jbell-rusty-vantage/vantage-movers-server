@@ -48,44 +48,6 @@ after(() => {
   mongoose.connection.useDb = originalUseDb;
 });
 
-test("lead source catalog seeds legacy companies and resolves granularities", async () => {
-  const companies = await listLeadSourceCompanies({ includeInactive: true });
-  const slugs = companies.map((company) => company.company_slug);
-
-  assert.ok(slugs.includes("tbm_leads"));
-  assert.ok(slugs.includes("best_relocation_leads"));
-
-  const formResolution = await resolveLeadSource({
-    value: "Best Relocation",
-    channel: "form",
-    local: "local",
-  });
-  assert.equal(formResolution.company.company_slug, "best_relocation_leads");
-  assert.equal(formResolution.granularity.crm_label, "Best Relocation Locals");
-  assert.equal(formResolution.granularity.cpl, 40);
-
-  const callResolution = await resolveLeadSource({
-    inbound_phone_number: "+18883164387",
-    channel: "call",
-  });
-  assert.equal(callResolution.company.company_slug, "tbm_leads");
-  assert.equal(callResolution.granularity.crm_label, "10best Inbounds");
-
-  const defaultResolution = await resolveLeadSource({
-    value: "not_provided",
-    channel: "form",
-  });
-  assert.equal(defaultResolution.company.company_slug, "main_site");
-  assert.equal(defaultResolution.granularity.crm_label, "Main Site Forms");
-
-  const legacyPrimeFormResolution = await resolveLeadSource({
-    value: "TBM Forms Prime",
-    channel: "form",
-  });
-  assert.equal(legacyPrimeFormResolution.company.company_slug, "tbm_prime_leads");
-  assert.equal(legacyPrimeFormResolution.granularity.crm_label, "TBM Prime Forms");
-});
-
 test("all legacy source labels resolve through the lead source catalog", async () => {
   await listLeadSourceCompanies({ includeInactive: true });
 

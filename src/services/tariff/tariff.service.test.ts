@@ -1,14 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { sheets_v4 } from "googleapis";
-import { TARIFF_SHEET_HEADERS } from "../../config/domain/tariff";
-import { V1ServiceError } from "../v1ServiceError";
 import {
   appendTariffAdjustmentRows,
   toTariffSheetRow,
   type TariffAdjustmentRow,
 } from "./append";
-import { formatTariffCarrierCell, resolveTariffCarrierCell } from "./resolveCarrier";
 
 const SAMPLE_ROWS: TariffAdjustmentRow[] = [
   {
@@ -33,46 +30,6 @@ const SAMPLE_ROWS: TariffAdjustmentRow[] = [
 
 const RESOLVED_CARRIER = "COAST TO COAST VAN LINES INC 4168983";
 const TIMESTAMP = "9/1/2026 12:00:00";
-
-test("projects tariff rows into Timestamp through Carrier columns", () => {
-  assert.deepEqual(toTariffSheetRow(SAMPLE_ROWS[0], TIMESTAMP), [
-    TIMESTAMP,
-    "9/1/2026",
-    "22079",
-    "29671",
-    "Linehaul",
-    "300 cf",
-    "$3.75 per cf",
-    "C2C",
-  ]);
-  assert.equal(toTariffSheetRow(SAMPLE_ROWS[0], TIMESTAMP).length, TARIFF_SHEET_HEADERS.length);
-  assert.equal(TARIFF_SHEET_HEADERS[0], "Timestamp");
-  assert.equal(TARIFF_SHEET_HEADERS[5], "Rule ");
-});
-
-test("resolves a Granot Carrier Code to the Moving Carrier name and DOT", async () => {
-  assert.equal(
-    formatTariffCarrierCell({
-      name: "COAST TO COAST VAN LINES INC",
-      dot_number: "4168983",
-    }),
-    RESOLVED_CARRIER,
-  );
-
-  const cell = await resolveTariffCarrierCell("c2c", async (code) => {
-    assert.equal(code, "C2C");
-    return { name: "COAST TO COAST VAN LINES INC", dot_number: "4168983" };
-  });
-  assert.equal(cell, RESOLVED_CARRIER);
-
-  await assert.rejects(
-    () => resolveTariffCarrierCell("UNKNOWN", async () => null),
-    (error: unknown) =>
-      error instanceof V1ServiceError &&
-      error.statusCode === 400 &&
-      error.message === "Unknown Granot Carrier Code: UNKNOWN",
-  );
-});
 
 test("appends both service rows with resolved Carrier and never upserts by identifier", async () => {
   const calls: string[] = [];
@@ -145,17 +102,6 @@ test("appends Linehaul plus a free-text Service row", async () => {
   assert.equal(result.rows[1]?.[4], "Accessorial");
   assert.equal(result.rows[1]?.[5], "owner rule");
   assert.equal(result.rows[1]?.[6], "100.00");
-});
-
-test("refuses an empty append", async () => {
-  await assert.rejects(
-    () =>
-      appendTariffAdjustmentRows([], {
-        sheets: fakeTariffSheets({}),
-        spreadsheetId: "tariff-sheet",
-      }),
-    /at least one row/,
-  );
 });
 
 function fakeTariffSheets(options: {

@@ -145,4 +145,4 @@ Returned `total` is the sum. Preview does not mutate.
 - Employee options: [`employee-bookings.md`](./employee-bookings.md)
 - Name helper: `src/services/agents/agentName.ts`
 - Models: `src/models/Agent.ts`, `src/models/Merchant.ts`
-- Tests: `src/services/catalog/catalog.service.test.ts`, `src/services/operationsRegistry/catalogRegistry.test.ts`
+- `src/services/catalog/catalog.service.test.ts` checks active assignment and historical attribution for a former Agent.

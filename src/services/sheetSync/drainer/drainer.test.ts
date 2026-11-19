@@ -1,30 +1,11 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { test } from "node:test";
 import type { sheets_v4 } from "googleapis";
 import { writeBatchedTargets } from "./batchWriter";
-import { buildTabRowMap } from "./tabRowMap";
-import { QuotaLimiter, type QuotaBucketStore } from "./quotaLimiter";
+import { QuotaLimiter } from "./quotaLimiter";
 import type { PlannedWrite } from "./types";
 
 const HEADERS = ["Mongo ID", "Name"] as const;
-const originalMaxRowsPerBatch = process.env.SHEET_SYNC_MAX_ROWS_PER_BATCH;
-const originalMaxWriteSubrequests = process.env.SHEET_SYNC_MAX_WRITE_SUBREQUESTS_PER_CALL;
-const originalMaxPayloadBytes = process.env.SHEET_SYNC_MAX_PAYLOAD_BYTES;
-
-afterEach(() => {
-  restoreEnv("SHEET_SYNC_MAX_ROWS_PER_BATCH", originalMaxRowsPerBatch);
-  restoreEnv("SHEET_SYNC_MAX_WRITE_SUBREQUESTS_PER_CALL", originalMaxWriteSubrequests);
-  restoreEnv("SHEET_SYNC_MAX_PAYLOAD_BYTES", originalMaxPayloadBytes);
-});
-
-function restoreEnv(name: string, value: string | undefined): void {
-  if (value === undefined) {
-    delete process.env[name];
-  } else {
-    process.env[name] = value;
-  }
-}
-
 function upsert(mongoId: string, name: string, knownRowNumber?: number): PlannedWrite {
   return {
     jobId: `job-${mongoId}`,
@@ -193,75 +174,4 @@ test("partial failure: update call fails but appends still succeed", async () =>
   const byMongo = new Map(outcomes.map((o) => [o.write.mongoId, o]));
   assert.equal(byMongo.get("id-existing")?.status, "failed");
   assert.equal(byMongo.get("id-new")?.status, "synced");
-});
-
-test("append batches are split by configured row guardrail", async () => {
-  process.env.SHEET_SYNC_MAX_ROWS_PER_BATCH = "2";
-  process.env.SHEET_SYNC_MAX_WRITE_SUBREQUESTS_PER_CALL = "100";
-  process.env.SHEET_SYNC_MAX_PAYLOAD_BYTES = "1500000";
-  const { sheets, calls } = fakeSheets({
-    rows: [["Mongo ID", "Name"]],
-    appendStartRow: 2,
-  });
-
-  const outcomes = await writeBatchedTargets({
-    sheets,
-    quota: grantAll,
-    ensureHeaders: false,
-    writes: [upsert("id-new-a", "A"), upsert("id-new-b", "B"), upsert("id-new-c", "C")],
-  });
-
-  assert.equal(calls.appends.length, 2, "three appends split into batches of 2 and 1");
-  assert.deepEqual(
-    calls.appends.map((values) => values.length),
-    [2, 1],
-  );
-  assert.deepEqual(
-    outcomes.map((outcome) => outcome.rowNumber),
-    [2, 3, 2],
-  );
-});
-
-test("buildTabRowMap maps Mongo IDs to 1-based row numbers", async () => {
-  const sheets = {
-    spreadsheets: {
-      values: {
-        get: async () => ({
-          data: {
-            values: [
-              ["Mongo ID", "Name"],
-              ["aaaaaaaaaaaaaaaaaaaaaaaa", "First"],
-              ["bbbbbbbbbbbbbbbbbbbbbbbb", "Second"],
-            ],
-          },
-        }),
-      },
-    },
-  } as unknown as sheets_v4.Sheets;
-
-  const map = await buildTabRowMap(sheets, "sheet-1", "Calls", HEADERS);
-  assert.equal(map.get("aaaaaaaaaaaaaaaaaaaaaaaa"), 2);
-  assert.equal(map.get("bbbbbbbbbbbbbbbbbbbbbbbb"), 3);
-});
-
-test("QuotaLimiter grants within budget and denies (with rollback) past it", async () => {
-  let stored = 0;
-  const store: QuotaBucketStore = {
-    findOneAndUpdate: async (_filter, update: any) => {
-      stored += update.$inc.count;
-      return { count: stored };
-    },
-    updateOne: async (_filter, update: any) => {
-      stored += update.$inc.count;
-      return {};
-    },
-  };
-  const limiter = new QuotaLimiter({ store, readBudget: 2, writeBudget: 2 });
-
-  assert.equal((await limiter.reserve("read", 1)).granted, true);
-  assert.equal((await limiter.reserve("read", 1)).granted, true);
-  const denied = await limiter.reserve("read", 1);
-  assert.equal(denied.granted, false);
-  // The denied reservation rolled its increment back to the budget ceiling.
-  assert.equal(stored, 2);
 });

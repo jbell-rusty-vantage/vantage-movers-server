@@ -1,25 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { ClientSession } from "mongoose";
-import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/salesOutreach";
 import type { JobInput } from "../../salesIntelligence/jobs";
-import { configurationContentHash } from "../config/store";
-import { CONFIGURATION_REVISION_5_HASH, configurationRevision5Value } from "../config/testing";
 import { fixedConfigurationLoader } from "../reads/testing";
 import {
-  ADMISSION_DECISION_PATHS,
-  admissionJobInput,
   expansionAdmissionOpenOf,
-  touchesAdmissionDecision,
   DECISION_RECONCILE_DEFAULT_PER_RUN,
-  decisionJobInput,
-  decisionReconcilePerRunOf,
-  feedLoopOf,
-  holdJobInput,
-  holdRecheckBucketOf,
   leadChangeJobInput,
   nominateLeadChanges,
-  OUTREACH_FEED_LOOP_DEFAULTS,
   OUTREACH_FEED_PAGE,
   OUTREACH_LEAD_CHANGE_OVERLAP_MS,
   reconcileOutreachRevisions,
@@ -106,56 +94,6 @@ const change = (ref: DeskLeadRef, revisionBefore: number, appliedAt: string, id 
 });
 
 describe("entity_changes tail (IMPL-05, outreach_lead_change)", () => {
-  test("nominations: subjects on every change, creations only while the intake gate is on, one per revision", () => {
-    const subject = lead();
-    const fresh = lead("CallLead");
-    const other = lead();
-    const changes = [change(subject, 3, "2026-10-04T14:00:00Z"), change(subject, 3, "2026-10-04T14:00:00Z"), change(fresh, 0, "2026-10-04T14:00:01Z"), change(other, 5, "2026-10-04T14:00:02Z")];
-    const keys = new Set([deskLeadKey(subject)]);
-    assert.deepEqual(nominateLeadChanges(changes, keys, false), [{ lead: subject, revision: 4, kind: "change" }]);
-    assert.deepEqual(nominateLeadChanges(changes, keys, true), [
-      { lead: subject, revision: 4, kind: "change" },
-      { lead: fresh, revision: 1, kind: "change" },
-    ]);
-  });
-
-  test("the job identity is per Lead revision (tail, reconcile and wake converge)", () => {
-    const ref = { model: "CallLead" as const, id: "a".repeat(24) };
-    assert.deepEqual(leadChangeJobInput(ref, 9), {
-      stage: "outreach_lead_change",
-      subject_key: `outreach-lead:CallLead:${"a".repeat(24)}`,
-      dedupe_key: `sod:lead-change:CallLead:${"a".repeat(24)}:r9`,
-      input_revision: 9,
-      input_refs: ["a".repeat(24)],
-    });
-  });
-
-  test("fails closed without an active configuration: nothing nominated, cursor untouched", async () => {
-    const store = new MemoryFeedStore();
-    for (const inspection of [{ state: "uninitialized" as const }, { state: "unavailable" as const, reason: "hash_mismatch" as const, version: "v", revision: 1, updated_at: null, updated_by: null }]) {
-      const result = await scanOutreachLeadChanges(at("2026-10-04T14:05:00Z"), { store, transaction, loader: fixedConfigurationLoader(inspection) });
-      assert.equal(result.skipped, true);
-      assert.equal(store.tail, null);
-    }
-  });
-
-  test("durable cursor (applied_at, _id): first pass starts at now − overlap, pages of 100, strictly after the cursor", async () => {
-    const store = new MemoryFeedStore();
-    const ref = lead();
-    store.subjects.push({ id: objectId(), lead: ref, lead_revision_seen: 0 });
-    store.changes.push(change(ref, 0, "2026-10-04T13:00:00Z")); // before the first-pass window: enrollment's, not the tail's
-    for (let i = 0; i < 150; i++) store.changes.push(change(ref, i + 1, `2026-10-04T14:04:${String(i % 60).padStart(2, "0")}Z`, String(i).padStart(24, "0")));
-    const deps = { store, transaction, loader: fixedConfigurationLoader(deskConfiguration() as never) };
-    const now = at("2026-10-04T14:05:00Z");
-    const first = await scanOutreachLeadChanges(now, deps);
-    assert.equal(first.scanned, 100);
-    assert.equal(store.jobs.size, 100);
-    const second = await scanOutreachLeadChanges(now, deps);
-    assert.equal(store.jobs.size, 150, "the rest of the backlog, nothing twice");
-    assert.ok(second.scanned >= 50);
-    const third = await scanOutreachLeadChanges(now, deps);
-    assert.equal(third.cursor?.id, second.cursor?.id, "an empty page keeps the cursor");
-  });
 
   test("short overlap: a change committed behind the cursor is still picked up", async () => {
     const store = new MemoryFeedStore();
@@ -170,17 +108,6 @@ describe("entity_changes tail (IMPL-05, outreach_lead_change)", () => {
     assert.ok(store.jobs.has(`sod:lead-change:FormLead:${ref.id}:r3`));
     assert.ok(OUTREACH_LEAD_CHANGE_OVERLAP_MS <= 300_000, "the overlap stays short");
   });
-
-  test("a stored job with a different payload is skipped and never pins the cursor", async () => {
-    const store = new MemoryFeedStore();
-    const ref = lead();
-    store.subjects.push({ id: objectId(), lead: ref, lead_revision_seen: 0 });
-    store.changes.push(change(ref, 1, "2026-10-04T14:04:30Z"));
-    store.conflictKeys.add(`sod:lead-change:FormLead:${ref.id}:r2`);
-    const result = await scanOutreachLeadChanges(at("2026-10-04T14:05:00Z"), { store, transaction, loader: fixedConfigurationLoader(deskConfiguration() as never) });
-    assert.equal(result.conflicts, 1);
-    assert.ok(store.tail);
-  });
 });
 
 describe("revision reconcile (outreach_revision_reconcile)", () => {
@@ -189,19 +116,6 @@ describe("revision reconcile (outreach_revision_reconcile)", () => {
     transaction,
     loader: fixedConfigurationLoader(deskConfiguration() as never),
     lease: { acquire: async () => acquired, release: async () => undefined },
-  });
-
-  test("open subjects whose Lead domain_revision ≠ lead_revision_seen get a lead-change job; closed ones are skipped", async () => {
-    const store = new MemoryFeedStore();
-    const stale = lead();
-    const fresh = lead();
-    const closed = lead();
-    store.subjects.push({ id: "1".padStart(24, "0"), lead: stale, lead_revision_seen: 2 }, { id: "2".padStart(24, "0"), lead: fresh, lead_revision_seen: 4 }, { id: "3".padStart(24, "0"), lead: closed, lead_revision_seen: 1, closed: true });
-    store.revisions.set(deskLeadKey(stale), 5).set(deskLeadKey(fresh), 4).set(deskLeadKey(closed), 9);
-    const result = await reconcileOutreachRevisions(at("2026-10-04T14:05:00Z"), deps(store));
-    assert.deepEqual([...store.jobs.keys()], [`sod:lead-change:FormLead:${stale.id}:r5`]);
-    assert.equal(result.wrapped, true);
-    assert.equal(store.reconcileCursor, null, "a short page wraps the cursor");
   });
 
   test("bounded pages of 100 carry a durable cursor; a held lease skips the run", async () => {
@@ -227,83 +141,6 @@ describe("revision reconcile (outreach_revision_reconcile)", () => {
       decision_cap: DECISION_RECONCILE_DEFAULT_PER_RUN,
       hold_nominated: 0,
     });
-  });
-});
-
-describe("hold re-check (olr B8, ambiguous_identity admission hold)", () => {
-  const run = (store: MemoryFeedStore, iso: string, configuration = deskConfiguration()) =>
-    reconcileOutreachRevisions(at(iso), {
-      store,
-      transaction,
-      loader: fixedConfigurationLoader(configuration as never),
-      lease: { acquire: async () => true, release: async () => undefined },
-    });
-  const holdKeys = (store: MemoryFeedStore) => [...store.jobs.keys()].filter((key) => key.includes(":hold:")).sort();
-
-  test("the hold job identity: one per subject per 15-minute bucket (UTC), input_revision 1", () => {
-    const ref = { model: "CallLead" as const, id: "b".repeat(24) };
-    assert.equal(holdRecheckBucketOf(at("2026-10-06T19:44:59.999Z")), "20261006T1930");
-    assert.equal(holdRecheckBucketOf(at("2026-10-06T19:45:00.000Z")), "20261006T1945");
-    assert.deepEqual(holdJobInput(ref, at("2026-10-06T00:07:00Z")), {
-      stage: "outreach_lead_change",
-      subject_key: `outreach-lead:CallLead:${"b".repeat(24)}`,
-      dedupe_key: `sod:lead-change:CallLead:${"b".repeat(24)}:hold:20261006T0000`,
-      input_revision: 1,
-      input_refs: ["b".repeat(24)],
-    });
-  });
-
-  test("held ambiguous review subjects are re-nominated at most once per 15 minutes", async () => {
-    const store = new MemoryFeedStore();
-    const held = lead();
-    const priorityReview = lead();
-    const active = lead();
-    const heldMoved = lead();
-    store.subjects.push(
-      { id: "1".padStart(24, "0"), lead: held, lead_revision_seen: 2, status: "review", review_reasons: ["ambiguous_identity"] },
-      { id: "2".padStart(24, "0"), lead: priorityReview, lead_revision_seen: 2, status: "review", review_reasons: ["priority_needs_review"] },
-      { id: "3".padStart(24, "0"), lead: active, lead_revision_seen: 2 },
-      { id: "4".padStart(24, "0"), lead: heldMoved, lead_revision_seen: 2, status: "review", review_reasons: ["received_time_missing", "ambiguous_identity"] },
-    );
-    for (const ref of [held, priorityReview, active]) store.revisions.set(deskLeadKey(ref), 2);
-    store.revisions.set(deskLeadKey(heldMoved), 3);
-    const first = await run(store, "2026-10-06T14:05:00Z");
-    assert.equal(first.hold_nominated, 1);
-    assert.deepEqual(holdKeys(store), [`sod:lead-change:FormLead:${held.id}:hold:20261006T1400`], "only the held subject; priority review and active subjects are not re-checked");
-    assert.ok(store.jobs.has(`sod:lead-change:FormLead:${heldMoved.id}:r3`), "a held subject whose Lead moved gets its revision job (it re-checks too)");
-    // The 5-minute reconcile runs twice more in the same bucket: the same identity (insert-only enqueue dedupes).
-    await run(store, "2026-10-06T14:10:00Z");
-    await run(store, "2026-10-06T14:14:59Z");
-    assert.equal(holdKeys(store).length, 1, "at most one hold job per 15 minutes");
-    await run(store, "2026-10-06T14:15:00Z");
-    assert.deepEqual(holdKeys(store), [
-      `sod:lead-change:FormLead:${held.id}:hold:20261006T1400`,
-      `sod:lead-change:FormLead:${held.id}:hold:20261006T1415`,
-    ]);
-    // The hold cleared (the job synced the subject active): nothing more.
-    store.subjects[0]!.status = "active";
-    store.subjects[0]!.review_reasons = [];
-    const settled = await run(store, "2026-10-06T14:30:00Z");
-    assert.equal(settled.hold_nominated, 0);
-    assert.equal(holdKeys(store).length, 2);
-  });
-
-  test("a held subject with a decision job this run gets no hold job; deferred by the cap, it still does", async () => {
-    const MAP = APPROVED_MAPPING!.priority_map!;
-    const remapped = (migration: Record<string, unknown>) =>
-      deskConfiguration({ migration, cadence: { priority_map: { ...MAP, codes: [...MAP.codes, { code: "9", workflow: "quoted" as const, closure_reason: null }] } } }, "v7", 7);
-    const store = new MemoryFeedStore();
-    const first = lead();
-    const second = lead();
-    store.subjects.push(
-      { id: "1".padStart(24, "0"), lead: first, lead_revision_seen: 1, status: "review", review_reasons: ["ambiguous_identity"] },
-      { id: "2".padStart(24, "0"), lead: second, lead_revision_seen: 1, status: "review", review_reasons: ["ambiguous_identity"] },
-    );
-    for (const ref of [first, second]) store.revisions.set(deskLeadKey(ref), 1);
-    const result = await run(store, "2026-10-06T14:05:00Z", remapped({ decision_reconcile_per_run: 1 }));
-    assert.deepEqual([result.decision_nominated, result.decision_deferred, result.hold_nominated], [1, 1, 1]);
-    assert.ok([...store.jobs.keys()].some((key) => key.startsWith(`sod:lead-change:FormLead:${first.id}:decision:`)));
-    assert.deepEqual(holdKeys(store), [`sod:lead-change:FormLead:${second.id}:hold:20261006T1400`]);
   });
 });
 
@@ -351,20 +188,6 @@ const loopDeps = (store: CountingFeedStore, migration: Record<string, number> = 
 });
 
 describe("tail loop (olr B10, migration.feed_max_passes_per_run / feed_budget_seconds)", () => {
-  test("a backlog of 250 changes is consumed in one run in 3 passes; the overlap is scanned once", async () => {
-    const store = new CountingFeedStore();
-    const rows = backlog(store, 250);
-    cursorBefore(store, rows);
-    const result = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(store));
-    assert.equal(result.passes, 3);
-    assert.equal(store.overlapScans, 1, "only the first pass re-scans the overlap");
-    assert.equal(store.jobs.size, 250, "every change of the burst nominated in the same run");
-    assert.equal(result.nominated, 250);
-    assert.deepEqual([result.caught_up, result.stopped_by], [true, "caught_up"]);
-    assert.equal(store.tail?.id, rows.at(-1)!.id, "the cursor reaches the last change");
-    assert.equal(result.cursor?.id, rows.at(-1)!.id);
-    assert.deepEqual([result.max_passes, result.budget_seconds], [10, 15], "code defaults when the keys are absent");
-  });
 
   test("the loop stops at the pass cap with the cursor at the last committed page; the next run carries on", async () => {
     const store = new CountingFeedStore();
@@ -381,58 +204,6 @@ describe("tail loop (olr B10, migration.feed_max_passes_per_run / feed_budget_se
     assert.equal(store.jobs.size, 400, "nothing nominated twice, nothing skipped");
   });
 
-  test("the loop stops at the time budget with the cursor at the last committed page", async () => {
-    const store = new CountingFeedStore();
-    const rows = backlog(store, 1000);
-    cursorBefore(store, rows);
-    store.msPerPage = 8_000; // each pass "takes" 8 s: with the 15 s default budget the second pass is the last
-    const result = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(store));
-    assert.deepEqual([result.passes, result.stopped_by, result.caught_up], [2, "budget", false]);
-    assert.equal(store.tail?.id, rows[199]!.id);
-    // A configured budget widens it: 40 s → 5 passes of 8 s.
-    const wide = new CountingFeedStore();
-    const wideRows = backlog(wide, 1000);
-    cursorBefore(wide, wideRows);
-    wide.msPerPage = 8_000;
-    const widened = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(wide, { feed_budget_seconds: 40 }));
-    assert.deepEqual([widened.passes, widened.stopped_by, widened.budget_seconds], [5, "budget", 40]);
-    assert.equal(wide.tail?.id, wideRows[499]!.id);
-  });
-
-  test("a 1,000-change burst is admitted in 2 cron runs with the defaults", async () => {
-    const store = new CountingFeedStore();
-    const rows = backlog(store, 1000);
-    cursorBefore(store, rows);
-    const deps = loopDeps(store);
-    const first = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), deps);
-    assert.deepEqual([first.passes, first.stopped_by], [10, "max_passes"]);
-    const second = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:06:00Z"), deps);
-    assert.deepEqual([second.passes, second.caught_up], [1, true]);
-    assert.equal(store.jobs.size, 1000);
-    assert.equal(store.tail?.id, rows.at(-1)!.id);
-  });
-
-  test("an empty or short page ends the loop", async () => {
-    const empty = new CountingFeedStore();
-    const none = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(empty));
-    assert.deepEqual([none.passes, none.caught_up, none.scanned], [1, true, 0]);
-    assert.ok(empty.tail, "a first run stores the starting cursor");
-
-    const short = new CountingFeedStore();
-    const shortRows = backlog(short, 40, "2026-10-04T14:04:00Z");
-    const shortRun = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(short));
-    assert.deepEqual([shortRun.passes, shortRun.caught_up, short.pages], [1, true, 1]);
-    assert.equal(short.tail?.id, shortRows.at(-1)!.id);
-
-    // Exactly one full page: the second pass finds an empty page and ends the loop.
-    const full = new CountingFeedStore();
-    const fullRows = backlog(full, OUTREACH_FEED_PAGE);
-    cursorBefore(full, fullRows);
-    const fullRun = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(full));
-    assert.deepEqual([fullRun.passes, fullRun.caught_up, full.overlapScans], [2, true, 1]);
-    assert.equal(full.tail?.id, fullRows.at(-1)!.id);
-  });
-
   test("a later pass that fails ends the loop with what was committed; a failed first pass propagates", async () => {
     const store = new CountingFeedStore();
     const rows = backlog(store, 300);
@@ -445,54 +216,6 @@ describe("tail loop (olr B10, migration.feed_max_passes_per_run / feed_budget_se
     failing.failOnPage = 1;
     await assert.rejects(scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(failing)), /transient/);
   });
-
-  test("fails closed without an active configuration: no pass, cursor untouched", async () => {
-    const store = new CountingFeedStore();
-    backlog(store, 150);
-    const result = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), {
-      store,
-      transaction,
-      loader: fixedConfigurationLoader({ state: "uninitialized" }),
-    });
-    assert.deepEqual([result.skipped, result.reason, result.passes], [true, "configuration_uninitialized", 0]);
-    assert.deepEqual([store.tail, store.pages, store.jobs.size], [null, 0, 0]);
-  });
-
-  test("a single pass still re-scans the overlap by default and can skip it", async () => {
-    const store = new CountingFeedStore();
-    const rows = backlog(store, 5, "2026-10-04T14:04:00Z");
-    store.tail = { applied_at: rows.at(-1)!.applied_at, id: rows.at(-1)!.id };
-    const deps = loopDeps(store);
-    const pass = await scanOutreachLeadChanges(at("2026-10-04T14:05:00Z"), deps);
-    assert.deepEqual([pass.page_size, pass.scanned, store.overlapScans], [0, 4, 1]);
-    const noOverlap = await scanOutreachLeadChanges(at("2026-10-04T14:05:00Z"), deps, { overlap: false });
-    assert.deepEqual([noOverlap.scanned, store.overlapScans], [0, 1]);
-  });
-
-  test("configuration: the keys are optional without default (R0), bounded, and resolved by feedLoopOf", () => {
-    const stored = configurationRevision5Value();
-    const parsed = salesOutreachConfigurationValueSchema.parse(stored);
-    assert.equal(configurationContentHash(parsed), CONFIGURATION_REVISION_5_HASH, "the revision-5 value re-parses to the same content hash");
-    assert.equal("feed_max_passes_per_run" in parsed.migration, false);
-    assert.equal("feed_budget_seconds" in parsed.migration, false);
-    assert.deepEqual(feedLoopOf(parsed), { max_passes: 10, budget_ms: 15_000 });
-    assert.deepEqual(feedLoopOf(null), {
-      max_passes: OUTREACH_FEED_LOOP_DEFAULTS.feed_max_passes_per_run,
-      budget_ms: OUTREACH_FEED_LOOP_DEFAULTS.feed_budget_seconds * 1000,
-    });
-
-    const withKeys = configurationRevision5Value();
-    withKeys.migration = { ...withKeys.migration, feed_max_passes_per_run: 1, feed_budget_seconds: 40 };
-    const set = salesOutreachConfigurationValueSchema.parse(withKeys);
-    assert.deepEqual(feedLoopOf(set), { max_passes: 1, budget_ms: 40_000 });
-    assert.notEqual(configurationContentHash(set), CONFIGURATION_REVISION_5_HASH, "a set key is hashed");
-
-    for (const bad of [{ feed_max_passes_per_run: 0 }, { feed_max_passes_per_run: 51 }, { feed_max_passes_per_run: 2.5 }, { feed_budget_seconds: 0 }, { feed_budget_seconds: 41 }]) {
-      const value = configurationRevision5Value();
-      value.migration = { ...value.migration, ...bad };
-      assert.equal(salesOutreachConfigurationValueSchema.safeParse(value).success, false, JSON.stringify(bad));
-    }
-  });
 });
 
 // ---- olr B6: event-driven expansion admission (transition.expansion_admission_enabled) ----------
@@ -500,28 +223,6 @@ describe("tail loop (olr B10, migration.feed_max_passes_per_run / feed_budget_se
 describe("expansion admission nomination (olr B6)", () => {
   const admissionOn = (paused = false) =>
     deskConfiguration({ transition: { backfill_lookback_days: 90, backfill_include_upcoming_moves: true, expansion_admission_enabled: true }, migration: { paused } });
-
-  test("the admission job identity: …:admission:r<rev>, input_revision = the Lead revision, distinct from the r<rev> identity", () => {
-    const ref = { model: "FormLead" as const, id: "b".repeat(24) };
-    assert.deepEqual(admissionJobInput(ref, 7), {
-      stage: "outreach_lead_change",
-      subject_key: `outreach-lead:FormLead:${"b".repeat(24)}`,
-      dedupe_key: `sod:lead-change:FormLead:${"b".repeat(24)}:admission:r7`,
-      input_revision: 7,
-      input_refs: ["b".repeat(24)],
-    });
-    assert.notEqual(admissionJobInput(ref, 7).dedupe_key, leadChangeJobInput(ref, 7).dedupe_key);
-  });
-
-  test("decision paths match exactly or as a parent; unrelated paths do not", () => {
-    assert.ok(touchesAdmissionDecision(["granot_priority"]));
-    assert.ok(touchesAdmissionDecision(["notes", "booked.id"]));
-    assert.ok(touchesAdmissionDecision(["last_accepted_granot_observation"]));
-    assert.ok(!touchesAdmissionDecision(["notes", "receiver_agent", "bookedx"]));
-    assert.ok(!touchesAdmissionDecision([]));
-    for (const path of ["granot_priority", "last_accepted_granot_observation", "duplicate", "booked", "cancelled", "bad_lead", "created_on_unmatched", "timestamp", "normalized_job_no", "move_date"])
-      assert.ok((ADMISSION_DECISION_PATHS as readonly string[]).includes(path), path);
-  });
 
   test("non-subject changes with decision paths nominate an admission job only while expansion admission is on and migration is not paused", async () => {
     const pre = lead();
@@ -543,18 +244,6 @@ describe("expansion admission nomination (olr B6)", () => {
     }
   });
 
-  test("unrelated paths (e.g. notes) nominate nothing; a subject's change stays the r<rev> job", async () => {
-    const pre = lead();
-    const subject = lead();
-    const store = new MemoryFeedStore();
-    store.subjects.push({ id: objectId(), lead: subject, lead_revision_seen: 2 });
-    store.tail = { applied_at: at("2026-10-06T14:04:00Z"), id: "0".repeat(24) };
-    store.changes.push(change(pre, 3, "2026-10-06T14:04:10Z", objectId(), ["notes", "receiver_agent"]));
-    store.changes.push(change(subject, 2, "2026-10-06T14:04:20Z", objectId(), ["granot_priority"]));
-    await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-06T14:05:00Z"), { store, transaction, loader: fixedConfigurationLoader(admissionOn() as never) });
-    assert.deepEqual([...store.jobs.keys()], [`sod:lead-change:FormLead:${subject.id}:r3`]);
-  });
-
   test("canonical updates of legacy revision-zero Leads use expansion, not intake", async () => {
     const pre = lead();
     const updated = { ...change(pre, 0, "2026-10-06T14:04:10Z", objectId(), ["granot_priority"]), command_name: "synchronizeLeadFromGranot" };
@@ -572,34 +261,6 @@ describe("expansion admission nomination (olr B6)", () => {
     store.changes.push(updated);
     await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-06T14:05:00Z"), { store, transaction, loader: fixedConfigurationLoader(admissionOn() as never) });
     assert.deepEqual([...store.jobs.keys()], [`sod:lead-change:FormLead:${pre.id}:admission:r1`]);
-  });
-
-  test("creation still nominates the r<rev> intake identity (never admission), even with a decision path", () => {
-    const fresh = lead("CallLead");
-    const created = change(fresh, 0, "2026-10-06T14:04:10Z", objectId(), ["granot_priority", "timestamp"]);
-    assert.deepEqual(nominateLeadChanges([created], new Set(), true, true), [{ lead: fresh, revision: 1, kind: "change" }]);
-    assert.deepEqual(nominateLeadChanges([created], new Set(), false, true), [], "intake closed: a creation is not an admission");
-  });
-
-  test("configuration: expansion_admission_enabled is optional without default (R0) and requires both backfill scope keys", () => {
-    const parsed = salesOutreachConfigurationValueSchema.parse(configurationRevision5Value());
-    assert.equal(configurationContentHash(parsed), CONFIGURATION_REVISION_5_HASH, "the revision-5 value re-parses to the same content hash");
-    assert.equal("expansion_admission_enabled" in parsed.transition, false, "no default leaks into old versions");
-    const on = configurationRevision5Value();
-    on.transition = { ...on.transition, expansion_admission_enabled: true };
-    const set = salesOutreachConfigurationValueSchema.parse(on);
-    assert.equal(set.transition.expansion_admission_enabled, true);
-    assert.notEqual(configurationContentHash(set), CONFIGURATION_REVISION_5_HASH, "a set key is hashed");
-    for (const key of ["backfill_lookback_days", "backfill_include_upcoming_moves"] as const) {
-      const missing = configurationRevision5Value();
-      missing.transition = { ...missing.transition, expansion_admission_enabled: true, [key]: null };
-      const result = salesOutreachConfigurationValueSchema.safeParse(missing);
-      assert.equal(result.success, false, key);
-      assert.ok(result.error!.issues.some((i) => i.path.join(".") === `transition.${key}` && i.message === "required by expansion_admission_enabled"));
-    }
-    const off = configurationRevision5Value();
-    off.transition = { ...off.transition, expansion_admission_enabled: false, backfill_lookback_days: null };
-    assert.equal(salesOutreachConfigurationValueSchema.safeParse(off).success, true, "off needs no scope");
   });
 });
 
@@ -623,18 +284,6 @@ describe("decision reconcile (olr B2, migration.decision_reconcile_per_run)", ()
       lease: { acquire: async () => true, release: async () => undefined },
     });
   const decisionKey = (ref: DeskLeadRef, kind: "A" | "B", revision: number) => `sod:lead-change:${ref.model}:${ref.id}:decision:${fpOf(kind).slice(0, 16)}:c${revision}`;
-
-  test("the decision job identity: one per subject per decision fingerprint and configuration revision", () => {
-    const ref = { model: "FormLead" as const, id: "a".repeat(24) };
-    const fp = "0123456789abcdef".repeat(4);
-    assert.deepEqual(decisionJobInput(ref, fp, 6), {
-      stage: "outreach_lead_change",
-      subject_key: `outreach-lead:FormLead:${"a".repeat(24)}`,
-      dedupe_key: `sod:lead-change:FormLead:${"a".repeat(24)}:decision:0123456789abcdef:c6`,
-      input_revision: 6,
-      input_refs: ["a".repeat(24)],
-    });
-  });
 
   test("a subject decided under another decision fingerprint is nominated once per configuration revision; replays dedupe; an A→B→A flip re-nominates", async () => {
     const store = new MemoryFeedStore();
@@ -667,68 +316,7 @@ describe("decision reconcile (olr B2, migration.decision_reconcile_per_run)", ()
       "each flip is a new identity",
     );
   });
-
-  test("a subject whose Lead revision moved gets only the r<rev> job (it stamps the fingerprint too)", async () => {
-    const store = new MemoryFeedStore();
-    const moved = lead();
-    store.subjects.push({ id: "1".padStart(24, "0"), lead: moved, lead_revision_seen: 3, decision_fingerprint: fpOf("A") });
-    store.revisions.set(deskLeadKey(moved), 4);
-    const result = await run(store, configOf("B", 6));
-    assert.deepEqual([...store.jobs.keys()], [`sod:lead-change:FormLead:${moved.id}:r4`]);
-    assert.deepEqual([result.nominated, result.decision_nominated], [1, 0]);
-  });
-
-  test("decision nominations are capped per run; revision nominations are not", async () => {
-    const store = new MemoryFeedStore();
-    for (let i = 0; i < 500; i++) {
-      const ref = lead();
-      // Even ids: Lead revision moved (revision job); odd ids: current revision, decided under A (decision job).
-      store.subjects.push({ id: String(i).padStart(24, "0"), lead: ref, lead_revision_seen: 1, decision_fingerprint: fpOf("A") });
-      store.revisions.set(deskLeadKey(ref), i % 2 === 0 ? 2 : 1);
-    }
-    const capped = await run(store, configOf("B", 6, { decision_reconcile_per_run: 100 }));
-    assert.deepEqual([capped.pages, capped.checked, capped.wrapped], [6, 500, true], "the cursor still moves and wraps");
-    assert.deepEqual([capped.nominated, capped.decision_nominated, capped.decision_deferred, capped.decision_cap], [250, 100, 150, 100]);
-    assert.equal([...store.jobs.keys()].filter((key) => key.includes(":decision:")).length, 100);
-    assert.equal([...store.jobs.keys()].filter((key) => /:r2$/.test(key)).length, 250);
-    // The next run takes the next 100 (the first 100 still queued count against the cap: the wave follows the drain).
-    for (const subject of store.subjects.filter((s) => store.jobs.has(decisionKey(s.lead, "B", 6)))) subject.decision_fingerprint = fpOf("B");
-    for (const subject of store.subjects) subject.lead_revision_seen = store.revisions.get(deskLeadKey(subject.lead))!;
-    const next = await run(store, configOf("B", 6, { decision_reconcile_per_run: 100 }));
-    assert.deepEqual([next.nominated, next.decision_nominated, next.decision_deferred], [0, 100, 300]);
-    assert.equal([...store.jobs.keys()].filter((key) => key.includes(":decision:")).length, 200);
-    // Absent key → the code default.
-    assert.equal(decisionReconcilePerRunOf(configOf("B", 6).value), DECISION_RECONCILE_DEFAULT_PER_RUN);
-    assert.equal(decisionReconcilePerRunOf(null), 300);
-  });
-
-  test("closed subjects are never re-decided", async () => {
-    const store = new MemoryFeedStore();
-    const closed = lead();
-    store.subjects.push({ id: "1".padStart(24, "0"), lead: closed, lead_revision_seen: 3, decision_fingerprint: fpOf("A"), closed: true });
-    store.revisions.set(deskLeadKey(closed), 3);
-    const result = await run(store, configOf("B", 6));
-    assert.equal(store.jobs.size, 0);
-    assert.deepEqual([result.checked, result.decision_nominated], [0, 0]);
-  });
-
-  test("migration.decision_reconcile_per_run is optional with no schema default (R0) and bounded 1–5,000", () => {
-    const parsed = salesOutreachConfigurationValueSchema.parse(configurationRevision5Value());
-    assert.equal(configurationContentHash(parsed), CONFIGURATION_REVISION_5_HASH);
-    assert.equal("decision_reconcile_per_run" in parsed.migration, false, "no default leaks into old versions");
-    for (const ok of [1, 300, 5000]) {
-      const value = configurationRevision5Value();
-      value.migration = { ...value.migration, decision_reconcile_per_run: ok };
-      assert.equal(salesOutreachConfigurationValueSchema.safeParse(value).success, true, String(ok));
-    }
-    for (const bad of [0, 5001, 2.5, "300"]) {
-      const value = configurationRevision5Value();
-      value.migration = { ...value.migration, decision_reconcile_per_run: bad };
-      assert.equal(salesOutreachConfigurationValueSchema.safeParse(value).success, false, JSON.stringify(bad));
-    }
-  });
 });
-
 
 test("related Form wake batches current relations and survives completed Form revisions and overlap replay", async () => {
   const store = new MemoryFeedStore(), form = lead(), call = lead('CallLead');

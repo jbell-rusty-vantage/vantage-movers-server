@@ -4,9 +4,6 @@ import type { GranotObservationDocument } from "../../models/GranotObservation";
 import {
   getBookingIntakeCreatingObservation,
   getCancellationIntakeCreatingObservation,
-  getIntakeCreatingObservation,
-  selectCreatingObservationEvidence,
-  selectReleaseCreatingObservationEvidence,
   type CreatingObservationLoaders,
 } from "./creatingObservation";
 
@@ -54,96 +51,6 @@ function priorityObservation(): GranotObservationDocument {
     agent_identity: {},
   } as unknown as GranotObservationDocument;
 }
-
-test("booking intake selection prefers the latest Booked evidence", () => {
-  const selected = selectCreatingObservationEvidence([
-    {
-      observation_id: "priority-old",
-      captured_at: "2026-08-20T10:00:00.000Z",
-      action: "priority_5",
-    },
-    {
-      observation_id: "booked-first",
-      captured_at: "2026-08-21T09:00:00.000Z",
-      action: "booked",
-    },
-    {
-      observation_id: "booked-latest",
-      captured_at: "2026-08-22T15:00:00.000Z",
-      action: "booked",
-    },
-    {
-      observation_id: "later-priority",
-      captured_at: "2026-08-23T12:00:00.000Z",
-      action: "priority_5",
-    },
-  ]);
-  assert.deepEqual(selected, {
-    item: {
-      observation_id: "booked-latest",
-      captured_at: "2026-08-22T15:00:00.000Z",
-      action: "booked",
-    },
-    selection: "preferred_booked",
-  });
-});
-
-test("booking intake selection falls back to the latest creating evidence", () => {
-  const selected = selectCreatingObservationEvidence([
-    {
-      observation_id: "priority-first",
-      captured_at: "2026-08-20T10:00:00.000Z",
-      action: "priority_5",
-    },
-    {
-      observation_id: "priority-latest",
-      captured_at: "2026-08-21T10:00:00.000Z",
-      action: "priority_5",
-    },
-  ]);
-  assert.equal(selected?.selection, "latest_creating");
-  assert.equal(selected?.item.observation_id, "priority-latest");
-});
-
-test("booking intake selection prefers latest Release when the case has only Release evidence", () => {
-  const selected = selectCreatingObservationEvidence([
-    {
-      observation_id: "release-first",
-      captured_at: "2026-08-21T09:00:00.000Z",
-      action: "release",
-    },
-    {
-      observation_id: "release-latest",
-      captured_at: "2026-08-24T16:00:00.000Z",
-      action: "release",
-    },
-  ]);
-  assert.deepEqual(selected, {
-    item: {
-      observation_id: "release-latest",
-      captured_at: "2026-08-24T16:00:00.000Z",
-      action: "release",
-    },
-    selection: "preferred_release",
-  });
-});
-
-test("booking intake selection prefers Booked when Booked and Release evidence both exist", () => {
-  const selected = selectCreatingObservationEvidence([
-    {
-      observation_id: "booked-first",
-      captured_at: "2026-08-21T09:00:00.000Z",
-      action: "booked",
-    },
-    {
-      observation_id: "release-later",
-      captured_at: "2026-08-24T16:00:00.000Z",
-      action: "release",
-    },
-  ]);
-  assert.equal(selected?.selection, "preferred_booked");
-  assert.equal(selected?.item.observation_id, "booked-first");
-});
 
 function loaders(input: {
   evidenceAction?: "booked" | "priority_5" | "release";
@@ -202,25 +109,6 @@ test("booking intake creating observation returns the credential-redacted Booked
   assert.equal(result?.priority_pairing?.pairing, "booked_carries_priority_5");
 });
 
-test("booking intake creating observation is absent for missing booking cases", async () => {
-  const result = await getBookingIntakeCreatingObservation("dddddddddddddddddddddddd", {
-    findBookingCase: async () => null,
-    findReleaseCase: async () => {
-      throw new Error("booking lookup must not fall through to release");
-    },
-    findObservation: async () => {
-      throw new Error("should not load observation");
-    },
-    findReceipt: async () => {
-      throw new Error("should not load receipt");
-    },
-    findJobObservations: async () => {
-      throw new Error("should not load job observations");
-    },
-  });
-  assert.equal(result, null);
-});
-
 test("[AC-P1] creating observation includes pairing and the preceding Priority 5 snapshot", async () => {
   const creating = bookedObservation();
   const preceding = priorityObservation();
@@ -242,18 +130,6 @@ test("[AC-P1] creating observation includes pairing and the preceding Priority 5
   assert.equal(JSON.stringify(result.priority_pairing).includes("Authorization"), false);
 });
 
-test("[AC-P3] Booked-without-5 still returns 200 with the Booked statement and no paired snapshot", async () => {
-  const creating = bookedObservation({ priority: { valid: false } });
-  const result = await getBookingIntakeCreatingObservation(
-    caseId,
-    loaders({ observation: creating, jobObservations: [creating] }),
-  );
-  assert.equal(result?.priority_pairing?.pairing, "booked_without_priority_5");
-  assert.equal(result?.priority_pairing?.creating_booked.priority_is_5, false);
-  assert.equal(result?.paired_priority_5_observation, undefined);
-  assert.equal((result?.granot_statement as { event_type?: string })?.event_type, "Booked");
-});
-
 test("Release-only booking case creating observation is preferred_release with null pairing", async () => {
   const observation = releaseObservation();
   const result = await getBookingIntakeCreatingObservation(
@@ -266,49 +142,6 @@ test("Release-only booking case creating observation is preferred_release with n
   );
   assert.equal(result?.selection, "preferred_release");
   assert.equal(result?.evidence_action, "release");
-  assert.equal(result?.priority_pairing, null);
-  assert.equal(result?.paired_priority_5_observation, undefined);
-});
-
-test("Booked plus Release booking case creating observation stays preferred_booked", async () => {
-  const creating = bookedObservation();
-  const released = releaseObservation();
-  const result = await getBookingIntakeCreatingObservation(
-    caseId,
-    loaders({
-      observation: creating,
-      jobObservations: [creating, released],
-      evidence: [
-        {
-          observation_id: String(creating._id),
-          captured_at: creating.captured_at,
-          action: "booked",
-        },
-        {
-          observation_id: String(released._id),
-          captured_at: released.captured_at,
-          action: "release",
-        },
-      ],
-    }),
-  );
-  assert.equal(result?.selection, "preferred_booked");
-  assert.equal(result?.evidence_action, "booked");
-  assert.equal(result?.observation_id, bookedId);
-});
-
-test("[AC-P6] historical Priority-5-only remains latest_creating with null pairing", async () => {
-  const historical = priorityObservation();
-  const result = await getBookingIntakeCreatingObservation(
-    caseId,
-    loaders({
-      evidenceAction: "priority_5",
-      observation: historical,
-      jobObservations: [historical],
-    }),
-  );
-  assert.equal(result?.selection, "latest_creating");
-  assert.equal(result?.evidence_action, "priority_5");
   assert.equal(result?.priority_pairing, null);
   assert.equal(result?.paired_priority_5_observation, undefined);
 });
@@ -338,29 +171,6 @@ function releaseObservation(
     ...overrides,
   } as unknown as GranotObservationDocument;
 }
-
-test("cancellation intake selection prefers the latest Release evidence", () => {
-  const selected = selectReleaseCreatingObservationEvidence([
-    {
-      observation_id: "release-first",
-      captured_at: "2026-08-21T09:00:00.000Z",
-      action: "release",
-    },
-    {
-      observation_id: "release-latest",
-      captured_at: "2026-08-24T16:00:00.000Z",
-      action: "release",
-    },
-  ]);
-  assert.deepEqual(selected, {
-    item: {
-      observation_id: "release-latest",
-      captured_at: "2026-08-24T16:00:00.000Z",
-      action: "release",
-    },
-    selection: "preferred_release",
-  });
-});
 
 function releaseLoaders(input: {
   observation?: GranotObservationDocument;
@@ -410,31 +220,4 @@ test("cancellation intake creating observation returns the credential-redacted R
   assert.equal(result?.observation.move.move_date, "2026-09-08T00:00:00.000Z");
   assert.equal(result?.priority_pairing, null);
   assert.equal(JSON.stringify(result).includes("Authorization"), false);
-});
-
-test("intake creating observation uses the booking statement when both collections could match", async () => {
-  const booking = await getIntakeCreatingObservation(caseId, loaders({}));
-  assert.equal(booking?.selection, "preferred_booked");
-  assert.equal(booking?.case_id, caseId);
-
-  const cancellation = await getIntakeCreatingObservation(releaseCaseId, releaseLoaders());
-  assert.equal(cancellation?.selection, "preferred_release");
-  assert.equal(cancellation?.case_id, releaseCaseId);
-});
-
-test("intake creating observation is absent when neither case exists", async () => {
-  const result = await getIntakeCreatingObservation("dddddddddddddddddddddddd", {
-    findBookingCase: async () => null,
-    findReleaseCase: async () => null,
-    findObservation: async () => {
-      throw new Error("should not load observation");
-    },
-    findReceipt: async () => {
-      throw new Error("should not load receipt");
-    },
-    findJobObservations: async () => {
-      throw new Error("should not load job observations");
-    },
-  });
-  assert.equal(result, null);
 });

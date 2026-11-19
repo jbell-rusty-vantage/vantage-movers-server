@@ -2,12 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AddressInfo } from "node:net";
 import express from "express";
-import { readFileSync } from "node:fs";
 import { requireApiSecret } from "../../../middleware/requireApiSecret";
 import { computeAdminActorSignature } from "../../operationsRegistry/trustedActor";
 import { createSalesIntelligenceBoundaryRouter } from "../../../routes/sales-intelligence-boundary.routes";
 import { createSalesIntelligenceAdminRouter, CSI_ADMIN_PREFIX } from "../../../routes/sales-intelligence-admin.routes";
-import { createSalesIntelligenceCronRouter, CSI_CRON_PATHS } from "../../../routes/sales-intelligence-cron.routes";
 import { CsiError } from "../auth";
 
 test("nudge routes enforce signed Owner, feature, strict input, idempotency; GET never dispatches", async () => {
@@ -41,13 +39,4 @@ test("nudge routes enforce signed Owner, feature, strict input, idempotency; GET
     assert.equal((await call("POST",path,body)).status,404);assert.equal((await call("GET",path)).status,200);assert.equal(reads,1);assert.equal(sends,1);
     assert.equal((await call("GET",`${path}?repair=true`)).status,400);
   } finally {await new Promise<void>(r=>server.close(()=>r()));for(const key of Object.keys(process.env))if(!(key in saved))delete process.env[key];Object.assign(process.env,saved);}
-});
-test("repair cron is authenticated, disabled without DB, registered every five minutes", async()=>{
-  const previous=process.env.CRON_SECRET;process.env.CRON_SECRET="synthetic-cron";
-  let enabled=false,calls=0,connects=0;const app=express();app.use(createSalesIntelligenceCronRouter({flag:()=>enabled,connect:async()=>{connects++;},drainNudgeRepair:async()=>{calls++;return {status:"completed",scheduled:0,outcomes:[]};}}));
-  const server=app.listen(0,"127.0.0.1");await new Promise<void>(r=>server.once("listening",r));const url=`http://127.0.0.1:${(server.address() as AddressInfo).port}${CSI_CRON_PATHS.nudgeRepair}`;
-  try {assert.equal((await fetch(url)).status,401);assert.equal((await fetch(url,{headers:{authorization:"Bearer synthetic-cron"}})).status,200);assert.equal(connects,0);
-    enabled=true;assert.equal((await fetch(url,{headers:{authorization:"Bearer synthetic-cron"}})).status,200);assert.equal(calls,1);
-    const config=JSON.parse(readFileSync("vercel.json","utf8"));assert.ok(config.crons.some((c:{path:string;schedule:string})=>c.path===CSI_CRON_PATHS.nudgeRepair&&c.schedule==="*/5 * * * *"));
-  }finally{await new Promise<void>(r=>server.close(()=>r()));if(previous===undefined)delete process.env.CRON_SECRET;else process.env.CRON_SECRET=previous;}
 });

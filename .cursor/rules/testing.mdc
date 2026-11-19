@@ -4,10 +4,15 @@ globs: src/**/*.ts,scripts/**/*.ts
 alwaysApply: false
 ---
 
-# Testing Expectations
+# Testing expectations
 
-- Run targeted tests for changed behavior. This repo uses Node's built-in test runner via `pnpm test` and `src/**/*.test.ts`.
-- Add or update tests for business logic changes, especially leads, bookings, cancellations, CRM, RingCentral, Google Sheets sync, Granot lifecycle health, validation, and admin reads.
-- Prefer unit tests for pure logic and integration-style tests at Mongo/API/service boundaries.
-- Avoid running expensive production-touching scripts as tests. Keep tests under `TEST_MODE` and use existing test setup helpers.
-- If tests are not possible or the changed area has no test seam, explain that in the final response with the validation that was run instead.
+Keep tests next to the server logic they exercise. Start with the business decision that could regress and the observable result that would reveal it. Extend a nearby scenario when it already reaches the same entry point.
+
+- **Leads and RingCentral.** Cover admission, queue qualification, duplicate and Form Fill treatment, and the effect on reporting or billing.
+- **Bookings and Cancellations.** Cover official records, Lead linkage, refund and attribution snapshots, and what a competing or replayed command can write.
+- **Sales Outreach.** Cover assignment, eligibility, cadence and rep credit through the Desk command or capture pipeline that changes them.
+- **Sheet Sync.** Cover the destination tab, physical row identity and recovery after an ambiguous provider response. Use a stateful workbook when rows move between tabs.
+
+Prefer a focused decision test for an important policy boundary. Use the public route or service when several helpers work together. Put uniqueness, transactions, lease fencing and replay on a loopback replica. Assert side effects as well as the response when a rejected or repeated command could bill a Lead, credit a rep or append a row twice.
+
+Run the focused file with the test bootstrap, then run `pnpm test` for the default suite. Use `pnpm vantage -- test sheet-sync --suite replica --json`, `pnpm test:granot-lifecycle:replica` or `pnpm test:outreach:replica` for the corresponding local fixture. Follow the [local setup](../../CLOUD_AGENTS.md) and each runner’s database guard. Report gated skips separately from executed proof.

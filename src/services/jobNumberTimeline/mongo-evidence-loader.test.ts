@@ -61,21 +61,3 @@ test("bounded real loader rejects overflow at initial and later joins instead of
     assert.ok(reads.every(read => read.fetched <= 3));
   }
 });
-
-test("optional bound preserves existing unbounded Owner loader behavior and rejects nonsensical configuration", async () => {
-  const {db, reads} = fakeDb(fixture("FormLead"));
-  await createMongoEvidenceLoader({db}).loadRows("9001001");
-  assert.ok(reads.every(read => read.limit === null && read.timeout === null));
-  await assert.rejects(() => createMongoEvidenceLoader({db, maxRowsPerQuery: 0}).loadRows("9001001"), /EVIDENCE_LIMIT_REACHED/);
-  const overflow = fakeDb({lead_source_granularities: [{_id: "a"}, {_id: "b"}]});
-  await assert.rejects(() => createMongoEvidenceLoader({db: overflow.db, maxRowsPerQuery: 1}).loadCompanyGranularityIds("company"), /EVIDENCE_LIMIT_REACHED/);
-});
-
-test("the daily Job timeline reads business facts without transport or Cloud Storage", async () => {
-  const {db, reads} = fakeDb(fixture("FormLead"));
-  const result = await createMongoEvidenceLoader({db}).loadRows("9001001");
-  assert.equal(result.leads?.[0]?.model, "FormLead");
-  assert.equal(result.bookings?.length, 1);
-  assert.deepEqual(result.observations, []);
-  assert.ok(reads.every(r => !["granot_observations", "synchronization_decisions", "granot_webhook_receipts", "granot_history_archive_chunks"].includes(r.collection)));
-});

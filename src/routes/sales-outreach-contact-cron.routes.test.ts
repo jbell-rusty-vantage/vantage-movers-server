@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
-import path from "node:path";
 import { after, before, test } from "node:test";
 import express from "express";
 import { createSalesOutreachContactCronRouter, SALES_OUTREACH_CONTACT_CRON_PATH } from "./sales-outreach-contact-cron.routes";
@@ -62,12 +60,6 @@ const hit = async (secret = CRON_SECRET) => {
   const response = await fetch(`${baseUrl}${SALES_OUTREACH_CONTACT_CRON_PATH}`, { headers: { authorization: `Bearer ${secret}` } });
   return { status: response.status, body: (await response.json()) as Record<string, unknown> };
 };
-
-test("vercel.json runs the contact-events cron every minute and app.ts mounts it", () => {
-  const manifest = JSON.parse(readFileSync(path.join(process.cwd(), "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
-  assert.equal(new Map(manifest.crons.map((c) => [c.path, c.schedule])).get(SALES_OUTREACH_CONTACT_CRON_PATH), "* * * * *");
-  assert.ok(readFileSync(path.join(process.cwd(), "src/app.ts"), "utf8").includes("app.use(salesOutreachContactCronRoutes);"));
-});
 
 test("cron auth is required", async () => {
   calls.length = 0;

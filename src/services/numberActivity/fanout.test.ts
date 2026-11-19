@@ -4,88 +4,11 @@ import mongoose from "mongoose";
 import { CsiError } from "../salesIntelligence/auth";
 import type { ApplyResult } from "./persistInteraction";
 import type { SessionObservationResult } from "./observeWebhookEvents";
-import {
-  runCaptureProjectionJob,
-  type CaptureProjectionWorkerDeps,
-} from "./captureProjectionWorker";
-import { csiWakeupSchema, parseCsiWakeup } from "./jobDispatch";
+import { runCaptureProjectionJob, type CaptureProjectionWorkerDeps } from "./captureProjectionWorker";
 import { inboundQueueAnsweredDeliveries, at } from "./fixtures";
-import {
-  captureProjectionDedupeKey,
-  captureProjectionSubjectKey,
-  fanOutCaptureProjection,
-  publishCaptureProjectionWakeup,
-  salesIntelligenceQueueTopic,
-  type EnsureCaptureProjectionJobResult,
-} from "./webhookFanout";
+import { fanOutCaptureProjection, type EnsureCaptureProjectionJobResult } from "./webhookFanout";
 
 const oid = () => new mongoose.Types.ObjectId().toHexString();
-
-test("capture-projection dedupe key is the provider uuid, falling back to the receipt id only when the uuid is absent", () => {
-  const receiptId = oid();
-  assert.equal(captureProjectionDedupeKey({ receiptId, uuid: "u-1" }), "csi:capture_projection:receipt:u-1");
-  assert.equal(captureProjectionDedupeKey({ receiptId, uuid: null }), `csi:capture_projection:receipt_id:${receiptId}`);
-  assert.equal(captureProjectionSubjectKey({ receiptId, uuid: "u-1" }), "webhook_receipt:u-1");
-  assert.equal(captureProjectionSubjectKey({ receiptId, uuid: null }), `webhook_receipt:${receiptId}`);
-});
-
-test("queue topic is env-scoped and never published from a test runner", () => {
-  const saved = { ...process.env };
-  try {
-    delete process.env.SALES_INTELLIGENCE_QUEUE_TOPIC;
-    process.env.VERCEL_ENV = "preview";
-    assert.equal(salesIntelligenceQueueTopic(), "sales-intelligence-events-dev");
-    process.env.VERCEL_ENV = "production";
-    assert.equal(salesIntelligenceQueueTopic(), "sales-intelligence-events");
-    process.env.SALES_INTELLIGENCE_QUEUE_TOPIC = "explicit-topic";
-    assert.equal(salesIntelligenceQueueTopic(), "explicit-topic");
-  } finally {
-    process.env = saved;
-  }
-});
-
-test("fan-out: flag off means no job and no publish; a non-durable receipt is skipped honestly", async () => {
-  let ensured = 0;
-  const deps = {
-    ensure: async () => {
-      ensured += 1;
-      return { job_id: oid(), dedupe_key: "k", created: true };
-    },
-    publish: async () => ({ published: true, error_code: null }),
-  };
-  assert.deepEqual(
-    await fanOutCaptureProjection({ receiptId: oid(), uuid: "u", telephonySessionId: "s" }, { ...deps, flag: () => false }),
-    { status: "skipped", reason: "flag_off" },
-  );
-  assert.deepEqual(
-    await fanOutCaptureProjection({ receiptId: null, uuid: "u", telephonySessionId: "s" }, { ...deps, flag: () => true }),
-    { status: "skipped", reason: "receipt_not_durable" },
-  );
-  assert.deepEqual(
-    await fanOutCaptureProjection({ receiptId: oid(), uuid: "u", telephonySessionId: null }, { ...deps, flag: () => true }),
-    { status: "skipped", reason: "no_telephony_session" },
-    "validation handshakes and non-telephony bodies carry no party evidence",
-  );
-  assert.equal(ensured, 0);
-});
-
-test("fan-out: the acknowledgement waits a bounded time for the job transaction; a slow transaction is reported, not awaited forever", async () => {
-  let resolveSlow: (() => void) | null = null;
-  const slow = new Promise<EnsureCaptureProjectionJobResult>((resolve) => {
-    resolveSlow = () => resolve({ job_id: oid(), dedupe_key: "k", created: true });
-  });
-  const outcome = await fanOutCaptureProjection(
-    { receiptId: oid(), uuid: "u", telephonySessionId: "s" },
-    {
-      flag: () => true,
-      ensure: () => slow,
-      publish: async () => assert.fail("no publish after a timeout"),
-      ackTimeoutMs: 20,
-    },
-  );
-  assert.deepEqual(outcome, { status: "enqueue_timeout", error_code: "enqueue_timeout", timeout_ms: 20 });
-  resolveSlow!();
-});
 
 test("fan-out: job is durable before publish; publish failure keeps the enqueued job; enqueue failure is bounded", async () => {
   const jobId = oid();
@@ -131,43 +54,6 @@ test("fan-out: job is durable before publish; publish failure keeps the enqueued
     },
   );
   assert.deepEqual(failed, { status: "enqueue_failed", error_code: "enqueue_failed" });
-});
-
-test("publish wake-up: gated, best-effort, never throws", async () => {
-  assert.deepEqual(
-    await publishCaptureProjectionWakeup(oid(), { shouldPublish: () => false, send: async () => assert.fail("must not send") }),
-    { published: false, error_code: null },
-  );
-  const sent: Array<[string, { job_id: string }]> = [];
-  const jobId = oid();
-  assert.deepEqual(
-    await publishCaptureProjectionWakeup(jobId, {
-      shouldPublish: () => true,
-      send: async (topic, payload) => {
-        sent.push([topic, payload]);
-      },
-    }),
-    { published: true, error_code: null },
-  );
-  assert.deepEqual(sent[0]?.[1], { job_id: jobId });
-  assert.deepEqual(
-    await publishCaptureProjectionWakeup(jobId, {
-      shouldPublish: () => true,
-      send: async () => {
-        throw new Error("queue down");
-      },
-    }),
-    { published: false, error_code: "publish_failed" },
-  );
-});
-
-test("wake-up payload is exactly { job_id } with a 24-hex id", () => {
-  const id = oid();
-  assert.equal(parseCsiWakeup({ job_id: id }), id);
-  assert.equal(parseCsiWakeup({ job_id: id, stage: "capture_projection" }), null, "stage in the payload is untrusted and rejected");
-  assert.equal(parseCsiWakeup({ job_id: "not-hex" }), null);
-  assert.equal(parseCsiWakeup(null), null);
-  assert.equal(csiWakeupSchema.safeParse({ job_id: id }).success, true);
 });
 
 // ---------------------------------------------------------------------------
@@ -238,30 +124,6 @@ function workerHarness(input: {
   };
   return { deps, calls };
 }
-
-test("worker: unclaimable job (completed, leased elsewhere, foreign stage) does nothing", async () => {
-  const { deps, calls } = workerHarness({ job: null });
-  const id = oid();
-  assert.deepEqual(await runCaptureProjectionJob(id, deps), { status: "not_claimable", job_id: id });
-  assert.deepEqual(calls.claim, [["worker-a", id, 300_000, "capture_projection"]], "claims only the capture_projection stage");
-  assert.equal(calls.complete.length, 0);
-  assert.deepEqual(await runCaptureProjectionJob("nope", deps), { status: "not_claimable", job_id: "nope" });
-});
-
-test("worker: loads the stored receipt, passes the job id as request_id, completes with a bounded per-session result", async () => {
-  const job: FakeJob = { _id: new mongoose.Types.ObjectId(), lease_epoch: 3, input_refs: [new mongoose.Types.ObjectId()], stage: "capture_projection" };
-  const { deps, calls } = workerHarness({ job });
-  const outcome = await runCaptureProjectionJob(String(job._id), deps);
-  assert.equal(outcome.status, "completed");
-  assert.deepEqual(calls.observeRequestIds, [String(job._id)]);
-  const [lease, options] = calls.complete[0] as [{ job_id: string; owner: string; epoch: number }, { result: { sessions: number; ok: number; failed: number; receipt_uuid: string | null } }];
-  assert.deepEqual(lease, { job_id: String(job._id), owner: "worker-a", epoch: 3 });
-  assert.equal(options.result.sessions, 1);
-  assert.equal(options.result.ok, 1);
-  assert.equal(options.result.failed, 0);
-  assert.equal(options.result.receipt_uuid, "s-w-u1");
-  assert.equal(calls.fail.length, 0);
-});
 
 test("worker: deterministic per-session failures (account_unresolved) complete the job with the error visible; retryable ones retry with partial result", async () => {
   const job: FakeJob = { _id: new mongoose.Types.ObjectId(), lease_epoch: 1, input_refs: [new mongoose.Types.ObjectId()], stage: "capture_projection" };

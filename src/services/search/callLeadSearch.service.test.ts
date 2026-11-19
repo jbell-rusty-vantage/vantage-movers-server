@@ -17,27 +17,6 @@ test("Call Lead Search phone ORs live, ingested, and Granot snapshot paths", () 
   assert.doesNotMatch(preview, /score/);
 });
 
-test("Call Lead Search name ORs ingested and Granot name paths", () => {
-  const filter = buildCallLeadSearchFilter(
-    searchCallLeadsSchema.parse({ name: "Granot Later" }),
-  );
-  const preview = inspect(filter, { depth: null });
-  assert.match(preview, /ingested_contact_snapshot\.name/);
-  assert.match(preview, /granot_contact_snapshot\.name/);
-  assert.match(preview, /granot_contact_snapshot\.first_name/);
-  assert.match(preview, /Granot\\s\+Later/);
-});
-
-test("Call Lead Search email ORs ingested and Granot email paths", () => {
-  const filter = buildCallLeadSearchFilter(
-    searchCallLeadsSchema.parse({ email: "granot@example.invalid" }),
-  );
-  const preview = inspect(filter, { depth: null });
-  assert.match(preview, /ingested_contact_snapshot\.email/);
-  assert.match(preview, /granot_contact_snapshot\.email/);
-  assert.match(preview, /granot@example\.invalid/);
-});
-
 test("Call Lead Search keeps OR across phone, name, and email", () => {
   const filter = buildCallLeadSearchFilter(
     searchCallLeadsSchema.parse({

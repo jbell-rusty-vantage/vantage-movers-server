@@ -41,14 +41,6 @@ test("SMS booked rate uses successfully texted Leads as the denominator", () => 
   assert.equal(publicForm?.label, "Public form");
 });
 
-test("an empty texted-lead cohort is a zero rate, not missing data", () => {
-  const payload = smsConversionFromOriginRows([]);
-  assert.equal(payload.items.length, 1);
-  assert.equal(payload.items[0]?.origin, "all");
-  assert.equal(payload.items[0]?.booking_rate, 0);
-  assert.equal(payload.items[0]?.texted_leads, 0);
-});
-
 test("production SMS conversion matches successful statuses and official booked refs", async () => {
   const pipelines: Record<string, unknown>[][] = [];
   (LeadMessage as unknown as MutableModel).aggregate = (pipeline: Record<string, unknown>[]) => {

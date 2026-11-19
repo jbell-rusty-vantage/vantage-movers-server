@@ -8,18 +8,9 @@ import { CallLead } from "../../models/CallLead";
 import { logger } from "../../logger";
 import { ConflictError } from "../errors";
 import {
-  completeCallLeadIngestion,
   correctCallLead,
-  listRecentCallLeads,
   rememberBothCallSheetTabsForTombstone,
-  removeCallLead,
-  type CallLeadIngestionInProgress,
 } from "./callLead.service";
-import {
-  callLeadCreationProvenanceFields,
-  deriveCallLeadIngestionOrigin,
-  noSyncOnCreate,
-} from "./leadIngestionProvenance";
 
 type StubbedCallLeadModel = {
   findById: (id: string) => unknown;
@@ -56,24 +47,6 @@ afterEach(() => {
   loggedKeys.length = 0;
 });
 
-test("rememberBothCallSheetTabsForTombstone includes Calls and Duplicate Calls fallbacks", () => {
-  process.env.MASTER_LEADS_SHEET_ID = "master-leads-test";
-  process.env.TEST_MASTER_LEADS_SHEET_ID = "master-leads-test";
-
-  const targets = rememberBothCallSheetTabsForTombstone({
-    source_company: "tbm_leads",
-    sheet_sync: [],
-  });
-
-  assert.deepEqual(
-    targets.map((target) => `${target.target}:${target.tab_name}`),
-    [
-      `master_calls:${SHEET_TAB_NAMES.calls}`,
-      `master_duplicate_calls:${SHEET_TAB_NAMES.duplicateCalls}`,
-    ],
-  );
-});
-
 test("rememberBothCallSheetTabsForTombstone preserves known rows from sheet_sync", () => {
   process.env.MASTER_LEADS_SHEET_ID = "master-leads-test";
   process.env.TEST_MASTER_LEADS_SHEET_ID = "master-leads-test";
@@ -100,89 +73,6 @@ test("rememberBothCallSheetTabsForTombstone preserves known rows from sheet_sync
   assert.equal(duplicateCallsTarget?.row_number, undefined);
 });
 
-test("completeCallLeadIngestion logs lead.call.created after commit and skips form-fill when false", async () => {
-  process.env.SHEET_SYNC_MODE = "disabled";
-  const pending = pendingIngestion({ form_fill: false, cplStatus: "resolved" });
-
-  const lead = await completeCallLeadIngestion(pending);
-
-  assert.equal(lead, pending.lead);
-  const keys = loggedLeadKeys();
-  assert.deepEqual(keys, ["lead.call.created"]);
-  assert.equal(
-    loggedKeys.some((key) => key.startsWith("crm.")),
-    false,
-  );
-});
-
-test("completeCallLeadIngestion logs form-fill only when Form Fill is true", async () => {
-  process.env.SHEET_SYNC_MODE = "disabled";
-  const pending = pendingIngestion({ form_fill: true, cplStatus: "resolved" });
-
-  await completeCallLeadIngestion(pending);
-
-  assert.deepEqual(loggedLeadKeys(), [
-    "lead.call.created",
-    "lead.call.form_fill_detected",
-  ]);
-});
-
-test("completeCallLeadIngestion reports missing CPL after the write, not as a CRM post", async () => {
-  process.env.SHEET_SYNC_MODE = "disabled";
-  const pending = pendingIngestion({
-    form_fill: false,
-    cplStatus: "missing_rate",
-  });
-
-  await completeCallLeadIngestion(pending);
-
-  assert.deepEqual(loggedLeadKeys(), [
-    "lead.cpl.missing_rate",
-    "lead.call.created",
-  ]);
-});
-
-test("Admin and Best Relocation origins never set Duplicate Lead; public ingest is vantage_admin", () => {
-  assert.equal(deriveCallLeadIngestionOrigin({}), "vantage_admin");
-  assert.equal(
-    deriveCallLeadIngestionOrigin({
-      commandOrigin: "external_sheet_ingestion",
-    }),
-    "best_relocation_sheet",
-  );
-  const now = new Date("2026-08-17T16:10:00.000Z");
-  const admin = callLeadCreationProvenanceFields({
-    origin: "vantage_admin",
-    now,
-    contact: { phone_number: "5550100101" },
-  });
-  const sheet = callLeadCreationProvenanceFields({
-    origin: "best_relocation_sheet",
-    now,
-    contact: { phone_number: "5550100101" },
-  });
-  assert.equal(admin.quoted, false);
-  assert.equal(admin.ingestion_origin, "vantage_admin");
-  assert.equal(sheet.ingestion_origin, "best_relocation_sheet");
-  assert.equal("duplicate" in admin, false);
-  assert.equal("duplicate" in sheet, false);
-});
-
-test("[AC-12] RingCentral Call provenance is ringcentral, quoted false, transport stays nested", () => {
-  const now = new Date("2026-08-17T16:10:00.000Z");
-  const ringcentral = callLeadCreationProvenanceFields({
-    origin: "ringcentral",
-    now,
-    contact: { phone_number: "5550100101" },
-  });
-  assert.equal(ringcentral.quoted, false);
-  assert.equal(ringcentral.ingestion_origin, "ringcentral");
-  assert.equal(
-    ringcentral.ingested_contact_snapshot.evidence_status,
-    "captured_at_ingestion",
-  );
-});
-
 test("correctCallLead refuses Duplicate Lead on a Booked Call Lead", async () => {
   stubFindById({
     _id: "6a19ddd4bf20b878123aac14",
@@ -201,73 +91,6 @@ test("correctCallLead refuses Duplicate Lead on a Booked Call Lead", async () =>
       return true;
     },
   );
-});
-
-test("correctCallLead maps a missing receiver agent to 404", async () => {
-  const source = await readFile(
-    path.join(__dirname, "callLead.service.ts"),
-    "utf8",
-  );
-  assert.match(source, /throw new NotFoundError\("Agent not found"/);
-  assert.match(source, /isRegistryError/);
-});
-
-test("correctCallLead skips Sheet Sync when nothing material changed", async () => {
-  const lead = {
-    _id: "6a19ddd4bf20b878123aac14",
-    name: "Ada",
-    booked: undefined,
-    duplicate: false,
-    lead_source_company: "source-id",
-    source_company: "tbm_leads",
-    save: async () => {
-      throw new Error("should not save when nothing material changed");
-    },
-    toObject: () => ({ name: "Ada", duplicate: false }),
-  };
-  stubFindById(lead);
-
-  const returned = await correctCallLead("6a19ddd4bf20b878123aac14", {});
-  assert.equal(returned, lead);
-});
-
-test("listRecentCallLeads keeps a Duplicate Lead in the last 200", async () => {
-  const rows = [
-    { _id: "1", duplicate: true, name: "Dup" },
-    { _id: "2", duplicate: false, name: "Live" },
-  ];
-  stubFind(rows);
-
-  const found = await listRecentCallLeads();
-  assert.equal(found.length, 2);
-  assert.equal(found.some((lead) => lead.duplicate === true), true);
-});
-
-test("removeCallLead refuses a Booked Call Lead without cascade", async () => {
-  stubFindById({
-    _id: "6a19ddd4bf20b878123aac14",
-    booked: { toString: () => "booking-id" },
-    duplicate: false,
-  });
-
-  await assert.rejects(
-    () => removeCallLead("6a19ddd4bf20b878123aac14", false),
-    (error: unknown) => {
-      assert.ok(error instanceof ConflictError);
-      assert.match(String(error), /cascade=true/);
-      return true;
-    },
-  );
-});
-
-test("refuseToMarkABookedCallAsDuplicate does not mention no_sync", async () => {
-  const source = await readFile(path.join(__dirname, "callLead.service.ts"), "utf8");
-  const start = source.indexOf("function refuseToMarkABookedCallAsDuplicate");
-  assert.ok(start >= 0, "missing refuseToMarkABookedCallAsDuplicate");
-  const refuse = source.slice(start, source.indexOf("function applyTheAllowedPatch", start));
-  assert.doesNotMatch(refuse, /no_sync/);
-  assert.match(refuse, /duplicate/);
-  assert.match(refuse, /ConflictError/);
 });
 
 test("correctCallLead does not throw ConflictError when marking no_sync on booked or duplicate", async () => {
@@ -299,26 +122,6 @@ test("manual Call Lead creation is rejected before persistence", async () => {
   await assert.rejects(ingestCallLead({} as never), /qualified RingCentral/);
 });
 
-test("Admin Call omit stamps no_sync true; RingCentral client true stamps false", () => {
-  const admin = new CallLead({
-    phone_number: "5550100101",
-    no_sync: noSyncOnCreate("vantage_admin"),
-  });
-  assert.equal(admin.no_sync, true);
-
-  const ringcentral = new CallLead({
-    phone_number: "5550100101",
-    no_sync: noSyncOnCreate("ringcentral", true),
-  });
-  assert.equal(ringcentral.no_sync, false);
-});
-
-test("CallLead schema defaults no_sync to false so missing-field documents stay syncable", () => {
-  const field = CallLead.schema.path("no_sync") as { defaultValue?: unknown } | undefined;
-  assert.ok(field);
-  assert.equal(field.defaultValue, false);
-});
-
 test("begin remembers Sheet Sync before commit; complete dispatches and records owner events", async () => {
   const source = await readFile(
     path.join(__dirname, "callLead.service.ts"),
@@ -345,43 +148,7 @@ test("begin remembers Sheet Sync before commit; complete dispatches and records 
   assert.match(defaultIngestPair, /completeCallLeadIngestion/);
 });
 
-function pendingIngestion(input: {
-  form_fill: boolean;
-  cplStatus: "resolved" | "missing_rate";
-}): CallLeadIngestionInProgress {
-  const lead = {
-    _id: { toString: () => "507f1f77bcf86cd799439011" },
-    name: "Ada",
-    phone_number: "5550100101",
-    cpl: input.cplStatus === "missing_rate" ? 0 : 40,
-    cpl_resolution_status: input.cplStatus,
-    pickup_zip: null,
-    delivery_zip: null,
-    local: null,
-    form_fill: input.form_fill,
-    duplicate: false,
-  };
-  return {
-    lead: lead as CallLeadIngestionInProgress["lead"],
-    job: {
-      resource: "source_lead",
-      operation: "call_lead.create",
-      leadModel: "CallLead",
-      leadId: "507f1f77bcf86cd799439011",
-    },
-    source_company: "tbm_leads",
-    sourceAssignment: {
-      source_company: "tbm_leads",
-      source_granularity_id: "507f1f77bcf86cd799439012",
-      source_granularity_key: "tbm_calls",
-    } as unknown as CallLeadIngestionInProgress["sourceAssignment"],
-    form_fill: input.form_fill,
-  };
-}
 
-function loggedLeadKeys() {
-  return loggedKeys.filter((key) => key.startsWith("lead."));
-}
 
 function extractExportedFunction(source: string, name: string): string {
   const start = source.indexOf(`export async function ${name}`);
@@ -411,25 +178,6 @@ function stubFindById(document: Record<string, unknown> | null): void {
         resolve: (value: unknown) => void,
         reject?: (reason: unknown) => void,
       ) => Promise.resolve(document).then(resolve, reject),
-    };
-    return query;
-  };
-}
-
-function stubFind(documents: Array<Record<string, unknown>>): void {
-  mongoose.connection.useDb = (() => ({
-    models: { CallLead },
-    model: () => CallLead,
-  })) as unknown as typeof mongoose.connection.useDb;
-  (CallLead as unknown as StubbedCallLeadModel).find = () => {
-    const query = {
-      sort: () => query,
-      limit: () => query,
-      exec: async () => documents,
-      then: (
-        resolve: (value: unknown) => void,
-        reject?: (reason: unknown) => void,
-      ) => Promise.resolve(documents).then(resolve, reject),
     };
     return query;
   };

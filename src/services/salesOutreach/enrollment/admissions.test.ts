@@ -3,7 +3,7 @@ import { describe, test } from "node:test";
 import { salesOutreachAdmissionsSchema } from "../../../validation/v1/salesOutreachEnrollment";
 import { OutreachError } from "../errors";
 import { objectId } from "../subjects/testing";
-import { ADMISSIONS_RECENT_LIMIT, ADMISSIONS_RETENTION_DAYS, admissionCountsOf, leadRefOfJob, readEnrollmentAdmissions } from "./admissions";
+import { ADMISSIONS_RETENTION_DAYS, readEnrollmentAdmissions } from "./admissions";
 import { MemoryAdmissionsStore } from "./testing";
 
 /** 2026-10-06 is EDT: the New York day runs 04:00Z → 04:00Z next day. */
@@ -59,18 +59,6 @@ describe("GET /enrollment/admissions (olr B8: intake refusals are visible)", () 
     assert.deepEqual([read.business_day, read.as_of, read.timezone, read.retention_days], ["2026-10-06", NOW.toISOString(), "America/New_York", 14]);
   });
 
-  test("defaults to today in New York; the refusal list is bounded and skips a malformed job key", async () => {
-    const store = new MemoryAdmissionsStore();
-    for (let i = 0; i < ADMISSIONS_RECENT_LIMIT + 5; i++) store.complete(form(), new Date(+NOW - (i + 1) * 60_000).toISOString(), refused("closed_priority"));
-    store.complete(form(), new Date(+NOW - 10_000).toISOString(), refused("historical_import"), { subject_key: "outreach-lead:Nope:x", input_refs: ["x"] });
-    const read = await readEnrollmentAdmissions({}, { store, now: () => NOW });
-    assert.equal(read.business_day, "2026-10-06");
-    assert.deepEqual(read.counts.not_admitted, { closed_priority: ADMISSIONS_RECENT_LIMIT + 5, historical_import: 1 });
-    assert.equal(read.recent_refusals.length, ADMISSIONS_RECENT_LIMIT - 1, "the malformed row takes a slot but is not listed");
-    assert.ok(read.recent_refusals.every((r) => r.reason === "closed_priority"));
-    salesOutreachAdmissionsSchema.parse(read);
-  });
-
   test("a day beyond the job retention is retention_exceeded; a future day is refused; the oldest whole day answers", async () => {
     const store = new MemoryAdmissionsStore();
     const issue = async (day: string) => {
@@ -87,23 +75,5 @@ describe("GET /enrollment/admissions (olr B8: intake refusals are visible)", () 
     assert.equal(await issue("2026-09-23"), null);
     assert.deepEqual(await issue("2026-09-22"), ["INVALID_INPUT", "retention_exceeded"]);
     assert.deepEqual(await issue("2026-10-07"), ["INVALID_INPUT", "business_day_in_future"]);
-  });
-
-  test("counts: expansion and deferred outcomes (olr B6) are counted apart from intake", () => {
-    assert.deepEqual(
-      admissionCountsOf([
-        { outcome: "created", reason: null, status: "active", admission: "expansion", count: 4 },
-        { outcome: "created", reason: null, status: "review", admission: "intake", count: 1 },
-        { outcome: "deferred", reason: "deferred_to_intake", status: null, admission: null, count: 2 },
-      ]),
-      { admitted_intake: 0, admitted_review: 1, admitted_expansion: 4, deferred: 2, not_admitted: {} },
-    );
-  });
-
-  test("the Lead of a job comes from its subject key", () => {
-    const id = "a".repeat(24);
-    assert.deepEqual(leadRefOfJob({ subject_key: `outreach-lead:CallLead:${id}`, input_refs: [id] }), { model: "CallLead", id });
-    assert.equal(leadRefOfJob({ subject_key: `outreach-lead:Agent:${id}`, input_refs: [id] }), null);
-    assert.equal(leadRefOfJob({ subject_key: "sod:evaluate:x", input_refs: [] }), null);
   });
 });

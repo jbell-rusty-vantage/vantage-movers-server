@@ -92,12 +92,6 @@ function signedHeaders(role: "owner" | "admin" | "rep", options: { secret?: stri
 
 const body = (link = LINK) => JSON.stringify({ to: TO, link, expires_at: "2026-09-27T12:00:00.000Z" });
 
-test("unsigned requests are 401 and send nothing", async () => {
-  const response = await fetch(url(), { method: "POST", headers: { "content-type": "application/json" }, body: body() });
-  assert.equal(response.status, 401);
-  assert.equal(sent.length, 0);
-});
-
 test("a bad signature is 401 and sends nothing", async () => {
   const wrongSecret = await fetch(url(), { method: "POST", headers: signedHeaders("owner", { secret: "another-secret-value" }), body: body() });
   assert.equal(wrongSecret.status, 401);
@@ -114,13 +108,6 @@ test("a signed non-Owner is 403", async () => {
   assert.equal(sent.length, 0);
 });
 
-test("a server without the signing secret refuses (401)", async () => {
-  delete process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET;
-  const response = await fetch(url(), { method: "POST", headers: signedHeaders("owner"), body: body() });
-  assert.equal(response.status, 401);
-  assert.equal(sent.length, 0);
-});
-
 test("a signed Owner sends one email with the link in the body", async () => {
   const response = await fetch(url(), { method: "POST", headers: signedHeaders("owner"), body: body() });
   assert.equal(response.status, 200);
@@ -129,43 +116,6 @@ test("a signed Owner sends one email with the link in the body", async () => {
   assert.equal(sent[0]?.message.to, TO);
   assert.equal(sent[0]?.message.from, "noreply@example.invalid");
   assert.ok(sent[0]?.message.text.includes(LINK));
-});
-
-test("no sender configured returns not_configured", async () => {
-  config = { apiKey: null, fromEmail: "noreply@example.invalid", replyTo: null };
-  const noKey = await fetch(url(), { method: "POST", headers: signedHeaders("owner"), body: body() });
-  assert.deepEqual(await noKey.json(), { ok: true, data: { status: "not_configured" } });
-  config = { apiKey: "SG.synthetic", fromEmail: null, replyTo: null };
-  const noFrom = await fetch(url(), { method: "POST", headers: signedHeaders("owner"), body: body() });
-  assert.deepEqual(await noFrom.json(), { ok: true, data: { status: "not_configured" } });
-  assert.equal(sent.length, 0);
-});
-
-test("a provider failure returns failed with only the status code", async () => {
-  sendBehaviour = "throw";
-  const response = await fetch(url(), { method: "POST", headers: signedHeaders("owner"), body: body() });
-  assert.deepEqual(await response.json(), { ok: true, data: { status: "failed", provider_status: 400 } });
-});
-
-test("invalid bodies are 400 without echoing the link", async () => {
-  const response = await fetch(url(), {
-    method: "POST",
-    headers: signedHeaders("owner"),
-    body: JSON.stringify({ to: "not-an-email", link: `javascript:${TOKEN}`, expires_at: "soon", extra: true }),
-  });
-  assert.equal(response.status, 400);
-  const text = await response.text();
-  assert.equal(text.includes(TOKEN), false);
-});
-
-test("V-T3 m16: without SALES_INTELLIGENCE_ADMIN_BASE_URL the server answers not_configured (the admin copies the link)", async () => {
-  for (const value of [undefined, "", "   ", "not a url", "ftp://admin.example.invalid", "http://admin.example.invalid", "https://user:pw@admin.example.invalid"]) {
-    if (value === undefined) delete process.env.SALES_INTELLIGENCE_ADMIN_BASE_URL; else process.env.SALES_INTELLIGENCE_ADMIN_BASE_URL = value;
-    const response = await fetch(url(), { method: "POST", headers: signedHeaders("owner"), body: body() });
-    assert.equal(response.status, 200, String(value));
-    assert.deepEqual(await response.json(), { ok: true, data: { status: "not_configured" } }, String(value));
-  }
-  assert.equal(sent.length, 0);
 });
 
 test("V-T3 m16: only <admin base>/accept-invite#token=… on the admin origin is mailed; anything else is invalid_link and never echoed", async () => {

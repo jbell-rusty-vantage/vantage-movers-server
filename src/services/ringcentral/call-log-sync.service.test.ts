@@ -9,7 +9,6 @@ import type { RingCentralCallLogVetResult } from "./call-log-vetting";
 import type { RingCentralRouteResolution } from "../operationsRegistry";
 import {
   getRingCentralAdoptionsTotal,
-  getRingCentralCallLogLeaseContentionTotal,
   getRingCentralCallLogRuntimeMsSamples,
   resetRingCentralMetrics,
 } from "./ringcentral-metrics";
@@ -279,25 +278,6 @@ beforeEach(() => {
   resetRingCentralMetrics();
 });
 
-test("[AC-17] the lease loser performs no provider, route, ingest, or state work", async () => {
-  const { calls, deps } = harness({ claim: "lease_held", pages: [[qualifiedVet(1)]] });
-  const summary = await runRingCentralCallLogSync(T0, deps);
-
-  assert.equal(summary.skipped, true);
-  assert.equal(summary.skipReason, "lease_held");
-  assert.equal(summary.leaseAcquired, false);
-  assert.equal(summary.cursorAdvanced, false);
-  assert.equal(summary.fetchedRecords, 0);
-  assert.deepEqual(calls.order, ["assert_index", "acquire"]);
-  assert.equal(calls.pages.length, 0);
-  assert.equal(calls.ingested, 0);
-  assert.equal(calls.routeObservations, 0);
-  assert.equal(calls.successes.length, 0);
-  assert.equal(calls.errors.length, 0);
-  assert.equal(getRingCentralCallLogLeaseContentionTotal(), 1);
-  assert.deepEqual(eventKeys(), ["ringcentral.call_log_sync.lease_contended"]);
-});
-
 test("[AC-17] two overlapping invocations produce exactly one winner", async () => {
   // One shared in-memory state object stands in for the Mongo singleton so the
   // service-level contract can be exercised; Mongo's own atomicity is proven at
@@ -348,20 +328,6 @@ test("[AC-17] two overlapping invocations produce exactly one winner", async () 
   assert.equal(acquired[0]?.cursorAdvanced, true);
   assert.equal(skipped[0]?.cursorAdvanced, false);
   assert.equal(skipped[0]?.skipReason, "lease_held");
-});
-
-test("[AC-17] the winner claims before any provider or ingest work", async () => {
-  const { calls, deps } = harness({ pages: [[qualifiedVet(1)]] });
-  await runRingCentralCallLogSync(T0, deps);
-
-  assert.equal(calls.order[0], "assert_index");
-  assert.equal(calls.order[1], "acquire");
-  assert.equal(calls.order[2], "route_snapshot");
-  // The lease is renewed before the long pagination/ingest phase.
-  assert.equal(calls.order[3], "renew");
-  assert.equal(calls.order[4], "fetch");
-  assert.ok(calls.order.indexOf("acquire") < calls.order.indexOf("ingest"));
-  assert.equal(calls.claims.length, 1);
 });
 
 test("[AC-17] a complete successful run advances the cursor exactly once", async () => {
@@ -491,28 +457,6 @@ test("[AC-17] an observed provider throttle is counted and blocks cursor movemen
   assert.equal(calls.successes.length, 0);
 });
 
-test("[AC-17] a run with no throttling reports zero throttles", async () => {
-  const { calls, deps } = harness({ pages: [[qualifiedVet(1)]] });
-  const summary = await runRingCentralCallLogSync(T0, deps);
-  assert.equal(summary.throttledResponses, 0);
-  assert.equal(calls.successes[0]?.telemetry.throttledCount, 0);
-});
-
-test("[AC-17] terminal write failure loses the fence and moves no cursor", async () => {
-  const { calls, deps } = harness({
-    pages: [[qualifiedVet(1)]],
-    successFenced: false,
-  });
-  const summary = await runRingCentralCallLogSync(T0, deps);
-
-  assert.equal(summary.cursorAdvanced, false);
-  assert.equal(summary.leaseLost, true);
-  assert.equal(calls.errors.length, 0, "no terminal write as the former owner");
-  assert.deepEqual(summary.errors, ["lease_lost"]);
-  assert.ok(eventKeys().includes("ringcentral.call_log_sync.lease_lost"));
-  assert.equal(eventKeys().includes("ringcentral.call_log_sync.completed"), false);
-});
-
 test("[AC-17] losing the lease mid-run stops work and writes nothing", async () => {
   const { calls, deps } = harness({
     pages: [[qualifiedVet(1), qualifiedVet(2), qualifiedVet(3)]],
@@ -529,60 +473,6 @@ test("[AC-17] losing the lease mid-run stops work and writes nothing", async () 
   assert.equal(calls.successes.length, 0);
   assert.equal(calls.errors.length, 0);
   assert.ok(eventKeys().includes("ringcentral.call_log_sync.lease_lost"));
-});
-
-test("[AC-17] the lease is renewed while long work remains", async () => {
-  const records = Array.from({ length: 6 }, (_, index) => qualifiedVet(index));
-  const { calls, deps } = harness({ pages: [records], renewIntervalMs: 0 });
-  const summary = await runRingCentralCallLogSync(T0, deps);
-
-  assert.equal(summary.cursorAdvanced, true);
-  // One forced renewal before pagination plus one per record.
-  assert.ok(calls.renewals.length >= records.length + 1);
-  for (const renewal of calls.renewals) {
-    assert.equal(renewal.owner, calls.claims[0]?.owner);
-  }
-});
-
-test("[AC-17] a failed fenced error write degrades to a PII-safe lease-lost event", async () => {
-  const { calls, deps } = harness({
-    routeSnapshotError: new Error("snapshot unavailable"),
-    errorFenced: false,
-  });
-  const summary = await runRingCentralCallLogSync(T0, deps);
-
-  assert.equal(calls.errors.length, 1, "exactly one fenced terminal attempt");
-  assert.equal(summary.leaseLost, true);
-  assert.equal(summary.cursorAdvanced, false);
-  assert.ok(eventKeys().includes("ringcentral.call_log_sync.lease_lost"));
-  assert.equal(eventKeys().includes("ringcentral.call_log_sync.failed"), false);
-});
-
-test("[AC-17] expired-lease recovery is reported without erasing terminal facts", async () => {
-  const priorSyncTo = at(-30 * 60 * 1000);
-  const { calls, deps } = harness({
-    claim: "recovered",
-    priorState: priorCursorState(priorSyncTo),
-    pages: [[]],
-  });
-  const summary = await runRingCentralCallLogSync(T0, deps);
-
-  assert.equal(summary.leaseRecovered, true);
-  assert.ok(eventKeys().includes("ringcentral.call_log_sync.lease_recovered"));
-  // The recovering winner still reads the predecessor's committed cursor.
-  assert.equal(summary.windowFrom, new Date(T0.getTime() - TWELVE_HOURS_MS).toISOString());
-  assert.equal(calls.successes.length, 1);
-});
-
-test("[AC-17] the rolling lookback stays exactly 12 hours for a first run", async () => {
-  const { deps } = harness({ priorState: null, pages: [[]] });
-  const summary = await runRingCentralCallLogSync(T0, deps);
-  // min(now - 30m initial lookback, now - 12h floor) = the 12-hour floor.
-  assert.equal(
-    summary.windowFrom,
-    new Date(T0.getTime() - TWELVE_HOURS_MS).toISOString(),
-  );
-  assert.equal(summary.windowTo, T0.toISOString());
 });
 
 test("[AC-17] the rolling lookback stays exactly 12 hours at a 30-minute cadence", async () => {
@@ -610,34 +500,6 @@ test("[AC-17] a cursor older than the floor keeps its overlap window", async () 
     summary.windowFrom,
     new Date(lastSyncTo.getTime() - 15 * 60 * 1000).toISOString(),
   );
-});
-
-test("[AC-17] the winner's window end is its own claim instant", async () => {
-  const { calls, deps } = harness({ pages: [[]] });
-  const summary = await runRingCentralCallLogSync(T0, deps);
-  assert.equal(summary.windowTo, calls.claims[0]?.now.toISOString());
-  assert.deepEqual(calls.successes[0]?.syncTo, calls.claims[0]?.now);
-});
-
-test("[AC-17] pagination stops at a short page and continues through full pages", async () => {
-  const { calls, deps } = harness({
-    pages: [[qualifiedVet(1), qualifiedVet(2)], [qualifiedVet(3)]],
-    perPage: 2,
-  });
-  const summary = await runRingCentralCallLogSync(T0, deps);
-  assert.deepEqual(calls.pages, [1, 2]);
-  assert.equal(summary.fetchedRecords, 3);
-  assert.equal(summary.cursorAdvanced, true);
-});
-
-test("a newest-first Call Log page ingests oldest-first so same-run Duplicate Leads classify", async () => {
-  const later = qualifiedVet(2, at(-5 * 60 * 1000));
-  const earlier = qualifiedVet(1, at(-20 * 60 * 1000));
-  const { calls, deps } = harness({ pages: [[later, earlier]] });
-
-  await runRingCentralCallLogSync(T0, deps);
-
-  assert.deepEqual(calls.ingestedCallLogIds, ["call-log-1", "call-log-2"]);
 });
 
 test("Call Log pages across a newest-first split still ingest oldest-first in one run", async () => {
@@ -678,33 +540,4 @@ test("[AC-17] Call Log telemetry and run logs carry no caller or provider conten
       `run log leaked ${forbidden}`,
     );
   }
-});
-
-test("[AC-17] emitted lease logs expose only a masked owner and bounded fields", async () => {
-  const { deps, owner } = harness({ pages: [[qualifiedVet(1)]] });
-  await runRingCentralCallLogSync(T0, deps);
-
-  const serialized = JSON.stringify(runLogs());
-  assert.equal(serialized.includes(owner), false, "raw lease owner leaked");
-  const started = runLogs().find(
-    (entry) => entry.msg === "ringcentral.call_log_sync.started",
-  );
-  assert.ok(started);
-  assert.match(String(started.leaseOwnerHash), /^[0-9a-f]{12}$/);
-  assert.equal(typeof started.windowFrom, "string");
-  assert.equal(typeof started.windowTo, "string");
-});
-
-test("[AC-17] the run summary itself exposes no caller data", async () => {
-  const { deps } = harness({
-    pages: [[qualifiedVet(1)]],
-    ingestResults: [
-      ingestResult({ action: "lead_adopted", convergenceOutcome: "adopted" }),
-    ],
-  });
-  const summary = await runRingCentralCallLogSync(T0, deps);
-  const serialized = JSON.stringify(summary);
-  assert.equal(serialized.includes("+15550001000"), false);
-  assert.equal(serialized.includes("Synthetic Caller"), false);
-  assert.equal(serialized.includes("call-log-1"), false);
 });

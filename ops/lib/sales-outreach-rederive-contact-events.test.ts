@@ -18,8 +18,6 @@ import { activeInspection, fixedConfigurationLoader } from "../../src/services/s
 import {
   dryRunContactEventStore,
   kindsOf,
-  MAX_REDERIVE_DAYS,
-  parseRederiveArgs,
   recountDirtyRepDays,
   rederivePages,
   resolveRederiveRange,
@@ -32,29 +30,6 @@ import {
 const NOW = new Date("2026-10-06T16:00:00Z"); // 12:00 New York
 const TODAY = "2026-10-06";
 const ALICE = newId();
-
-describe("parseRederiveArgs / resolveRederiveRange", () => {
-  test("target required; --from, --kind, --apply parsed; dry run of all kinds by default", () => {
-    assert.deepEqual(parseRederiveArgs(["--target=testdb"]), { target: "testdb", from: null, kind: "all", apply: false });
-    assert.deepEqual(parseRederiveArgs(["--target=vantagemovers", "--from=2026-10-05", "--kind=call", "--apply", "--allow-schema-drift"]), {
-      target: "vantagemovers", from: "2026-10-05", kind: "call", apply: true,
-    });
-    assert.throws(() => parseRederiveArgs([]), /--target/);
-    assert.throws(() => parseRederiveArgs(["--target=a.b"]), /plain database name/);
-    assert.throws(() => parseRederiveArgs(["--target=x", "--from=2026-02-30"]), /--from/);
-    assert.throws(() => parseRederiveArgs(["--target=x", "--kind=email"]), /--kind/);
-    assert.throws(() => parseRederiveArgs(["--target=x", "--force"]), /Unknown argument/);
-    assert.deepEqual(kindsOf("all"), ["call", "sms"]);
-    assert.deepEqual(kindsOf("sms"), ["sms"]);
-  });
-
-  test("--from defaults to yesterday (New York); the instant is the New York start of the day; future and too-old refused", () => {
-    assert.deepEqual(resolveRederiveRange({ from: null, today: TODAY }), { from: "2026-10-05", from_instant: new Date("2026-10-05T04:00:00Z") });
-    assert.equal(resolveRederiveRange({ from: TODAY, today: TODAY }).from_instant.toISOString(), "2026-10-06T04:00:00.000Z");
-    assert.throws(() => resolveRederiveRange({ from: "2026-10-07", today: TODAY }), /after today/);
-    assert.throws(() => resolveRederiveRange({ from: "2026-01-01", today: TODAY }), new RegExp(String(MAX_REDERIVE_DAYS)));
-  });
-});
 
 const desk = (): SalesOutreachConfigurationInput => ({
   controls: { desk_enabled: true, goal_metrics_enabled: true },

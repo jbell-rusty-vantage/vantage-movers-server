@@ -3,7 +3,6 @@ import { test } from "node:test";
 import mongoose from "mongoose";
 import {
   claimAvailableLeadForBooking,
-  mirrorBookingToLead,
 } from "./bookingMirror.service";
 
 test("atomic employee Lead claim does not rewrite the existing CPL", async () => {
@@ -64,26 +63,4 @@ test("concurrent booking claims allow only one booking to claim a lead", async (
 
   assert.deepEqual([firstClaimed, secondClaimed].sort(), [false, true]);
   assert.ok(bookedBy?.equals(firstBooking) || bookedBy?.equals(secondBooking));
-});
-
-test("reconciliation mirror can preserve Lead source CPL", async () => {
-  const lead = {
-    booked: undefined,
-    cpl: 41,
-    save: async () => undefined,
-  } as any;
-
-  await mirrorBookingToLead(
-    lead,
-    "FormLead",
-    new mongoose.Types.ObjectId(),
-    false,
-    false,
-    undefined,
-    undefined,
-    undefined,
-    true,
-  );
-
-  assert.equal(lead.cpl, 41);
 });

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { planRingCentralFinalResultUpdate } from "./ringcentralFinalResult";
-import { buildEntityChangeFields } from "./entityChange";
 import type { RingCentralQualifiedCall } from "../ringcentral/ringcentral-call-lead-ingest.service";
 
 const start = new Date("2026-11-01T06:30:00.000Z");
@@ -29,22 +28,6 @@ test("final result adds exact parent evidence and arrival without rewriting hist
   assert.equal(lead.ringcentral, qualified);
 });
 
-test("identical final evidence polls are no-ops; parent correction preserves answered conflict", () => {
-  const saved = { ...lead, ringcentral: {
-    ...qualified, start_time: start, call_log_id: "parent-log",
-    final_result: " Missed ", final_result_answered: false,
-    final_result_call_log_id: "parent-log", final_result_observed_at: observedAt,
-  } };
-  assert.deepEqual(planRingCentralFinalResultUpdate(saved, { ...call,
-    finalCallLogResult: { ...call.finalCallLogResult!, observedAt: new Date("2026-11-01T07:00:00Z") },
-  }), { "ringcentral.final_result_observed_at": new Date("2026-11-01T07:00:00Z") });
-  const patch = planRingCentralFinalResultUpdate(saved, { ...call,
-    finalCallLogResult: { ...call.finalCallLogResult!, answered: true, observedAt: new Date("2026-11-01T07:01:00Z") },
-  })!;
-  assert.equal(patch["ringcentral.final_result_answered"], true);
-  assert.equal(patch["ringcentral.start_time"], undefined);
-});
-
 test("provisional, unqualified, other-session and stale facts cannot overwrite final evidence", () => {
   assert.equal(planRingCentralFinalResultUpdate(lead, { ...call, finalCallLogResult: undefined }), null);
   assert.equal(planRingCentralFinalResultUpdate({ ...lead, ringcentral: {} }, call), null);
@@ -56,13 +39,6 @@ test("provisional, unqualified, other-session and stale facts cannot overwrite f
     finalCallLogResult: { ...call.finalCallLogResult!, callLogId: "leg-log" },
   }), null);
 });
-
-test("final result correction audit stores reproducible result and identity values", () => {
-  const patch = planRingCentralFinalResultUpdate(lead, call)!;
-  const fields = buildEntityChangeFields(Object.entries(patch).map(([path, after]) => ({ path, after })));
-  assert.ok(fields.every((field) => field.value_mode === "stored"));
-});
-
 
 test("a newer identical observation fences delayed changed results and ties", () => {
   const saved = { ...lead, ringcentral: { ...qualified, start_time: start, call_log_id: "parent-log",

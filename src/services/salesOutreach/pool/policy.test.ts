@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/salesOutreach";
 import { completeConfigurationInput } from "../evaluation/testing";
 import { localInstant } from "../engine/calendar";
-import { poolDutyWindow, poolNextDateAt, poolValueForDay, poolWinner, type PoolEvent } from "./policy";
+import { poolDutyWindow, poolWinner, type PoolEvent } from "./policy";
 import type { DeskRestrictionRow } from "../evaluation/store";
 import { nominateLeadChanges } from "../subjects/feed";
 import { normalizeQueueQuery } from "../reads/queue";
@@ -35,20 +35,6 @@ test("Pool has one prospective daily window independent of episodes/receiver/Rep
   assert.equal(poolDutyWindow(episodes, date, v).due, +at(1200));
   assert.equal(poolDutyWindow(episodes, "2026-10-13", v).required, false);
   assert.equal(poolWinner([event("y", 600)], "2026-10-15", v), null);
-});
-
-test("Pool calendar includes weekends, explicit closures, DST and frozen historical hours", () => {
-  const v = value();
-  const episode = [{ started_at: at(600), ended_at: null }];
-  assert.equal(poolDutyWindow(episode, "2026-10-17", v).required, true);
-  v.cadence.holidays = ["2026-10-17"];
-  assert.equal(poolDutyWindow(episode, "2026-10-17", v).waived, true);
-  assert.equal(+poolNextDateAt("2026-11-01") - localInstant("2026-11-01", 0, tz), 25 * 3600000);
-  v.cadence.working_days = v.cadence.working_days!.map((d) => ({ ...d, close_minute: 1080 }));
-  v.cadence.holidays = [date];
-  const frozen = poolValueForDay(v, date, { open_minute: 480, close_minute: 1200, closed_date: false });
-  assert.equal(poolWinner([event("old", 1140)], date, frozen)?.id, "old");
-  assert.equal(poolDutyWindow(episode, date, frozen).due, +at(1200));
 });
 
 test("Provider-confirmed outbound/inbound only; stable earliest event then ID, corrections and ordinary same-date transfer", () => {

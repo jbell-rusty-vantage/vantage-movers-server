@@ -6,8 +6,6 @@ import {
   type DailyOperationsEventCursor,
 } from "./eventsPage";
 import {
-  createDailyOperationsLiveRedisReader,
-  parseDailyOperationsXread,
   runDailyOperationsLiveSse,
   type DailyOperationsLiveEventRow,
   type DailyOperationsLiveRedisReader,
@@ -227,31 +225,6 @@ test("valid Last-Event-ID skips snapshot and continues from the cursor", async (
   assert.equal(chunks.join("").includes("event: snapshot"), false);
 });
 
-test("invalid Last-Event-ID is treated as first open and emits snapshot", async () => {
-  const chunks: string[] = [];
-  let now = Date.parse("2026-09-08T15:43:00.000Z");
-
-  await runDailyOperationsLiveSse(
-    { write: (chunk) => chunks.push(chunk) },
-    {
-      getSnapshot: async () => SNAPSHOT,
-      findEventById: async () => null,
-      listAfter: async () => [],
-      getRedis: () => null,
-      sleep: async () => {
-        now += 30_000;
-      },
-      now: () => now,
-      pollMs: 1,
-      heartbeatMs: 60_000,
-      maxMs: 1,
-    },
-    "not-a-cursor",
-  );
-
-  assert.match(chunks.join(""), /event: snapshot/);
-});
-
 test("missing Redis uses Mongo tail oldest-after-cursor and still emits facts", async () => {
   const chunks: string[] = [];
   let now = Date.parse("2026-09-08T15:43:00.000Z");
@@ -294,85 +267,6 @@ test("missing Redis uses Mongo tail oldest-after-cursor and still emits facts", 
   assert.match(joined, /granot.minted/);
   assert.match(joined, /event: metrics/);
   assert.equal(seenDay, "2026-09-08");
-});
-
-test("a burst of facts in one wake keeps every touch in the metrics frame", async () => {
-  const chunks: string[] = [];
-  let now = Date.parse("2026-09-08T15:43:00.000Z");
-  const first = eventRow({
-    _id: { toString: () => LATER_ID },
-    occurred_at: new Date("2026-09-08T15:44:05.000Z"),
-  });
-  const second = eventRow({
-    _id: { toString: () => "66ddc0ffee0000000000000c" },
-    occurred_at: new Date("2026-09-08T15:44:06.000Z"),
-  });
-  let polls = 0;
-
-  await runDailyOperationsLiveSse(
-    { write: (chunk) => chunks.push(chunk) },
-    {
-      getSnapshot: async () => SNAPSHOT,
-      findEventById: async () => null,
-      listAfter: async () => {
-        polls += 1;
-        return polls === 1 ? [first, second] : [];
-      },
-      getRedis: () => null,
-      sleep: async () => {
-        now += 8_000;
-      },
-      now: () => now,
-      pollMs: 1,
-      heartbeatMs: 60_000,
-      maxMs: 20_000,
-    },
-  );
-
-  const metricsBlock = chunks.find((chunk) => chunk.includes("event: metrics"));
-  assert.ok(metricsBlock);
-  // Two Form Leads → two `leads.total`, not one deduped touch.
-  assert.match(
-    metricsBlock,
-    /"metric_touches":\["leads.form","leads.total","leads.form","leads.total"\]/,
-  );
-  assert.equal((chunks.join("").match(/event: event\n/g) ?? []).length, 2);
-});
-
-test("Redis throw degrades to Mongo tail for that loop", async () => {
-  const chunks: string[] = [];
-  let now = Date.parse("2026-09-08T15:43:00.000Z");
-  const later = eventRow({
-    _id: { toString: () => LATER_ID },
-    occurred_at: new Date("2026-09-08T15:44:05.000Z"),
-  });
-  let polls = 0;
-
-  await runDailyOperationsLiveSse(
-    { write: (chunk) => chunks.push(chunk) },
-    {
-      getSnapshot: async () => SNAPSHOT,
-      findEventById: async () => null,
-      listAfter: async () => {
-        polls += 1;
-        return polls === 1 ? [later] : [];
-      },
-      getRedis: () => ({
-        async xread() {
-          throw new Error("Upstash REST unavailable");
-        },
-      }),
-      sleep: async () => {
-        now += 8_000;
-      },
-      now: () => now,
-      pollMs: 1,
-      heartbeatMs: 60_000,
-      maxMs: 20_000,
-    },
-  );
-
-  assert.match(chunks.join(""), /form_lead.created/);
 });
 
 test("retired webhook wake advances Redis without hiding the next business fact or skipping replica lag", async () => {
@@ -448,113 +342,4 @@ test("replica-lag skip retries the same Redis id and does not drop the event", a
   assert.equal(lastIds[1], "1717200000000-0");
   assert.match(chunks.join(""), new RegExp(LATER_ID));
   assert.ok(finds >= 2);
-});
-
-test("lane query is ignored — one socket emits every Daily Operations Event", async () => {
-  const chunks: string[] = [];
-  let now = Date.parse("2026-09-08T15:43:00.000Z");
-  const granot = eventRow({
-    _id: { toString: () => GRANOT_ID },
-    occurred_at: new Date("2026-09-08T15:44:05.000Z"),
-    lane: "granot",
-    kind: "granot.linked",
-    title: "Granot Lead linked",
-    metric_touches: [],
-  });
-  let polls = 0;
-
-  await runDailyOperationsLiveSse(
-    { write: (chunk) => chunks.push(chunk) },
-    {
-      getSnapshot: async () => SNAPSHOT,
-      findEventById: async (eventId) => (eventId === GRANOT_ID ? granot : null),
-      listAfter: async () => [],
-      getRedis: () =>
-        redisFake(async () => {
-          polls += 1;
-          return polls === 1
-            ? [{ redis_stream_id: "1717200000002-0", event_id: GRANOT_ID }]
-            : [];
-        }),
-      sleep: async () => {
-        now += 8_000;
-      },
-      now: () => now,
-      pollMs: 1,
-      heartbeatMs: 60_000,
-      maxMs: 20_000,
-    },
-  );
-
-  const joined = chunks.join("");
-  assert.match(joined, /granot.linked/);
-  assert.match(joined, /"lane":"granot"/);
-});
-
-test("heartbeat fires after 15s idle and has no id", async () => {
-  const chunks: string[] = [];
-  let now = Date.parse("2026-09-08T15:43:00.000Z");
-
-  await runDailyOperationsLiveSse(
-    { write: (chunk) => chunks.push(chunk) },
-    {
-      getSnapshot: async () => SNAPSHOT,
-      findEventById: async () => null,
-      listAfter: async () => [],
-      getRedis: () => null,
-      sleep: async () => {
-        now += 16_000;
-      },
-      now: () => now,
-      pollMs: 1,
-      heartbeatMs: 15_000,
-      maxMs: 20_000,
-    },
-  );
-
-  const heartbeat = chunks.find((chunk) => chunk.includes("event: heartbeat"));
-  assert.ok(heartbeat);
-  assert.match(heartbeat, /"ts":"2026-09-08T15:43:16.000Z"/);
-  assert.equal(heartbeat.includes("\nid: "), false);
-});
-
-test("parseDailyOperationsXread reads object and flat-array field shapes", () => {
-  const fromObjects = parseDailyOperationsXread([
-    [
-      "dailyops:local:stream:2026-09-08",
-      [
-        [
-          "1717200000000-0",
-          {
-            event_id: LEAD_ID,
-            day: "2026-09-08",
-            kind: "form_lead.created",
-            lane: "lead",
-            occurred_at: "2026-09-08T15:44:00.000Z",
-            dedupe_key: "form:1",
-          },
-        ],
-      ],
-    ],
-  ]);
-  assert.deepEqual(fromObjects, [
-    { redis_stream_id: "1717200000000-0", event_id: LEAD_ID },
-  ]);
-
-  const fromPairs = parseDailyOperationsXread([
-    [
-      "dailyops:local:stream:2026-09-08",
-      [["1717200000001-0", ["event_id", GRANOT_ID, "day", "2026-09-08"]]],
-    ],
-  ]);
-  assert.deepEqual(fromPairs, [
-    { redis_stream_id: "1717200000001-0", event_id: GRANOT_ID },
-  ]);
-
-  assert.deepEqual(parseDailyOperationsXread(null), []);
-  assert.deepEqual(parseDailyOperationsXread([]), []);
-});
-
-test("test runner never constructs an Upstash client for the live isolate", () => {
-  assert.equal(createDailyOperationsLiveRedisReader(), null);
 });

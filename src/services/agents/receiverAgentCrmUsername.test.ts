@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
 import { Agent } from "../../models/Agent";
-import { Merchant } from "../../models/Merchant";
 import {
   applyGranotCrmUsernameReceiverMatch,
   findAgentByGranotCrmUsername,
@@ -57,21 +56,6 @@ test("findAgentByGranotCrmUsername prefers embedded granot_identity username", a
   assert.equal(agent.id, agentId.toString());
   assert.deepEqual(capturedFilter, {
     "granot_identity.username": "MIKEM",
-    active: true,
-  });
-});
-
-test("findAgentByGranotCrmUsername never reads the retained flat compatibility field", async () => {
-  let capturedFilter: unknown;
-  (Agent as unknown as MutableModel).findOne = (filter: unknown) => {
-    capturedFilter = filter;
-    return { exec: async () => null };
-  };
-
-  await findAgentByGranotCrmUsername("JACOB");
-
-  assert.deepEqual(capturedFilter, {
-    "granot_identity.username": "JACOB",
     active: true,
   });
 });

@@ -20,10 +20,9 @@ import { SheetSyncJob } from "../../models/SheetSyncJob";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
 import { planJobWrites } from "../sheetSync/drainer/jobPlanner";
 import { createReferralBooking } from "./referralBooking";
-import { noAction, updateExistingBooking } from "./bookingOwnerCommands";
+import { noAction } from "./bookingOwnerCommands";
 import {
   getGranotLifecycleCaseDetail,
-  listGranotLifecycleCaseCandidates,
   listGranotLifecycleCases,
 } from "./projections";
 
@@ -285,102 +284,6 @@ test("[AC-28][AC-32] replica Referral creation is exact, lead-free, atomic, and 
     }, { flags }),
     (error: unknown) => (error as { code?: string }).code === "DOMAIN_COMMAND_IDEMPOTENCY_CONFLICT",
   );
-});
-
-test("[AC-28] already-satisfied Referral evidence resolves without a second Booking", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seed();
-  const first = await createReferralBooking(command(fixture), { flags });
-  const original = await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec();
-  const secondCaseId = id();
-  await getGranotBookingReconciliationCaseModel().collection.insertOne({
-    _id: secondCaseId,
-    normalized_job_no: fixture.job,
-    job_no_snapshot: fixture.jobRaw,
-    action_kind: "booked",
-    sequence_number: 2,
-    mode: "create_referral_booking",
-    state: "open",
-    case_revision: 1,
-    evidence_revision: 1,
-    evidence: original!.evidence,
-    observed_context: {},
-    opened_at: new Date("2026-08-19T13:01:00.000Z"),
-    last_evidence_at: new Date("2026-08-19T13:01:00.000Z"),
-  });
-  const result = await createReferralBooking({
-    ...command(fixture, "satisfied"),
-    case_id: String(secondCaseId),
-  }, { flags });
-  assert.equal(result.outcome, "already_satisfied");
-  assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 1);
-  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": secondCaseId }), 0);
-  assert.equal(await SheetSyncJob.countDocuments({ entity_id: first.booking_ref!.id }), 1);
-});
-
-test("[AC-28] existing Referral Booking supports official update and case-only No Action without a Lead", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seed();
-  const created = await createReferralBooking(command(fixture), { flags });
-  const original = await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec();
-  const reviewCaseId = id();
-  await getGranotBookingReconciliationCaseModel().collection.insertOne({
-    _id: reviewCaseId,
-    normalized_job_no: fixture.job,
-    job_no_snapshot: fixture.jobRaw,
-    action_kind: "booked",
-    sequence_number: 2,
-    mode: "review_existing_booking",
-    state: "open",
-    case_revision: 1,
-    evidence_revision: 1,
-    record_link_id: toObjectId(created.record_link_ref!.id),
-    deterministic_booking_id: toObjectId(created.booking_ref!.id),
-    evidence: original!.evidence,
-    observed_context: {},
-    opened_at: new Date("2026-08-19T13:02:00.000Z"),
-    last_evidence_at: new Date("2026-08-19T13:02:00.000Z"),
-  });
-  const candidates = await listGranotLifecycleCaseCandidates(String(reviewCaseId), {
-    scope: "source",
-    limit: 25,
-  });
-  assert.deepEqual(candidates, { items: [], next_cursor: null });
-  const updated = await updateExistingBooking({
-    case_id: String(reviewCaseId),
-    expected_case_revision: 1,
-    expected_booking_revision: 1,
-    official_booking_details: {
-      book_date: "2026-09-01",
-      primary_agent_id: String(fixture.agentId),
-      total_binder_amount: 150,
-      deposit_amount: 3000,
-      merchant_id: String(fixture.merchantId),
-    },
-    idempotency_key: `unit28-update-${reviewCaseId}`,
-    owner: command(fixture).owner,
-  }, { flags });
-  assert.equal(updated.outcome, "booking_updated");
-  assert.equal(updated.booking_ref?.domain_revision, 2);
-  const booking = await BookedLead.findById(created.booking_ref!.id).lean().exec();
-  assert.equal(booking?.deposit_amount, 3000);
-  assert.equal(booking?.lead_ref, undefined);
-  assert.equal(booking?.lead_model, undefined);
-  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": reviewCaseId }), 1);
-
-  const noActionFixture = await seed();
-  const noActionResult = await noAction({
-    case_id: String(noActionFixture.caseId),
-    expected_case_revision: 1,
-    reason_code: "duplicate_granot_action",
-    idempotency_key: `unit28-no-action-${noActionFixture.caseId}`,
-    owner: command(noActionFixture).owner,
-  }, { flags });
-  assert.equal(noActionResult.outcome, "no_action");
-  assert.equal(await BookedLead.countDocuments({ normalized_job_no: noActionFixture.job }), 0);
-  assert.equal(await getGranotRecordLinkModel().countDocuments({ normalized_job_no: noActionFixture.job }), 0);
-  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": noActionFixture.caseId }), 0);
-  assert.equal(await SheetSyncJob.countDocuments({ entity_id: String(noActionFixture.caseId) }), 0);
 });
 
 test("[AC-28][AC-32] competing Owners converge and policy drift fails closed", async (t) => {

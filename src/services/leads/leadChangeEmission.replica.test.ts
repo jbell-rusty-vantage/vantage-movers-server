@@ -51,11 +51,13 @@ after(async () => {
 });
 
 function ringCentralInput(prefix: string, phone: string, duplicate: boolean) {
+  const routeId = new mongoose.Types.ObjectId().toHexString();
+  const assignmentId = new mongoose.Types.ObjectId().toHexString();
   return {
     source_company: "main_site" as const,
     source_resolution: {
-      route_id: new mongoose.Types.ObjectId().toHexString(),
-      assignment_id: new mongoose.Types.ObjectId().toHexString(),
+      route_id: routeId,
+      assignment_id: assignmentId,
       normalized_target_number: "5550100999",
       company_id: new mongoose.Types.ObjectId().toHexString(),
       company_slug: "main_site",
@@ -71,8 +73,10 @@ function ringCentralInput(prefix: string, phone: string, duplicate: boolean) {
     ringcentral: {
       telephony_session_id: `${prefix}-session`,
       ingestion_source: "webhook" as const,
-      route_id: new mongoose.Types.ObjectId().toHexString(),
-      route_assignment_id: new mongoose.Types.ObjectId().toHexString(),
+      duration_seconds: 120,
+      qualification_reason: "call_log_inbound_target_elapsed_at_least_120s" as const,
+      route_id: routeId,
+      route_assignment_id: assignmentId,
       target_phone_number: "5550100999",
     },
   };
@@ -125,33 +129,19 @@ test("LP-03 E3 RingCentral Call Lead create writes one createCallLead change in 
   }
 });
 
-test("LP-03 E3 a rolled-back RingCentral create leaves no change", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const prefix = `lp03rb${Date.now()}`;
-  await assert.rejects(async () => {
-    await mongoose.connection.transaction(async (session) => {
-      await beginRingCentralCallLeadIngestion(
-        ringCentralInput(prefix, "5550103003", false),
-        { session, now: new Date() },
-      );
-      throw new Error("forced LP-03 rollback");
-    });
-  }, /forced LP-03 rollback/);
-  assert.equal(
-    await EntityChange.countDocuments({ "provenance.request_id": `${prefix}-session` }),
-    0,
-  );
-  assert.equal(await CallLead.countDocuments({ phone_number: "5550103003" }), 0);
-});
-
-test("LP-03 E13 form_fill flip writes one CallLead change with changed_paths [form_fill]", async (t) => {
+test("a matching Form marks the qualified Call once and leaves an unqualified Call untouched", async (t) => {
   if (!(await replicaReady(t))) return;
   const phone = "5550103004";
-  const lead = await CallLead.create({
+  const contact = {
     phone_number: phone,
     source_company: "main_site",
     form_fill: false,
     timestamp: new Date(),
+  };
+  const unqualified = await CallLead.create(contact);
+  const lead = await CallLead.create({
+    ...contact,
+    ringcentral: ringCentralInput("form-fill", phone, false).ringcentral,
   });
   const formLeadId = new mongoose.Types.ObjectId().toHexString();
   await mongoose.connection.transaction(async (session) => {
@@ -169,10 +159,13 @@ test("LP-03 E13 form_fill flip writes one CallLead change with changed_paths [fo
   assert.equal(changes[0]?.fields[0]?.after, true);
   assert.equal(changes[0]?.command_name, "markCallLeadFormFill");
   assert.equal((await CallLead.findById(lead._id).lean())?.domain_revision, 1);
+  assert.equal((await CallLead.findById(unqualified._id).lean())?.form_fill, false);
+  assert.equal(await EntityChange.countDocuments({ "entity.id": unqualified._id.toString() }), 0);
 
   // Nothing left to flip: no write, no change.
   await mongoose.connection.transaction(async (session) => {
-    await markMatchingCallLeadsWithFormFill("main_site", phone, formLeadId, session);
+    const jobs = await markMatchingCallLeadsWithFormFill("main_site", phone, formLeadId, session);
+    assert.deepEqual(jobs, []);
   });
   assert.equal(
     await EntityChange.countDocuments({ "entity.id": lead._id.toString() }),

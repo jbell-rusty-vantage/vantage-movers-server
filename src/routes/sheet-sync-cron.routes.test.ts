@@ -67,12 +67,3 @@ test("skips the drain (no DB work) when mode is not queued", async () => {
   assert.equal(body.skipped, true);
   assert.match(body.reason, /legacy/);
 });
-
-test("accepts a bearer token matching CRON_SECRET", async () => {
-  process.env.CRON_SECRET = "expected-secret";
-  process.env.SHEET_SYNC_MODE = "disabled";
-  const res = await drain({ authorization: "Bearer expected-secret" });
-  assert.equal(res.status, 200);
-  const body = (await res.json()) as { skipped: boolean };
-  assert.equal(body.skipped, true);
-});

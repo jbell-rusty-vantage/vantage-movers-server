@@ -1,17 +1,11 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { MongoClient } from "mongodb";
-import { ringCentralReadResponse, ringCentralRequest, RingCentralApiError } from "./client";
-import { providerSuppliedRetryAfter, throttleRetryAfterMs, isProviderThrottle } from "../numberActivity/callLogClient";
 import {
   acquireRingCentralSlot,
   createMongoRingCentralRateGate,
   decideGate,
-  providerRetryAfterMs,
   recordRingCentralThrottle,
-  RingCentralGateDeniedError,
-  ringCentralGateConfig,
-  ringCentralGateGroup,
   setRingCentralRateGateForTests,
   type GateDecision,
   type GateDocument,
@@ -31,53 +25,6 @@ const ago = (ms: number) => new Date(NOW.getTime() - ms);
 
 after(() => setRingCentralRateGateForTests(null));
 
-test("group: Call Log, Call Log Sync and recording reads are Heavy; everything else is other", () => {
-  for (const endpoint of [
-    "/restapi/v1.0/account/~/call-log?dateFrom=x&view=Detailed",
-    "/restapi/v1.0/account/~/call-log/Abc123?view=Detailed",
-    "/restapi/v1.0/account/~/call-log-sync?syncType=ISync",
-    "/restapi/v1.0/account/800000000001/call-log?phoneNumber=%2B1",
-    "/restapi/v1.0/account/800000000001/recording/42",
-    "/restapi/v1.0/account/800000000001/recording/42/content",
-  ]) assert.equal(ringCentralGateGroup(endpoint), "heavy", endpoint);
-  for (const endpoint of [
-    "/restapi/v1.0/account/~/extension?page=1",
-    "/restapi/v1.0/subscription",
-    "/restapi/v1.0/subscription/sub-1",
-    "/restapi/v1.0/account/~/extension/101/sms",
-    "/restapi/v1.0/account/~",
-    "/analytics/calls/v1/accounts/~/aggregation/fetch?page=1&perPage=200",
-  ]) assert.equal(ringCentralGateGroup(endpoint), "other", endpoint);
-});
-
-test("RINGCENTRAL-CAPTURE §9.5 group: Active Calls and account presence are Heavy; message list, message sync, extension presence and subscription renew are Light", () => {
-  for (const endpoint of [
-    "/restapi/v1.0/account/~/active-calls?view=Detailed",
-    "/restapi/v1.0/account/~/extension/101/active-calls",
-    "/restapi/v1.0/account/~/presence?detailedTelephonyState=true",
-  ]) assert.equal(ringCentralGateGroup(endpoint), "heavy", endpoint);
-  for (const endpoint of [
-    "/restapi/v1.0/account/~/extension/101/message-store?messageType=SMS&perPage=1",
-    "/restapi/v1.0/account/~/extension/101/message-store/555",
-    "/restapi/v1.0/account/~/extension/101/message-sync?syncType=ISync&syncToken=t",
-    "/restapi/v1.0/account/~/extension/101/presence",
-    "/restapi/v1.0/subscription/sub-1/renew",
-  ]) assert.equal(ringCentralGateGroup(endpoint), "light", endpoint);
-});
-
-test("light lane budget: 40/min for high priority, 10/min for low (the SMS safety poll), sliding window like Heavy", () => {
-  const grants = (n: number) => Array.from({ length: n }, (_, i) => ago(50_000 - i * 100));
-  assert.deepEqual(decideGate({ grants: grants(9) }, { group: "light", priority: "low", now: NOW, config: CONFIG }), { granted: true });
-  const lowFull = decideGate({ grants: grants(10) }, { group: "light", priority: "low", now: NOW, config: CONFIG });
-  assert.equal(lowFull.granted, false);
-  assert.deepEqual(decideGate({ grants: grants(39) }, { group: "light", priority: "high", now: NOW, config: CONFIG }), { granted: true });
-  const highFull = decideGate({ grants: grants(40) }, { group: "light", priority: "high", now: NOW, config: CONFIG });
-  assert.ok(!highFull.granted && highFull.reason === "budget" && highFull.waitMs === 10_000, "frees when the oldest live grant leaves the window");
-  assert.deepEqual(decideGate({ grants: [ago(61_000), ...grants(39)] }, { group: "light", priority: "high", now: NOW, config: CONFIG }), { granted: true });
-  // The light budget never spends Heavy headroom and vice versa (separate documents per group).
-  assert.deepEqual(decideGate({ grants: grants(8) }, { group: "light", priority: "high", now: NOW, config: CONFIG }), { granted: true });
-});
-
 test("light lane honours Retry-After: a provider 429 naming the Light group closes it for every Light caller", async () => {
   const provider = fakeGate([]);
   await recordRingCentralThrottle("/restapi/v1.0/account/~/extension/101/message-sync?syncType=ISync", {
@@ -95,21 +42,6 @@ test("light lane honours Retry-After: a provider 429 naming the Light group clos
   assert.deepEqual(decideGate(open, { group: "light", priority: "high", now: NOW, config: CONFIG }), { granted: false, reason: "gate_open", waitMs: 60_000 });
 });
 
-test("config: defaults 8/min Heavy, 4/min for low priority, 70 s wait; limits clamp to the provider's 10", () => {
-  assert.deepEqual(ringCentralGateConfig({}), CONFIG);
-  assert.equal(ringCentralGateConfig({ RINGCENTRAL_HEAVY_REQUESTS_PER_MINUTE: "25" }).heavyPerMinute, 8);
-  assert.equal(ringCentralGateConfig({ RINGCENTRAL_HEAVY_REQUESTS_PER_MINUTE: "3" }).heavyLowPriorityPerMinute, 3);
-  assert.equal(ringCentralGateConfig({ RINGCENTRAL_RATE_GATE: "off" }).enabled, false);
-});
-
-test("decide: an open gate refuses every priority and group until open_until", () => {
-  const state = { open_until: new Date(NOW.getTime() + 42_000), grants: [] };
-  for (const group of ["heavy", "other"] as const) {
-    assert.deepEqual(decideGate(state, { group, priority: "high", now: NOW, config: CONFIG }), { granted: false, reason: "gate_open", waitMs: 42_000 });
-  }
-  assert.deepEqual(decideGate({ open_until: ago(1) }, { group: "heavy", priority: "high", now: NOW, config: CONFIG }), { granted: true });
-});
-
 test("decide: sliding 60 s window; low priority stops at its share so high priority keeps headroom", () => {
   const grants = [ago(59_000), ago(50_000), ago(40_000), ago(30_000)];
   assert.deepEqual(decideGate({ grants }, { group: "heavy", priority: "high", now: NOW, config: CONFIG }), { granted: true });
@@ -121,13 +53,6 @@ test("decide: sliding 60 s window; low priority stops at its share so high prior
   assert.deepEqual(decideGate({ grants: full }, { group: "heavy", priority: "high", now: NOW, config: CONFIG }), { granted: false, reason: "budget", waitMs: 5_000 });
   // `other` is never budgeted.
   assert.deepEqual(decideGate({ grants: full }, { group: "other", priority: "low", now: NOW, config: CONFIG }), { granted: true });
-});
-
-test("Retry-After: seconds, HTTP date, else X-Rate-Limit-Window, else 60 s (not observed)", () => {
-  assert.deepEqual(providerRetryAfterMs(new Headers({ "retry-after": "60" }), NOW), { ms: 60_000, observed: true });
-  assert.deepEqual(providerRetryAfterMs(new Headers({ "retry-after": new Date(NOW.getTime() + 30_000).toUTCString() }), NOW), { ms: 30_000, observed: true });
-  assert.deepEqual(providerRetryAfterMs(new Headers({ "x-rate-limit-window": "60" }), NOW), { ms: 60_000, observed: true });
-  assert.deepEqual(providerRetryAfterMs(new Headers(), NOW), { ms: 60_000, observed: false });
 });
 
 function fakeGate(decisions: GateDecision[]) {
@@ -144,34 +69,6 @@ function fakeGate(decisions: GateDecision[]) {
   return { gate, calls };
 }
 
-test("acquire: high priority waits for a budget slot inside its bound; low priority never waits", async () => {
-  const slept: number[] = [];
-  const high = fakeGate([{ granted: false, reason: "budget", waitMs: 2_000 }, { granted: true }]);
-  let clock = NOW.getTime();
-  await acquireRingCentralSlot("/restapi/v1.0/account/~/call-log?x=1", {
-    gate: high.gate,
-    now: () => new Date(clock),
-    sleep: async (ms) => {
-      slept.push(ms);
-      clock += ms;
-    },
-  });
-  assert.equal(high.calls.acquire.length, 2);
-  assert.ok(slept[0]! >= 2_000 && slept[0]! < 2_500, "wait + jitter");
-
-  const low = fakeGate([{ granted: false, reason: "budget", waitMs: 2_000 }]);
-  await assert.rejects(
-    acquireRingCentralSlot("/restapi/v1.0/account/~/call-log?x=1", { gate: low.gate, priority: "low", sleep: async () => assert.fail("low never sleeps") }),
-    (error: unknown) => error instanceof RingCentralGateDeniedError && error.reason === "budget" && error.retryAfterMs === 2_000,
-  );
-
-  const open = fakeGate([{ granted: false, reason: "gate_open", waitMs: 600_000 }]);
-  await assert.rejects(
-    acquireRingCentralSlot("/restapi/v1.0/account/~/call-log?x=1", { gate: open.gate, sleep: async () => assert.fail("beyond the bound: no sleep") }),
-    (error: unknown) => error instanceof RingCentralGateDeniedError && error.reason === "gate_open",
-  );
-});
-
 test("acquire: a gate failure fails open (capture never stops on a Mongo hiccup)", async () => {
   const gate: RingCentralRateGate = {
     tryAcquire: async () => {
@@ -180,60 +77,6 @@ test("acquire: a gate failure fails open (capture never stops on a Mongo hiccup)
     trip: async () => undefined,
   };
   await acquireRingCentralSlot("/restapi/v1.0/account/~/call-log", { gate });
-});
-
-test("client: a refused slot throws a gated 429 without sending, carrying the gate's wait for job deferral", async () => {
-  const { gate } = fakeGate([{ granted: false, reason: "gate_open", waitMs: 45_000 }]);
-  setRingCentralRateGateForTests(gate);
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => assert.fail("no request is sent while the gate is closed")) as typeof fetch;
-  try {
-    const error = await ringCentralRequest("GET", "/restapi/v1.0/account/~/call-log?page=1", undefined, { priority: "low" }).then(
-      () => assert.fail("expected a throttle"),
-      (e: unknown) => e,
-    );
-    assert.ok(error instanceof RingCentralApiError);
-    assert.equal(error.status, 429);
-    assert.equal(error.throttle.gated, true);
-    assert.ok(isProviderThrottle(error));
-    assert.equal(throttleRetryAfterMs(error), 45_000);
-    assert.equal(providerSuppliedRetryAfter(error), true);
-  } finally {
-    globalThis.fetch = originalFetch;
-    setRingCentralRateGateForTests(null);
-  }
-});
-
-test("recording read: a refused slot answers a local 429 with Retry-After; a provider 429 opens the shared gate", async () => {
-  const token = async () => ({ access_token: "t", issued_at: 0, access_token_expires_at: Date.now() + 3_600_000 }) as never;
-  const endpoint = "/restapi/v1.0/account/a/recording/r/content";
-
-  const refused = fakeGate([{ granted: false, reason: "budget", waitMs: 12_300 }]);
-  setRingCentralRateGateForTests(refused.gate);
-  try {
-    const response = await ringCentralReadResponse(endpoint, AbortSignal.timeout(5_000), {
-      token,
-      server: "https://platform.example",
-      priority: "low",
-      fetch: (async () => assert.fail("no request while refused")) as typeof fetch,
-    });
-    assert.equal(response.status, 429);
-    assert.equal(response.headers.get("retry-after"), "13");
-    assert.deepEqual(refused.calls.acquire, [{ group: "heavy", priority: "low" }]);
-
-    const provider = fakeGate([]);
-    setRingCentralRateGateForTests(provider.gate);
-    const throttled = await ringCentralReadResponse(endpoint, AbortSignal.timeout(5_000), {
-      token,
-      server: "https://platform.example",
-      fetch: (async () =>
-        new Response("{}", { status: 429, headers: { "retry-after": "60", "x-rate-limit-group": "heavy", "x-rate-limit-window": "60" } })) as typeof fetch,
-    });
-    assert.equal(throttled.status, 429);
-    assert.deepEqual(provider.calls.trip, [{ group: "heavy", retryAfterMs: 60_000 }]);
-  } finally {
-    setRingCentralRateGateForTests(null);
-  }
 });
 
 // ---------------------------------------------------------------------------

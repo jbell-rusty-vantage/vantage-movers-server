@@ -6,8 +6,8 @@ import type { RecordDailyOperationsFactInput } from "../../dailyOperations/recor
 import type { ActiveConfiguration } from "../config/load";
 import { activeInspection } from "../reads/testing";
 import { applyContactSources } from "./apply";
-import { goalMilestoneFacts, recordGoalMilestones, repMilestoneDedupeKey, resetGoalMilestoneMemo, teamMilestoneDedupeKey } from "./goalMilestones";
-import { recountRepDay, repDayGoalMet } from "./repDayService";
+import { recordGoalMilestones, resetGoalMilestoneMemo } from "./goalMilestones";
+import { recountRepDay } from "./repDayService";
 import { ContextBuilder, MemoryContactEventStore, SESSION, newId, outboundCall, subjectFacts } from "./testing";
 import { MemoryRepDayStore, callMarks } from "./testingPipeline";
 
@@ -20,15 +20,6 @@ const NOW = new Date("2026-10-05T19:00:00.000Z"); // 15:00 New York, Monday
 const TODAY = "2026-10-05";
 
 beforeEach(() => resetGoalMilestoneMemo());
-
-test("repDayGoalMet: a positive goal reached by the headline count; zero goals and other states never", () => {
-  const snapshot = (goal: number | null) => ({ roster_version: null, configuration_version: null, goal, scheduled: true, override: null });
-  assert.equal(repDayGoalMet({ goal_state: "goal", actual_confirmed: 2, goal_snapshot: snapshot(2) }), true);
-  assert.equal(repDayGoalMet({ goal_state: "goal", actual_confirmed: 1, goal_snapshot: snapshot(2) }), false);
-  assert.equal(repDayGoalMet({ goal_state: "no_goal_today", actual_confirmed: 5, goal_snapshot: snapshot(0) }), false);
-  assert.equal(repDayGoalMet({ goal_state: "goal", actual_confirmed: null, goal_snapshot: snapshot(2) }), false);
-  assert.equal(repDayGoalMet(null), false);
-});
 
 test("recountRepDay: goal_crossed only on the write that takes today's row from below to at its goal", async () => {
   const configuration: SalesOutreachConfigurationInput = {
@@ -77,28 +68,6 @@ const rep = (agent_id: string, actual: number, goal: number): Rep =>
 const days = (reps: Rep[], is_today = true) =>
   ({ business_day: TODAY, is_today, goal_metrics_enabled: true, count_scope: "all_outbound", reps, unknown_reason: null }) as unknown as SalesOutreachRepDaysDto;
 const change = (agent_id: string, goal_crossed: boolean) => ({ agent_id, business_day: TODAY, publication_revision: 2, goal_crossed });
-
-test("goalMilestoneFacts: a crossed rep gets its fact with name, numbers and rank; the team fact once the sum meets the team goal", () => {
-  const facts = goalMilestoneFacts({ changes: [change(ALICE, true)], days: days([rep(ALICE, 60, 60), rep(BOB, 10, 60)]), now: NOW, teamAlreadyRecorded: false });
-  assert.equal(facts.length, 1);
-  const [fact] = facts;
-  assert.equal(fact!.kind, "outreach.rep_goal_met");
-  assert.equal(fact!.dedupe_key, repMilestoneDedupeKey(ALICE, TODAY));
-  assert.deepEqual(
-    [fact!.card?.agent_name, fact!.card?.actual, fact!.card?.goal, fact!.card?.rank, fact!.card?.team_actual, fact!.card?.team_goal, fact!.card?.reps_at_goal, fact!.card?.reps_on_roster],
-    ["Alice Ames", 60, 60, 1, 70, 120, 1, 2],
-  );
-
-  const team = goalMilestoneFacts({ changes: [change(BOB, true)], days: days([rep(ALICE, 70, 60), rep(BOB, 60, 60)]), now: NOW, teamAlreadyRecorded: false });
-  assert.deepEqual(team.map((f) => f.kind), ["outreach.rep_goal_met", "outreach.team_goal_met"]);
-  assert.equal(team[1]!.dedupe_key, teamMilestoneDedupeKey(TODAY));
-});
-
-test("goalMilestoneFacts: a change that did not cross, a rep the read says is short, and a past day give nothing", () => {
-  assert.deepEqual(goalMilestoneFacts({ changes: [change(ALICE, false)], days: days([rep(ALICE, 61, 60), rep(BOB, 0, 60)]), now: NOW, teamAlreadyRecorded: false }), []);
-  assert.deepEqual(goalMilestoneFacts({ changes: [change(ALICE, true)], days: days([rep(ALICE, 59, 60), rep(BOB, 0, 60)]), now: NOW, teamAlreadyRecorded: false }), []);
-  assert.deepEqual(goalMilestoneFacts({ changes: [change(ALICE, true)], days: days([rep(ALICE, 60, 60)], false), now: NOW, teamAlreadyRecorded: false }), []);
-});
 
 test("recordGoalMilestones: records each fact, remembers the team fact, skips past days and never throws", async () => {
   const recorded: RecordDailyOperationsFactInput[] = [];

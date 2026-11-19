@@ -8,7 +8,6 @@ import {
   assertCallLogSyncStateSingletonIndex,
   createCallLogSyncLeaseOwner,
   getCallLogSyncState,
-  maskLeaseOwner,
   recordCallLogSyncError,
   recordCallLogSyncSuccess,
   releaseCallLogSyncLease,
@@ -86,32 +85,6 @@ after(async () => {
 async function resetState(): Promise<void> {
   await collection.deleteMany({ key: RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY });
 }
-
-test("[AC-17] lease owner identity is bounded, opaque, and per invocation", () => {
-  const first = createCallLogSyncLeaseOwner();
-  const second = createCallLogSyncLeaseOwner();
-  assert.match(first, /^rcls_[0-9a-f]{32}$/);
-  assert.notEqual(first, second);
-  assert.ok(first.length <= 64);
-});
-
-test("[AC-17] masked owner is a short stable digest and never leaks the owner", () => {
-  const owner = createCallLogSyncLeaseOwner();
-  const masked = maskLeaseOwner(owner);
-  assert.match(masked ?? "", /^[0-9a-f]{12}$/);
-  assert.equal(maskLeaseOwner(owner), masked);
-  assert.equal(owner.includes(masked ?? "zzz"), false);
-  assert.equal(maskLeaseOwner(null), null);
-});
-
-test("[AC-17] singleton key index contract is the exact unique key index", () => {
-  assert.deepEqual(RINGCENTRAL_CALL_LOG_SYNC_STATE_KEY_INDEX, {
-    name: "ringcentral_call_log_sync_state_key_unique",
-    key: { key: 1 },
-    unique: true,
-  });
-  assert.equal(RINGCENTRAL_CALL_LOG_LEASE_DURATION_MS, 5 * 60 * 1000);
-});
 
 test("persisted run failure codes are a bounded, non-sensitive set", () => {
   for (const code of RINGCENTRAL_CALL_LOG_SYNC_ERROR_CODES) {

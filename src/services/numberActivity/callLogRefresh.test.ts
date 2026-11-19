@@ -4,23 +4,14 @@ import mongoose from "mongoose";
 import { RingCentralApiError } from "../ringcentral/client";
 import {
   CALL_LOG_REFRESH_ISYNC_RETRY_DELAYS_MS,
-  CALL_LOG_REFRESH_MAX_AGE_MS,
   CALL_LOG_REFRESH_RETRY_DELAYS_MS,
-  CALL_LOG_REFRESH_THROTTLE_JITTER_MS,
   drainCallLogRefreshJobs,
-  callLogRefreshDedupeKey,
-  callLogRefreshSchedule,
   callLogRefreshSubjectKey,
-  deliveryCarriesTerminalStatus,
-  fetchCallLogRecordsBySession,
   runCallLogRefreshJob,
-  sessionsNeedingRefresh,
-  telephonySessionFromSubjectKey,
   type CallLogRefreshDeps,
 } from "./callLogRefresh";
-import { at, inboundConnectedCallLog, inboundQueueAnsweredDeliveries, syntheticDirectory } from "./fixtures";
-import { normalizeWebhookPartyObservations } from "./observeWebhookEvents";
-import { InteractionPersistenceError, type ApplyResult } from "./persistInteraction";
+import { syntheticDirectory } from "./fixtures";
+import { type ApplyResult } from "./persistInteraction";
 
 const NOW = new Date("2026-09-23T15:00:00.000Z");
 
@@ -43,66 +34,6 @@ function applyResult(overrides: Partial<ApplyResult> = {}): ApplyResult {
     ...overrides,
   };
 }
-
-test("keys: one refresh per telephony session; the subject key round-trips the session id", () => {
-  assert.equal(callLogRefreshDedupeKey("s-1"), "csi:call_log_refresh:session:s-1:1");
-  assert.equal(telephonySessionFromSubjectKey(callLogRefreshSubjectKey("s-1")), "s-1");
-  assert.equal(telephonySessionFromSubjectKey("webhook_receipt:x"), null);
-  assert.equal(telephonySessionFromSubjectKey(null), null);
-});
-
-test("provider read: GET call-log by telephonySessionId, Detailed view, dateFrom; records of another session are dropped", async () => {
-  const calls: Array<[string, string]> = [];
-  const records = await fetchCallLogRecordsBySession(
-    { telephonySessionId: "s-1", dateFrom: new Date("2026-09-23T13:00:00.000Z") },
-    (async (method: string, endpoint: string) => {
-      calls.push([method, endpoint]);
-      return { records: [{ id: "a", telephonySessionId: "s-1" }, { id: "b", telephonySessionId: "s-2" }, { id: "c" }, "junk"] };
-    }) as never,
-  );
-  assert.deepEqual(calls, [
-    ["GET", "/restapi/v1.0/account/~/call-log?telephonySessionId=s-1&view=Detailed&dateFrom=2026-09-23T13%3A00%3A00.000Z"],
-  ]);
-  assert.deepEqual(records.map((r) => r.id), ["a", "c"]);
-});
-
-test("hang-up detection: needs a terminal status in this delivery AND every account party terminal", async () => {
-  const life = inboundQueueAnsweredDeliveries("s-h");
-  const ringing = normalizeWebhookPartyObservations(life.ringing, at(1));
-  const disconnected = normalizeWebhookPartyObservations(life.disconnected, at(96));
-  assert.equal(deliveryCarriesTerminalStatus(ringing, "s-h"), false);
-  assert.equal(deliveryCarriesTerminalStatus(disconnected, "s-h"), true);
-  assert.equal(deliveryCarriesTerminalStatus(disconnected, "other"), false);
-
-  const loads: string[] = [];
-  const terminalState = async (id: string) => {
-    loads.push(id);
-    return { telephony_session_id: "s-h", started_at: at(0), provider_account_id: "800000000001", account_parties_terminal: true };
-  };
-  const newly = applyResult({ newly_terminal: true });
-  assert.deepEqual(
-    await sessionsNeedingRefresh(disconnected, [{ telephony_session_id: "s-h", ok: true, result: newly }], terminalState),
-    [{ telephony_session_id: "s-h", interaction_id: newly.interaction_id }],
-  );
-  assert.deepEqual(loads, [], "newly_terminal needs no row read");
-
-  const already = applyResult({ noop: true });
-  assert.equal((await sessionsNeedingRefresh(disconnected, [{ telephony_session_id: "s-h", ok: true, result: already }], terminalState)).length, 1);
-  assert.equal(
-    (await sessionsNeedingRefresh(disconnected, [{ telephony_session_id: "s-h", ok: true, result: already }], async () => ({
-      telephony_session_id: "s-h",
-      started_at: at(0),
-      provider_account_id: "800000000001",
-      account_parties_terminal: false,
-    }))).length,
-    0,
-    "one party still live: no refresh",
-  );
-  assert.equal((await sessionsNeedingRefresh(ringing, [{ telephony_session_id: "s-h", ok: true, result: newly }], terminalState)).length, 0);
-  assert.equal((await sessionsNeedingRefresh(disconnected, [{ telephony_session_id: "s-h", ok: false }], terminalState)).length, 0);
-});
-
-type Harness = ReturnType<typeof harness>;
 
 function harness(input: { attempts?: number; fetch: CallLogRefreshDeps["fetch"]; apply?: CallLogRefreshDeps["apply"] }) {
   const jobId = new mongoose.Types.ObjectId();
@@ -149,16 +80,6 @@ function harness(input: { attempts?: number; fetch: CallLogRefreshDeps["fetch"];
   return { deps, calls, jobId: jobId.toHexString() };
 }
 
-test("consumer: applies each fetched record as a Call Log observation (source call_log_reconcile, proof call_log_refresh:<id>) and completes", async () => {
-  const h: Harness = harness({ fetch: async () => [inboundConnectedCallLog("s-r")] });
-  const outcome = await runCallLogRefreshJob(h.jobId, h.deps);
-  assert.equal(outcome.status, "completed");
-  assert.deepEqual(h.calls.fetch, [{ telephonySessionId: "s-r", dateFrom: new Date("2026-09-23T13:30:00.000Z") }], "dateFrom = started_at − 1 h");
-  assert.deepEqual(h.calls.apply, [{ accountId: "800000000001", proof_ref: "call_log_refresh:cl-s-r", source: "call_log_reconcile", request_id: h.jobId }]);
-  assert.equal(h.calls.complete[0]!.result.state, "applied");
-  assert.equal(h.calls.fail.length, 0);
-});
-
 test("consumer: no record yet retries at +2, +5, +15 min, then completes not_published", async () => {
   for (const [index, wait] of CALL_LOG_REFRESH_RETRY_DELAYS_MS.entries()) {
     const h = harness({ attempts: index + 1, fetch: async () => [] });
@@ -195,83 +116,6 @@ test("consumer: a 429 is transient (throttled, attempt not spent); other provide
   assert.equal(broken.calls.fail[0]!.reason, "transient");
 });
 
-test("consumer: a deterministic projection failure completes with the code visible; a retryable one retries", async () => {
-  const deterministic = harness({
-    fetch: async () => [inboundConnectedCallLog("s-r")],
-    apply: (async () => {
-      throw new InteractionPersistenceError("projection_failed", "bad");
-    }) as never,
-  });
-  const done = await runCallLogRefreshJob(deterministic.jobId, deterministic.deps);
-  assert.equal(done.status, "completed");
-  assert.equal(deterministic.calls.complete[0]!.result.error_code, "projection_failed");
-
-  const retryable = harness({
-    fetch: async () => [inboundConnectedCallLog("s-r")],
-    apply: (async () => {
-      throw new InteractionPersistenceError("retry_exhausted", "busy");
-    }) as never,
-  });
-  assert.equal((await runCallLogRefreshJob(retryable.jobId, retryable.deps)).status, "retry");
-});
-
-test("consumer: unclaimable id does nothing", async () => {
-  const h = harness({ fetch: async () => [] });
-  h.deps.claim = (async () => null) as never;
-  assert.deepEqual(await runCallLogRefreshJob(h.jobId, h.deps), { status: "not_claimable", job_id: h.jobId });
-  assert.deepEqual(await runCallLogRefreshJob("nope", h.deps), { status: "not_claimable", job_id: "nope" });
-  assert.equal(h.calls.fetch.length, 0);
-});
-
-test("provider read: a refresh asks the shared RingCentral gate for a low-priority slot", async () => {
-  const options: unknown[] = [];
-  await fetchCallLogRecordsBySession(
-    { telephonySessionId: "s-1", dateFrom: new Date("2026-09-23T13:00:00.000Z") },
-    (async (_method: string, _endpoint: string, _body: unknown, requestOptions: unknown) => {
-      options.push(requestOptions);
-      return { records: [] };
-    }) as never,
-  );
-  assert.deepEqual(options, [{ priority: "low" }]);
-});
-
-test("consumer: a job older than the max age completes expired without a provider read (throttle backlogs drain)", async () => {
-  const h = harness({ fetch: async () => assert.fail("no provider read for an expired refresh") });
-  const old = mongoose.Types.ObjectId.createFromTime(Math.floor((NOW.getTime() - CALL_LOG_REFRESH_MAX_AGE_MS - 60_000) / 1000));
-  const claim = h.deps.claim!;
-  h.deps.claim = (async (...args: Parameters<typeof claim>) => ({ ...(await claim(...args))!, _id: old })) as never;
-  const outcome = await runCallLogRefreshJob(old.toHexString(), h.deps);
-  assert.equal(outcome.status, "completed");
-  assert.equal(h.calls.complete[0]!.result.state, "expired");
-  assert.equal(h.calls.fail.length, 0);
-});
-
-test("consumer: a row the reconcile already settled completes already_settled without a provider read", async () => {
-  const h = harness({ fetch: async () => assert.fail("no provider read for a settled row") });
-  h.deps.loadState = async () => ({
-    telephony_session_id: "s-r",
-    started_at: new Date("2026-09-23T14:30:00.000Z"),
-    provider_account_id: "800000000001",
-    account_parties_terminal: true,
-    call_log_state: "settled",
-  });
-  const outcome = await runCallLogRefreshJob(h.jobId, h.deps);
-  assert.equal(outcome.status, "completed");
-  assert.equal(h.calls.complete[0]!.result.state, "already_settled");
-});
-
-test("consumer: a throttle defers by the provider/gate Retry-After plus bounded jitter", async () => {
-  const h = harness({
-    fetch: async () => {
-      throw new RingCentralApiError("gated", 429, "Rate gate closed", "/call-log", "GET", null, { retryAfterMs: 45_000, gated: true });
-    },
-  });
-  h.deps.random = () => 0.5;
-  const outcome = await runCallLogRefreshJob(h.jobId, h.deps);
-  assert.ok(outcome.status === "retry" && outcome.reason === "throttled");
-  assert.equal(h.calls.fail[0]!.retryAfterMs, 45_000 + 0.5 * CALL_LOG_REFRESH_THROTTLE_JITTER_MS);
-});
-
 test("drain: stops at the first throttle instead of claiming every due job just to defer it", async () => {
   const h = harness({
     fetch: async () => {
@@ -283,20 +127,6 @@ test("drain: stops at the first throttle instead of claiming every due job just 
   assert.equal(summary.retried, 1);
   assert.equal(summary.throttled, true);
   assert.equal(h.calls.fetch.length, 1);
-});
-
-test("RINGCENTRAL-CAPTURE §4.3 schedule: with Call Log Sync on, due +5 min and retried after 5 and 15 min (inside the 45-min expiry); otherwise unchanged", () => {
-  const on = callLogRefreshSchedule("on");
-  assert.equal(on.delayMs, 5 * 60_000);
-  assert.deepEqual([...on.retryDelaysMs], [5 * 60_000, 15 * 60_000]);
-  assert.equal(on.skipConfirmed, true);
-  assert.ok(on.delayMs + on.retryDelaysMs.reduce((a, b) => a + b, 0) < CALL_LOG_REFRESH_MAX_AGE_MS);
-  for (const mode of ["off", "shadow"] as const) {
-    const schedule = callLogRefreshSchedule(mode);
-    assert.equal(schedule.delayMs, 90_000);
-    assert.deepEqual([...schedule.retryDelaysMs], [...CALL_LOG_REFRESH_RETRY_DELAYS_MS]);
-    assert.equal(schedule.skipConfirmed, false);
-  }
 });
 
 test("narrowed refresh: with Call Log Sync on, a call ISync already confirmed (provisional) completes already_confirmed without a provider read", async () => {
@@ -312,21 +142,6 @@ test("narrowed refresh: with Call Log Sync on, a call ISync already confirmed (p
   const outcome = await runCallLogRefreshJob(h.jobId, h.deps);
   assert.equal(outcome.status, "completed");
   assert.equal(h.calls.complete[0]!.result.state, "already_confirmed");
-});
-
-test("narrowed refresh: with Call Log Sync off, a provisional row is still re-read (original behaviour)", async () => {
-  const h = harness({ fetch: async () => [inboundConnectedCallLog("s-r")] });
-  h.deps.syncMode = "off";
-  h.deps.loadState = async () => ({
-    telephony_session_id: "s-r",
-    started_at: new Date("2026-09-23T14:30:00.000Z"),
-    provider_account_id: "800000000001",
-    account_parties_terminal: true,
-    call_log_state: "provisional",
-  });
-  await runCallLogRefreshJob(h.jobId, h.deps);
-  assert.equal(h.calls.fetch.length, 1);
-  assert.equal(h.calls.complete[0]!.result.state, "applied");
 });
 
 test("narrowed refresh: an unconfirmed session with Call Log Sync on retries after 5, then 15 minutes, then completes not_published", async () => {

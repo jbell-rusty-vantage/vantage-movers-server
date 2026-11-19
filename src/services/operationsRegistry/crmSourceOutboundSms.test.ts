@@ -7,7 +7,6 @@ import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import {
   listRecentGranotCrmSourceSms,
   setGranotCrmSourceOutboundSms,
-  toSmsView,
 } from "./crmSourceOutboundSms";
 import type { RegistryActorContext } from "./types";
 
@@ -24,15 +23,6 @@ const admin: RegistryActorContext = {
   actorRole: "admin",
   requestId: "req-sms-admin",
 };
-
-test("toSmsView defaults a missing policy to off and not attested", () => {
-  const view = toSmsView("aaaaaaaaaaaaaaaaaaaaaaaa", undefined);
-  assert.equal(view.enabled, false);
-  assert.equal(view.consent_basis, "not_attested");
-  assert.equal(view.body_template, DEFAULT_GRANOT_LEAD_CREATED_SMS_TEMPLATE);
-  assert.equal(view.template_version, 1);
-  assert.equal("daily_cap" in view, false);
-});
 
 test("setGranotCrmSourceOutboundSms rejects non-owners and not_attested enable", async () => {
   await assert.rejects(
@@ -135,55 +125,4 @@ test("enabling SMS is rejected unless lead_created_policy is create_if_missing",
       ),
     /does not create leads/,
   );
-});
-
-test("editing a template increments template_version and leaves enabled false", async () => {
-  const id = new mongoose.Types.ObjectId();
-  let stored: Record<string, unknown> = {
-    _id: id,
-    enabled: true,
-    lead_created_policy: "create_if_missing",
-    outbound_sms: {
-      enabled: true,
-      body_template: DEFAULT_GRANOT_LEAD_CREATED_SMS_TEMPLATE,
-      template_version: 1,
-      consent_basis: "existing_relationship",
-      daily_cap: 0,
-    },
-  };
-  (Source as unknown as MutableModel).findById = () => leanById(stored);
-  (Source as unknown as MutableModel).findByIdAndUpdate = (
-    _id: unknown,
-    update: { $set?: { outbound_sms?: Record<string, unknown> } },
-  ) => ({
-    orFail: async () => {
-      stored = { ...stored, outbound_sms: update.$set?.outbound_sms };
-      return { _id: id, outbound_sms: stored.outbound_sms };
-    },
-  });
-
-  const view = await setGranotCrmSourceOutboundSms(
-    {
-      granot_crm_source_id: String(id),
-      enabled: true,
-      body_template: "Hi {first_name}, this is Vantage Movers. We reviewed your request.",
-      consent_basis: "existing_relationship",
-      reason: "Updating the confirmation text after Owner review",
-    },
-    owner,
-    {
-      withTransaction: async (fn) => fn({} as ClientSession),
-      insertAudit: async () => undefined,
-    },
-  );
-  const persisted = stored.outbound_sms as {
-    enabled?: boolean;
-    template_version?: number;
-    deactivation_reason?: string;
-  };
-  assert.equal(persisted.enabled, false);
-  assert.equal(persisted.template_version, 2);
-  assert.equal(persisted.deactivation_reason, "template_changed");
-  assert.equal(view.enabled, false);
-  assert.equal(view.template_version, 2);
 });

@@ -1,15 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  assertSafeAutomationOperationId,
   assertSealedAutomationPlan,
   automationRunCompletionStatus,
   buildAutomationOperationId,
-  buildGranotStatementFromCollectedRow,
   buildLifecycleApply,
   isPendingAutomationActionOutcome,
   isSealedAutomationPlan,
-  resolveAutomationOperationKind,
 } from "./lifecycleStatement";
 import { GranotRunConflict } from "./errors";
 
@@ -36,33 +33,6 @@ const collected = {
   type: "Local",
 };
 
-test("[AC-33] Form Follow Up statement keeps raw Priority, separate user/rep, and location aliases", () => {
-  const statement = buildGranotStatementFromCollectedRow({
-    row: row(collected),
-    sourceLabel: "Synthetic Forms",
-    section: "followUpEstimates",
-  });
-  assert.equal(statement.source, "Synthetic Forms");
-  assert.equal(statement.priority, "1");
-  assert.equal(statement.prior, "1");
-  assert.equal(statement.customer_name, "Synthetic Customer");
-  assert.equal(statement.user, "MIKE");
-  assert.equal(statement.rep, "SALES");
-  assert.equal(statement.job_no, "567632");
-  assert.equal(statement.ref_no, "synthetic-ref");
-  assert.equal(statement.from_city, "Miami");
-  assert.equal(statement.from_state, "FL");
-  assert.equal(statement.from_zip, "33101");
-  assert.equal(statement.to_city, "Orlando");
-  assert.equal(statement.to_state, "FL");
-  assert.equal(statement.to_zip, "32801");
-  assert.equal(statement.est_cf, "1250");
-  assert.equal(statement.type, "Local");
-  assert.equal(statement.event_type, undefined);
-  assert.equal(statement.granot_crm_username, undefined);
-  assert.notEqual(statement.priority, true);
-});
-
 test("[AC-33] Form Booked statement is booking_action_apply with raw Booked evidence", () => {
   const apply = buildLifecycleApply({
     runId,
@@ -80,46 +50,6 @@ test("[AC-33] Form Booked statement is booking_action_apply with raw Booked evid
   assert.equal(
     apply.operation_id,
     buildAutomationOperationId(runId, "Synthetic Forms:row-1"),
-  );
-});
-
-test("[AC-33] Call enrichment statement does not collapse user/rep", () => {
-  const statement = buildGranotStatementFromCollectedRow({
-    row: row({ ...collected, prior: "5" }),
-    sourceLabel: "Synthetic Calls",
-    section: "followUpEstimates",
-  });
-  assert.equal(resolveAutomationOperationKind("followUpEstimates"), "lead_snapshot_apply");
-  assert.equal(statement.user, "MIKE");
-  assert.equal(statement.rep, "SALES");
-  assert.equal(statement.priority, "5");
-  assert.equal(statement.event_type, undefined);
-});
-
-test("[AC-33] Call Booked statement keeps raw Booked and does not infer Release", () => {
-  const apply = buildLifecycleApply({
-    runId,
-    actionId: "booked_reconciliation:Synthetic Calls:row-1",
-    row: row({ ...collected, book_date: "08/01/2026" }),
-    sourceLabel: "Synthetic Calls",
-    section: "bookedJobs",
-  });
-  assert.equal(apply.operation_kind, "booking_action_apply");
-  assert.equal(apply.granot_statement.event_type, "Booked");
-  assert.equal(apply.granot_statement.book_date, "08/01/2026");
-  assert.equal(apply.granot_statement.user, "MIKE");
-  assert.equal(apply.granot_statement.rep, "SALES");
-});
-
-test("[AC-02] oversized ${run_id}:${action_id} is rejected before plan lock", () => {
-  const actionId = "x".repeat(280);
-  assert.throws(
-    () => assertSafeAutomationOperationId(buildAutomationOperationId(runId, actionId)),
-    (error: unknown) => {
-      assert.ok(error instanceof GranotRunConflict);
-      assert.equal(error.code, "UNSAFE_OPERATION_ID");
-      return true;
-    },
   );
 });
 

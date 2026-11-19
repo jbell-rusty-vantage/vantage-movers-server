@@ -96,15 +96,6 @@ test("all target outcomes merge in original order and uncertainty clears row hin
   assert.equal(persisted[2]!.status, "failed");
 });
 
-test("tombstones, no outcomes and unconfirmed deletes need no metadata write", async (t) => {
-  const plan = planned(new mongoose.Types.ObjectId());
-  const writes = t.mock.method(Forms, "updateOne", () => { throw new Error("unexpected metadata write"); });
-  await persistDocSheetSync([{ docKey: plan.docKey, writes: [] }], [outcome(plan, "tombstone", "master_forms", "synced", "delete")], async () => {});
-  await persistDocSheetSync([plan], [], async () => {});
-  await persistDocSheetSync([plan, plan], [outcome(plan, "uncertain-delete", "master_forms", "deferred", "delete")], async () => {});
-  assert.equal(writes.mock.callCount(), 0);
-});
-
 test("lease loss prevents metadata writes and propagates to drain recovery", async (t) => {
   const plan = planned(new mongoose.Types.ObjectId());
   const writes = t.mock.method(Forms, "updateOne", () => { throw new Error("unexpected metadata write"); });

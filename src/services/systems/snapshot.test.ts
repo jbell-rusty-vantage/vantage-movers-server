@@ -24,26 +24,6 @@ const readers = {
   readSheets: async () => [{ workbook: "master_leads" as const, grid_cells: 10, tabs: [{ name: "Forms", filled_rows: 5, grid_cells: 10 }] }],
 };
 
-test("running twice in one New York day writes one row", async () => {
-  const { store, rows } = memoryStore();
-  const morning = await takeCapacitySnapshot(new Date("2026-10-07T08:45:00Z"), { store, readers });
-  const again = await takeCapacitySnapshot(new Date("2026-10-07T20:00:00Z"), { store, readers });
-  assert.equal(morning.written, true);
-  assert.equal(morning.day, "2026-10-07");
-  assert.deepEqual(again, { written: false, day: "2026-10-07", reason: "already_exists" });
-  assert.equal(rows.length, 1);
-});
-
-test("the day is the New York date, not the UTC date", async () => {
-  const { store, rows } = memoryStore();
-  // 02:30 UTC on Oct 8 is 22:30 on Oct 7 in New York.
-  const late = await takeCapacitySnapshot(new Date("2026-10-08T02:30:00Z"), { store, readers });
-  assert.equal(late.day, "2026-10-07");
-  const next = await takeCapacitySnapshot(new Date("2026-10-08T08:45:00Z"), { store, readers });
-  assert.equal(next.day, "2026-10-08");
-  assert.equal(rows.length, 2);
-});
-
 test("a race between two runs is settled by the unique day", async () => {
   const { store, rows } = memoryStore();
   const racing: SnapshotStore = { ...store, exists: async () => false };

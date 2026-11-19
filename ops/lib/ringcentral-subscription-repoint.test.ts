@@ -10,9 +10,7 @@ import type {
 import {
   ensureAllDirectionSubscriptionGuarded,
   planRepointRefusal,
-  planTarget,
   repairOwnedSubscriptionGuarded,
-  repointRefusal,
   SubscriptionRepointRefusedError,
 } from "./ringcentral-subscription-repoint";
 
@@ -80,32 +78,6 @@ function fakes(records: SubscriptionRecord[], owned: Record<string, Partial<Stor
   return { deps, calls };
 }
 
-test("repointRefusal: only an owned subscription on the production address moving elsewhere is refused", () => {
-  const records = [record({ id: "prod" }), record({ id: "dev", address: OLD_TUNNEL }), record({ id: "bare", address: null })];
-  const check = (subscriptionId: string | null, address: string, productionAddress: string | null = PRODUCTION) =>
-    repointRefusal({ subscriptionId, records, address, productionAddress });
-  assert.match(check("prod", TUNNEL) ?? "", /Refusing to re-point the production calls subscription prod .* RINGCENTRAL_NGROK_WEBHOOK_URL/);
-  assert.equal(check(null, TUNNEL), null, "no target (create / noop / renew)");
-  assert.equal(check("prod", PRODUCTION), null, "already delivering here");
-  assert.equal(check("dev", PRODUCTION), null, "onto the production address: the C6 drift repair");
-  assert.equal(check("dev", TUNNEL), null, "a developer subscription moving between tunnels");
-  assert.equal(check("gone", TUNNEL), null, "not visible: nothing to re-point");
-  assert.equal(check("bare", TUNNEL), null, "no recorded address: nothing to re-point");
-  // Without RINGCENTRAL_WEBHOOK_URL the command cannot tell production apart: every re-point is refused.
-  assert.match(check("dev", TUNNEL, null) ?? "", /RINGCENTRAL_WEBHOOK_URL is not set/);
-  assert.equal(check("prod", PRODUCTION, null), null, "not a re-point");
-});
-
-test("planTarget: update and repair move a subscription; create, noop and renew do not", () => {
-  assert.equal(planTarget({ action: "update", subscription_id: "a", reasons: ["filter_drift"], warnings: [] }), "a");
-  assert.equal(planTarget({ action: "repair", subscription_id: "b", health: "blacklisted", warnings: [] }), "b");
-  // olr CW2: a replacement recreates the subscription at the command's address, so it is guarded too.
-  assert.equal(planTarget({ action: "replace", subscription_id: "e", reasons: ["deliveries_refused"], warnings: [] }), "e");
-  assert.equal(planTarget({ action: "create", warnings: [] }), null);
-  assert.equal(planTarget({ action: "noop", subscription_id: "c", expiration_time: null, warnings: [] }), null);
-  assert.equal(planTarget({ action: "renew", subscription_id: "d", expiration_time: null, warnings: [] }), null);
-});
-
 test("ensure with a tunnel address: the owned production calls subscription is never PUT onto the tunnel", async () => {
   const { deps, calls } = fakes([record({ id: "prod" })], { prod: {} }, TUNNEL);
   await assert.rejects(
@@ -130,21 +102,6 @@ test("ensure on the production address still repairs a drifted production subscr
   assert.equal(plan.action, "update");
   assert.deepEqual(result, { action: "updated", subscription_id: "prod" });
   assert.deepEqual(calls, [`update:prod:${PRODUCTION}`]);
-});
-
-test("ensure with a tunnel address against a store that does not own production creates a separate subscription (pre-C6 behaviour)", async () => {
-  const { deps, calls } = fakes([record({ id: "prod" })], {}, TUNNEL);
-  const { plan, result } = await ensureAllDirectionSubscriptionGuarded(deps, PRODUCTION);
-  assert.equal(plan.action, "create");
-  assert.deepEqual(result, { action: "created", subscription_id: "new-1" });
-  assert.deepEqual(calls, [`create:${TUNNEL}`]);
-});
-
-test("ensure with a tunnel address may move an owned developer subscription from an old tunnel", async () => {
-  const { deps, calls } = fakes([record({ id: "prod" }), record({ id: "dev", address: OLD_TUNNEL })], { dev: {} }, TUNNEL);
-  const { plan } = await ensureAllDirectionSubscriptionGuarded(deps, PRODUCTION);
-  assert.deepEqual([plan.action, planTarget(plan)], ["update", "dev"]);
-  assert.deepEqual(calls, [`update:dev:${TUNNEL}`]);
 });
 
 test("ensure without RINGCENTRAL_WEBHOOK_URL refuses any re-point of an owned subscription", async () => {

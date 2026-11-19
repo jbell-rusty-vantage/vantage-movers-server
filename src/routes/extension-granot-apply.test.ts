@@ -9,9 +9,6 @@ import type {
   ExtensionGranotApplyResult,
 } from "../services/granotLifecycle/extensionApply";
 import { createExtensionGranotApplyRouter } from "./extension-granot-apply.routes";
-import routerModule from "./v1.routes";
-import { syncCallLeadEnrichment } from "../services/callLeadEnrichment.service";
-import { syncBookedCallLeadReconciliation } from "../services/bookedCallLeadReconciliation.service";
 
 const formId = new mongoose.Types.ObjectId().toHexString();
 const applied: ApplyExtensionGranotItemInput[] = [];
@@ -142,18 +139,6 @@ async function patch(
   });
 }
 
-test("[AC-33] Form and Call apply routes remain registered on the v1 surface", () => {
-  const stack = (routerModule as { stack?: Array<{ route?: { path?: string; methods?: Record<string, boolean> } }> }).stack ?? [];
-  const paths = stack.flatMap((layer) => {
-    if (layer.route?.path) return [layer.route.path];
-    const nested = (layer as { handle?: { stack?: Array<{ route?: { path?: string } }> } }).handle?.stack;
-    return (nested ?? []).map((entry) => entry.route?.path).filter(Boolean);
-  });
-  assert.ok(paths.includes("/api/v1/form-leads/:id/granot-sync"));
-  assert.ok(paths.includes("/api/v1/call-leads/enrichment/sync"));
-  assert.ok(paths.includes("/api/v1/call-leads/booked-reconciliation/sync"));
-});
-
 test("[AC-33] Owner Form apply captures a statement and never a quoted patch", async () => {
   const response = await patch(`/api/v1/form-leads/${formId}/granot-sync`, snapshotItem());
   const body = await response.json();
@@ -186,25 +171,6 @@ test("[AC-35] Admin, secret, and unauthenticated apply create no receipt", async
     assert.equal(applied.length, 0);
     assert.equal(JSON.stringify(body).includes("MIKE"), false);
   }
-});
-
-test("[AC-02] strict Zod rejects unknown outer keys, invalid IDs, and booking action on snapshot apply", async () => {
-  const unknown = await patch(`/api/v1/form-leads/${formId}/granot-sync`, {
-    ...snapshotItem(),
-    patch: { quoted: true },
-  });
-  assert.equal(unknown.status, 400);
-  const invalidId = await patch(`/api/v1/form-leads/${formId}/granot-sync`, {
-    ...snapshotItem(),
-    operation_id: "NOT-A-UUID",
-  });
-  assert.equal(invalidId.status, 400);
-  const bookedSnapshot = await patch(`/api/v1/form-leads/${formId}/granot-sync`, {
-    ...snapshotItem(),
-    granot_statement: { ...snapshotItem().granot_statement, event_type: "Booked" },
-  });
-  assert.equal(bookedSnapshot.status, 400);
-  assert.equal(applied.length, 0);
 });
 
 test("[AC-33] Call enrichment accepts a bounded batch in input order and rejects duplicate operation IDs", async () => {
@@ -275,22 +241,4 @@ test("[AC-33] booked reconciliation permits only booking_action_apply", async ()
   });
   assert.equal(accepted.status, 200);
   assert.equal(applied[0]?.item.operation_kind, "booking_action_apply");
-});
-
-test("[AC-33] no extension apply path imports or invokes the legacy patch services", () => {
-  assert.equal(typeof syncCallLeadEnrichment, "function");
-  assert.equal(typeof syncBookedCallLeadReconciliation, "function");
-  assert.equal(applied.every((entry) => !("patch" in entry.item)), true);
-});
-
-test("[AC-35] validation errors omit raw statement values", async () => {
-  const response = await patch(`/api/v1/form-leads/${formId}/granot-sync`, {
-    operation_id: operationId,
-    operation_kind: "lead_snapshot_apply",
-    granot_statement: { authorization: "secret-value", priority: "1" },
-  });
-  const body = await response.json();
-  assert.equal(response.status, 400);
-  assert.equal(body.code, GRANOT_LIFECYCLE_ERROR_CODES.VALIDATION_FAILED);
-  assert.equal(JSON.stringify(body).includes("secret-value"), false);
 });

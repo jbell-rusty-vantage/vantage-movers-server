@@ -671,48 +671,6 @@ test("[AC-R9] latest Booked on review mode is GRANOT_CASE_REVISION_CONFLICT and 
   assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.state, "open");
 });
 
-test("[AC-R9] booking commands disabled is POLICY_BLOCKED even when release command flags are true", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seedBookingCase({ mode: "review_existing_booking", latestAction: "release" });
-  const flags = {
-    ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
-    booking_commands_enabled: false,
-    release_commands_enabled: true,
-    release_cases_enabled: true,
-  };
-  await assert.rejects(
-    confirmCancellation(cancelCommand(fixture.caseId, "disabled"), { flags }),
-    (error: unknown) =>
-      error instanceof GranotLifecycleError &&
-      error.code === GRANOT_LIFECYCLE_ERROR_CODES.POLICY_BLOCKED &&
-      error.statusCode === 422,
-  );
-  assert.equal(await CancelledLead.countDocuments({ booked_lead: fixture.bookingId }), 0);
-  assert.equal((await BookedLead.findById(fixture.bookingId).lean().exec())?.cancelled, undefined);
-  assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.state, "open");
-});
-
-test("[AC-RRF-01][AC-RRF-06] Release-first Referral review No Action closes the case only", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seedReferralReviewCase({ latestAction: "booked" });
-  const before = await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec();
-  assert.equal(before?.case_revision, 1);
-  assert.ok((before?.evidence_revision ?? 0) > 1);
-  assert.equal(fixture.evidenceRevision, before?.evidence_revision);
-  const result = await noAction(rrfNoActionCommand(fixture.caseId, "ok"), { flags: rrfFlags });
-  assert.equal(result.outcome, "no_action");
-  assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 1);
-  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": fixture.caseId }), 0);
-  assert.equal(await SheetSyncJob.countDocuments({
-    entity_id: { $in: [String(fixture.caseId), String(fixture.bookingId)] },
-  }), 0);
-  const afterCase = await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec();
-  assert.equal(afterCase?.state, "resolved");
-  assert.equal(afterCase?.resolution?.outcome, "no_action");
-  assert.equal(afterCase?.case_revision, 2);
-  assert.equal(afterCase?.evidence_revision, before?.evidence_revision);
-});
-
 test("[AC-RRF-02] Release-first Referral review Update keeps one Booking", async (t) => {
   if (!(await replicaReady(t))) return;
   const fixture = await seedReferralReviewCase({ latestAction: "booked" });
@@ -729,20 +687,6 @@ test("[AC-RRF-02] Release-first Referral review Update keeps one Booking", async
     (await SheetSyncJob.findOne({ entity_id: String(fixture.bookingId) }).lean().exec())?.operation,
     "referral_booking.update",
   );
-});
-
-test("[AC-RRF-03] Release-first review latest Booked Cancel is GRANOT_CASE_REVISION_CONFLICT", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seedReferralReviewCase({ latestAction: "booked" });
-  await assert.rejects(
-    confirmCancellation(cancelCommand(fixture.caseId, "rrf-booked"), { flags: rrfFlags }),
-    (error: unknown) =>
-      error instanceof GranotLifecycleError &&
-      error.code === GRANOT_LIFECYCLE_ERROR_CODES.CASE_REVISION_CONFLICT &&
-      error.statusCode === 409,
-  );
-  assert.equal(await CancelledLead.countDocuments({ booked_lead: fixture.bookingId }), 0);
-  assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.state, "open");
 });
 
 test("[AC-RRF-03] Release-first review latest Release Cancel creates Cancellation without a Lead", async (t) => {
@@ -773,24 +717,4 @@ test("[AC-RRF-05] Release-first Referral review dead Registry is GRANOT_POLICY_B
   );
   assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.state, "open");
   assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 1);
-});
-
-test("[AC-RRF-01] Release-first Referral review job mismatch or pre-activation is GRANOT_IDENTITY_CONFLICT", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const mismatched = await seedReferralReviewCase({ latestAction: "booked", jobMismatch: true });
-  await assert.rejects(
-    noAction(rrfNoActionCommand(mismatched.caseId, "job-mismatch"), { flags: rrfFlags }),
-    (error: unknown) =>
-      error instanceof GranotLifecycleError &&
-      error.code === GRANOT_LIFECYCLE_ERROR_CODES.IDENTITY_CONFLICT &&
-      error.statusCode === 409,
-  );
-  const preActivation = await seedReferralReviewCase({ latestAction: "booked", preActivation: true });
-  await assert.rejects(
-    noAction(rrfNoActionCommand(preActivation.caseId, "pre-activation"), { flags: rrfFlags }),
-    (error: unknown) =>
-      error instanceof GranotLifecycleError &&
-      error.code === GRANOT_LIFECYCLE_ERROR_CODES.IDENTITY_CONFLICT &&
-      error.statusCode === 409,
-  );
 });

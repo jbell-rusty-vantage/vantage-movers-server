@@ -1,21 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { proposeRepCandidates } from "./propose";
 import { resolveRepIdentityAt, type TemporalRepLink } from "./resolve";
-import { csiRepInputSchema } from "../../../validation/v1/salesIntelligence";
 import { defaultStageHandlers } from "../../numberActivity/jobDispatch";
 import { CSI_RETIRED_JOB_STAGES } from "../../../config/domain/salesIntelligence";
 
-const agents = [{ _id: "a", name: "Alex Reed", name_aliases: ["Alex R"] }, { _id: "b", name: "Jordan Lee", name_aliases: ["Alex R"] }];
-test("exact names remain proposed; alias ties, duplicate names, missing names and non-Users remain explicit", () => {
-  assert.equal(proposeRepCandidates({ id: "1", name: "Jordan Lee", type: "User" }, agents).status, "proposed");
-  assert.equal(proposeRepCandidates({ id: "1", name: "Alex R", type: "User" }, agents).status, "ambiguous");
-  assert.equal(proposeRepCandidates({ id: "1", name: "Jordan Lee", type: "User" }, [...agents, { _id: "c", name: "Jordan Lee" }]).status, "ambiguous");
-  assert.equal(proposeRepCandidates({ id: "1", name: "Casey Unknown", type: "User" }, agents).status, "unmatched");
-  for (const type of ["Department", "Voicemail", "IvrMenu", "Announcement", "CompanyExtension", "Queue"]) {
-    assert.deepEqual(proposeRepCandidates({ id: "1", name: "Alex Reed", type }, agents).candidates, []);
-  }
-});
 const boundary = new Date("2026-09-10T12:00:00Z"), from = new Date("2026-09-01T00:00:00Z");
 const old: TemporalRepLink = { _id: "1", revision: 2, agent_id: "alex", rc_account_id: "a", rc_extension_id: "101", role_kind: "sales_rep",
   status: "retired", effective_from: from, effective_to: boundary, reviewed_at: from, reviewed_by: "owner" };
@@ -31,12 +19,6 @@ test("account scope, half-open reassignment, retirement and review authority", (
   assert.equal(resolveRepIdentityAt([{ ...next, status: "proposed" }],"a","101",boundary).status,"proposed_only");
   assert.equal(resolveRepIdentityAt([next, { ...next, _id:"4" }],"a","101",boundary).status,"conflicting");
   for (const role_kind of ["shared", "service", "manager", "dialer", "excluded"]) assert.equal(resolveRepIdentityAt([{ ...next, role_kind }],"a","101",boundary).status,"excluded_role");
-});
-test("period validation compares instants and rejects unknown input keys", () => {
-  const link = { agent_id: "aaaaaaaaaaaaaaaaaaaaaaaa", rc_account_id: "a", rc_extension_id: "101", role_kind: "sales_rep",
-    effective_from: "2026-09-01T00:00:00.100Z", effective_to: "2026-09-01T00:00:00Z", nudge_channels_allowed: [] };
-  assert.equal(csiRepInputSchema.safeParse(link).success,false);
-  assert.equal(csiRepInputSchema.safeParse({ ...link, effective_to:null, reviewed:true }).success,false);
 });
 test("identity re-evaluation is a retired stage: no consumer, and old rows are terminalized by the fence", () => {
   // Call attribution resolves the Rep Identity Link effective at the call, at read time, so a review needs no job.

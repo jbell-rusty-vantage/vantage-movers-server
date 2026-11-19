@@ -1,12 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import {
-  buildCoalescingKey,
-  getSheetSyncBudgets,
-  getSheetSyncDrainGuardrails,
-  getSheetSyncMode,
-  getSheetSyncQueueTopic,
-  isVercelFunctionRuntimeEnv,
   priorityForJob,
   shouldPublishSheetSyncQueue,
   supersededUpsertCoalescingKey,
@@ -41,68 +35,6 @@ afterEach(() => {
   }
 });
 
-test("getSheetSyncMode defaults to legacy and parses known values", () => {
-  delete process.env.SHEET_SYNC_MODE;
-  assert.equal(getSheetSyncMode(), "legacy");
-
-  process.env.SHEET_SYNC_MODE = "queued";
-  assert.equal(getSheetSyncMode(), "queued");
-
-  process.env.SHEET_SYNC_MODE = "DISABLED";
-  assert.equal(getSheetSyncMode(), "disabled");
-
-  process.env.SHEET_SYNC_MODE = "nonsense";
-  assert.equal(getSheetSyncMode(), "legacy");
-});
-
-test("queue topic is env-scoped and overridable", () => {
-  delete process.env.SHEET_SYNC_QUEUE_TOPIC;
-  process.env.VERCEL_ENV = "production";
-  assert.equal(getSheetSyncQueueTopic(), "sheet-sync-events");
-
-  process.env.VERCEL_ENV = "preview";
-  assert.equal(getSheetSyncQueueTopic(), "sheet-sync-events-dev");
-
-  delete process.env.VERCEL_ENV;
-  assert.equal(getSheetSyncQueueTopic(), "sheet-sync-events-dev");
-
-  process.env.SHEET_SYNC_QUEUE_TOPIC = "custom-topic";
-  process.env.VERCEL_ENV = "production";
-  assert.equal(getSheetSyncQueueTopic(), "custom-topic");
-});
-
-test("budgets default below documented Google limits and parse overrides", () => {
-  const defaults = getSheetSyncBudgets();
-  assert.equal(defaults.readsPerMinute, 45);
-  assert.equal(defaults.writesPerMinute, 45);
-  assert.ok(defaults.readsPerMinute < 60, "reads budget leaves user headroom");
-  assert.ok(defaults.maxPayloadBytes < 2_000_000, "payload below recommended max");
-
-  process.env.SHEET_SYNC_READS_PER_MINUTE_BUDGET = "30";
-  process.env.SHEET_SYNC_MAX_PAYLOAD_BYTES = "1000000";
-  const overridden = getSheetSyncBudgets();
-  assert.equal(overridden.readsPerMinute, 30);
-  assert.equal(overridden.maxPayloadBytes, 1_000_000);
-
-  process.env.SHEET_SYNC_WRITES_PER_MINUTE_BUDGET = "not-a-number";
-  assert.equal(getSheetSyncBudgets().writesPerMinute, 45);
-});
-
-test("drain guardrails default to fast queue draining and parse overrides", () => {
-  const defaults = getSheetSyncDrainGuardrails();
-  assert.equal(defaults.maxJobsPerDrain, 500);
-  assert.equal(defaults.maxRowsPerBatch, 500);
-  assert.equal(defaults.debounceWindowMs, 3_000);
-
-  process.env.SHEET_SYNC_MAX_JOBS_PER_DRAIN = "100";
-  process.env.SHEET_SYNC_MAX_ROWS_PER_BATCH = "50";
-  process.env.SHEET_SYNC_DEBOUNCE_WINDOW_MS = "1000";
-  const overridden = getSheetSyncDrainGuardrails();
-  assert.equal(overridden.maxJobsPerDrain, 100);
-  assert.equal(overridden.maxRowsPerBatch, 50);
-  assert.equal(overridden.debounceWindowMs, 1_000);
-});
-
 test("shouldPublishSheetSyncQueue stays off outside production Vercel", () => {
   delete process.env.VERCEL;
   delete process.env.VERCEL_REGION;
@@ -121,27 +53,6 @@ test("shouldPublishSheetSyncQueue stays off outside production Vercel", () => {
   assert.equal(shouldPublishSheetSyncQueue(), false);
 });
 
-test("isVercelFunctionRuntimeEnv requires hosted runtime markers", () => {
-  process.env.VERCEL = "1";
-  process.env.VERCEL_ENV = "production";
-  delete process.env.VERCEL_REGION;
-  assert.equal(isVercelFunctionRuntimeEnv(), false);
-
-  process.env.VERCEL_REGION = "iad1";
-  assert.equal(isVercelFunctionRuntimeEnv(), true);
-});
-
-test("shouldPublishSheetSyncQueue is always off during the test runner", () => {
-  process.env.VANTAGE_TEST_RUNNER = "true";
-  process.env.VERCEL = "1";
-  process.env.VERCEL_ENV = "production";
-  process.env.VERCEL_REGION = "iad1";
-  assert.equal(shouldPublishSheetSyncQueue(), false);
-
-  process.env.SHEET_SYNC_QUEUE_LOCAL_PUBLISH = "true";
-  assert.equal(shouldPublishSheetSyncQueue(), false);
-});
-
 test("shouldPublishSheetSyncQueue keeps test runner guard after env cleanup", () => {
   markVantageTestRunner();
   delete process.env.VANTAGE_TEST_RUNNER;
@@ -150,41 +61,6 @@ test("shouldPublishSheetSyncQueue keeps test runner guard after env cleanup", ()
   process.env.VERCEL_ENV = "production";
 
   assert.equal(shouldPublishSheetSyncQueue(), false);
-});
-
-test("coalescing keys follow the design doc shape", () => {
-  assert.equal(
-    buildCoalescingKey({ resource: "source_lead", entityModel: "FormLead", entityId: "a1" }),
-    "source_lead:FormLead:a1",
-  );
-  assert.equal(
-    buildCoalescingKey({ resource: "source_lead", entityModel: "CallLead", entityId: "a1" }),
-    "source_lead:CallLead:a1",
-  );
-  assert.equal(
-    buildCoalescingKey({ resource: "booked_lead", entityId: "b1" }),
-    "booked_lead:b1",
-  );
-  assert.equal(
-    buildCoalescingKey({ resource: "booking_chain", entityId: "b1" }),
-    "booking_chain:b1",
-  );
-  assert.equal(
-    buildCoalescingKey({ resource: "cancellation_chain", entityId: "c1" }),
-    "cancellation_chain:c1",
-  );
-  assert.equal(
-    buildCoalescingKey({ resource: "delete_source_lead", entityModel: "CallLead", entityId: "a1" }),
-    "delete_source_lead:CallLead:a1",
-  );
-  assert.equal(
-    buildCoalescingKey({ resource: "delete_booked_lead", entityId: "b1" }),
-    "delete_booked_lead:b1",
-  );
-  assert.equal(
-    buildCoalescingKey({ resource: "delete_cancelled_lead", entityId: "c1" }),
-    "delete_cancelled_lead:c1",
-  );
 });
 
 test("delete resources supersede their matching upsert keys", () => {

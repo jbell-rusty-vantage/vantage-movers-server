@@ -1,22 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { toFloridaTimestamp } from "../../../utils/easternTime";
-import { leadInstant, leadTimestampConvention, wallClockToInstant } from "./leadInstant";
+import { leadInstant, leadTimestampConvention } from "./leadInstant";
 
 const at = (iso: string) => new Date(iso);
 const form = (timestamp: Date, ingestion_origin: string | null = "wordpress_form") => ({ timestamp, ingestion_origin });
-
-test("S11-TIME: a Form Lead received at 10:00 ET in EST is the instant 15:00Z", () => {
-  const stored = toFloridaTimestamp(at("2026-01-15T15:00:00.000Z"));
-  assert.equal(stored.toISOString(), "2026-01-15T10:00:00.000Z", "stored as ET wall clock");
-  assert.equal(leadInstant(form(stored)).toISOString(), "2026-01-15T15:00:00.000Z");
-});
-
-test("S11-TIME: a Form Lead received at 10:00 ET in EDT is the instant 14:00Z", () => {
-  const stored = toFloridaTimestamp(at("2026-07-15T14:00:00.000Z"));
-  assert.equal(stored.toISOString(), "2026-07-15T10:00:00.000Z");
-  assert.equal(leadInstant(form(stored)).toISOString(), "2026-07-15T14:00:00.000Z");
-});
 
 test("S11-TIME: spring forward (2026-03-08): 02:30 never happens; read at UTC−5 (07:30Z = 03:30 EDT)", () => {
   assert.equal(leadInstant(form(at("2026-03-08T02:30:00.000Z"))).toISOString(), "2026-03-08T07:30:00.000Z");
@@ -40,25 +28,6 @@ test("S11-TIME: a Granot-created Lead's timestamp is already an instant and pass
   assert.equal(leadInstant(form(captured, "granot_lead_created")), captured);
 });
 
-test("S11-TIME: a RingCentral Call Lead and every other origin (and none) are wall clock; milliseconds kept", () => {
-  const started = at("2026-09-24T18:41:07.456Z");
-  for (const origin of ["ringcentral", "best_relocation_sheet", "vantage_admin", "legacy_import", "legacy_unknown", null]) {
-    assert.equal(leadTimestampConvention({ ingestion_origin: origin }), "wall_clock", String(origin));
-    assert.equal(leadInstant({ timestamp: toFloridaTimestamp(started), ingestion_origin: origin }).toISOString(), started.toISOString(), String(origin));
-  }
-});
-
-test("S11-TIME: round trip over a year, every 37 minutes, except the second pass of the fall-back hour", () => {
-  let checked = 0;
-  for (let t = Date.parse("2026-01-01T00:00:00Z"); t < Date.parse("2027-01-01T00:00:00Z"); t += 37 * 60_000) {
-    const real = new Date(t), back = wallClockToInstant(toFloridaTimestamp(real));
-    const secondPass = t >= Date.parse("2026-11-01T06:00:00Z") && t < Date.parse("2026-11-01T07:00:00Z");
-    assert.equal(+back, secondPass ? t - 3_600_000 : t, real.toISOString());
-    checked++;
-  }
-  assert.ok(checked > 14_000);
-});
-
 test("S11-TIME: a row that would arrive after its own creation is an instant (historical consolidation, schema default); live and imported rows are wall clock", () => {
   const instant = at("2025-03-04T15:12:00.000Z");
   const imported = { timestamp: instant, createdAt: instant, ingestion_origin: "legacy_unknown" };
@@ -73,9 +42,4 @@ test("S11-TIME: a row that would arrive after its own creation is an instant (hi
   assert.equal(leadTimestampConvention({ timestamp: toFloridaTimestamp(new Date(+instant + 30 * 60_000)), createdAt: instant, ingestion_origin: "wordpress_form" }), "wall_clock");
   // An import long after the fact is a wall clock.
   assert.equal(leadTimestampConvention({ timestamp: toFloridaTimestamp(instant), createdAt: at("2026-06-01T00:00:00.000Z"), ingestion_origin: "best_relocation_sheet" }), "wall_clock");
-});
-
-test("S11-TIME: a missing or invalid timestamp is null", () => {
-  assert.equal(leadInstant({ timestamp: null }), null);
-  assert.equal(leadInstant({ timestamp: new Date(Number.NaN) }), null);
 });

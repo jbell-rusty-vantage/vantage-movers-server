@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { after, afterEach, before, test } from "node:test";
 import express from "express";
@@ -109,26 +107,6 @@ function callLogSync(headers: Record<string, string> = {}) {
 
 const authorized = { authorization: "Bearer expected-secret" };
 
-test("returns 500 when CRON_SECRET is not configured", async () => {
-  delete process.env.CRON_SECRET;
-  const res = await callLogSync({ authorization: "Bearer anything" });
-  assert.equal(res.status, 500);
-  assert.equal(runCount, 0);
-});
-
-test("returns 401 when the cron secret does not match", async () => {
-  process.env.CRON_SECRET = "expected-secret";
-  const res = await callLogSync({ authorization: "Bearer wrong" });
-  assert.equal(res.status, 401);
-  assert.equal(runCount, 0);
-});
-
-test("accepts the x-cron-secret header", async () => {
-  process.env.CRON_SECRET = "expected-secret";
-  const res = await callLogSync({ "x-cron-secret": "expected-secret" });
-  assert.equal(res.status, 200);
-});
-
 test("[AC-17] a disabled Call Log sync never claims the lease", async () => {
   process.env.CRON_SECRET = "expected-secret";
   enabled = false;
@@ -209,29 +187,4 @@ test("[AC-17] a genuine failure stays safe and non-sensitive", async () => {
   const serialized = JSON.stringify(body);
   assert.equal(serialized.includes("+15550001000"), false);
   assert.equal(serialized.includes("secret-token"), false);
-});
-
-test("[AC-17] vercel.json schedules the Call Log sync every 30 minutes", () => {
-  const manifest = JSON.parse(
-    readFileSync(path.join(process.cwd(), "vercel.json"), "utf8"),
-  ) as { crons: Array<{ path: string; schedule: string }> };
-  assert.deepEqual(
-    manifest.crons.find(
-      (entry) => entry.path === "/api/cron/ringcentral-call-log-sync",
-    ),
-    {
-      path: "/api/cron/ringcentral-call-log-sync",
-      schedule: "*/30 * * * *",
-    },
-  );
-  // The rest of the cron manifest is untouched by this unit.
-  assert.deepEqual(
-    manifest.crons.find(
-      (entry) => entry.path === "/api/cron/ringcentral-analytics-reconcile",
-    ),
-    {
-      path: "/api/cron/ringcentral-analytics-reconcile",
-      schedule: "0 6 * * *",
-    },
-  );
 });

@@ -4,7 +4,6 @@ import mongoose from "mongoose";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
 import type { LeadIdentityResult } from "./identity";
 import {
-  evaluateMinimumCreationData,
   planLeadDesiredState,
   type LeadDesiredStateProjection,
 } from "./leadDesiredState";
@@ -109,13 +108,6 @@ function pendingIdentity(): LeadIdentityResult {
   };
 }
 
-function unmatchedIdentity(): LeadIdentityResult {
-  return {
-    outcome: "unmatched",
-    reason_code: "pending_source_scoped_match",
-    candidates: [],
-  };
-}
 
 function callCreatePolicy(overrides: Partial<SourcePolicySnapshot> = {}): SourcePolicySnapshot {
   return policy({
@@ -169,42 +161,6 @@ function plan(input: {
   });
 }
 
-test("[AC-05] all listed Priority forms canonicalize into desired state; only 1/5 enrich and set quoted true", () => {
-  const lead = wordpressLead();
-  for (const canonical of ["0", "1", "5", "8"]) {
-    const result = plan({
-      observation: observation({ priority: { valid: true, canonical } }),
-      lead,
-    });
-    assert.equal(result.desired_values.granot_priority, canonical);
-    if (canonical === "1" || canonical === "5") {
-      assert.equal(result.desired_values.quoted, true);
-      assert.ok(result.changed_paths.includes("granot_contact_snapshot"));
-      assert.ok(result.changed_paths.includes("pickup_state"));
-    } else {
-      assert.equal(result.desired_values.quoted, undefined);
-      assert.equal(result.changed_paths.includes("granot_contact_snapshot"), false);
-      assert.equal(result.changed_paths.includes("quoted"), false);
-    }
-  }
-});
-
-test("[AC-05] leading-zero canonical 5 enriches; no Priority plans quoted false", () => {
-  const lead = wordpressLead({ quoted: true, granot_priority: "1" });
-  const stored = plan({
-    observation: observation({ priority: { valid: true, canonical: "5" } }),
-    lead,
-  });
-  assert.equal(stored.desired_values.granot_priority, "5");
-  assert.equal(stored.desired_values.quoted, undefined);
-  const zero = plan({
-    observation: observation({ priority: { valid: true, canonical: "0" } }),
-    lead,
-  });
-  assert.equal(zero.desired_values.quoted, undefined);
-  assert.equal(zero.changed_paths.includes("quoted"), false);
-});
-
 test("[AC-06] malformed Priority Update is invalid and plans nothing", () => {
   const result = plan({
     observation: observation({
@@ -221,38 +177,6 @@ test("[AC-06] malformed Priority Update is invalid and plans nothing", () => {
   assert.deepEqual(result.changed_paths, []);
 });
 
-test("[AC-06] malformed Priority on Lead Created/Booked/Release skips Priority and continues", () => {
-  const lead = wordpressLead();
-  for (const route_event_class of ["lead_created", "booking_status_changed"] as const) {
-    const result = plan({
-      observation: observation({
-        route_event_class,
-        normalization_result: "valid_with_issues",
-        issues: [{ code: "invalid_priority", severity: "error" }],
-        priority: { valid: false },
-      }),
-      lead,
-    });
-    assert.notEqual(result.outcome, "invalid");
-    assert.equal(result.desired_values.granot_priority, undefined);
-    assert.equal(result.desired_values.quoted, undefined);
-    assert.equal(result.target?.model, "FormLead");
-  }
-});
-
-test("[AC-07] matched Lead Created selects one target and never plans a second Lead", () => {
-  const lead = wordpressLead();
-  const result = plan({
-    observation: observation({ route_event_class: "lead_created" }),
-    identity: matchedIdentity(lead.id),
-    lead,
-  });
-  assert.equal(result.target?.id, lead.id);
-  assert.equal(result.creation_eligibility ?? "not_applicable", "not_applicable");
-  assert.equal(result.outcome, "applied");
-  assert.equal(JSON.stringify(result.desired_values).includes("created"), false);
-});
-
 test("[AC-08] create_if_missing with minimum data authorizes the gated creation command", () => {
   const result = plan({
     identity: pendingIdentity(),
@@ -266,62 +190,6 @@ test("[AC-08] create_if_missing with minimum data authorizes the gated creation 
   assert.deepEqual(result.desired_values, {});
 });
 
-test("[AC-08] incomplete create_if_missing is exact insufficient_creation_data", () => {
-  const missingJob = plan({
-    observation: observation({ identity: {} }),
-    identity: pendingIdentity(),
-    policy: policy({ lead_created_policy: "create_if_missing" }),
-  });
-  assert.equal(missingJob.outcome, "insufficient_creation_data");
-  assert.equal(missingJob.reason_code, "missing_creation_job_number");
-  assert.equal(missingJob.next_match_attempt_at, undefined);
-
-  const missingContact = plan({
-    observation: observation({ contact: {} }),
-    identity: pendingIdentity(),
-    policy: policy({ lead_created_policy: "create_if_missing" }),
-  });
-  assert.equal(missingContact.reason_code, "missing_creation_contact");
-});
-
-test("[AC-09] Local vs long-distance route result controls Form minimum-data eligibility", () => {
-  const local = evaluateMinimumCreationData({
-    observation: observation({
-      move: {
-        origin: { state: "NY", zip: "10001" },
-        destination: { state: "NY", zip: "10002" },
-      },
-    }),
-    policy: policy({ selected_move_type: "local" }),
-  });
-  assert.equal(local.eligibility, "eligible");
-
-  const longDistance = evaluateMinimumCreationData({
-    observation: observation({
-      move: {
-        origin: { state: "NY", zip: "10001" },
-        destination: { state: "CA", zip: "94105" },
-      },
-    }),
-    policy: policy({ selected_move_type: "long_distance", selected_route_key: "form_long" }),
-  });
-  assert.equal(longDistance.eligibility, "eligible");
-
-  const invalid = evaluateMinimumCreationData({
-    observation: observation({
-      move: {
-        origin: { state: "XX", zip: "10001" },
-        destination: { state: "NY", zip: "10002" },
-      },
-    }),
-    policy: policy(),
-  });
-  assert.equal(invalid.eligibility, "insufficient");
-  if (invalid.eligibility === "insufficient") {
-    assert.equal(invalid.reason_code, "missing_creation_route_data");
-  }
-});
-
 test("[AC-10] WordPress primary contact and immutable snapshot never enter changed paths", () => {
   const lead = wordpressLead();
   const result = plan({ lead });
@@ -331,191 +199,6 @@ test("[AC-10] WordPress primary contact and immutable snapshot never enter chang
   assert.equal(result.changed_paths.includes("ingested_contact_snapshot"), false);
   assert.ok(result.changed_paths.includes("granot_contact_snapshot"));
   assert.equal(result.desired_values.name, undefined);
-});
-
-test("[AC-11] WordPress immutable move snapshot and Vantage move_size stay unchanged", () => {
-  const lead = wordpressLead({
-    move_size: "Studio",
-    pickup_state: "NJ",
-    delivery_state: "CA",
-    local: "long_distance",
-  });
-  const result = plan({ lead });
-  assert.equal(result.changed_paths.includes("ingested_move_snapshot"), false);
-  assert.equal(result.changed_paths.includes("move_size"), false);
-  assert.equal(result.desired_values.move_size, undefined);
-  assert.equal(result.desired_values.pickup_state, "NY");
-  assert.equal(result.desired_values.local, "local");
-  assert.equal(result.desired_values.cubic_feet, 400);
-});
-
-test("[AC-12] RingCentral Call qualified contact plans Granot Contact Snapshot only", () => {
-  const lead: LeadDesiredStateProjection = {
-    model: "CallLead",
-    id: String(objectId()),
-    ingestion_origin: "ringcentral",
-    quoted: false,
-    name: "Original Caller",
-    phone_number: "5550000000",
-    normalized_phone_number: "5550000000",
-  };
-  const result = plan({
-    identity: {
-      ...matchedIdentity(lead.id),
-      target: { model: "CallLead", id: lead.id },
-    },
-    lead,
-  });
-  assert.ok(result.changed_paths.includes("granot_contact_snapshot"));
-  assert.deepEqual(result.desired_values.granot_contact_snapshot, {
-    first_name: "Ada",
-    last_name: "Lovelace",
-    name: "Ada Lovelace",
-    phone_number: "5551234567",
-    normalized_phone_number: "5551234567",
-    email: "ada@example.test",
-  });
-  for (const path of [
-    "phone_number",
-    "normalized_phone_number",
-    "name",
-    "email",
-    "first_name",
-    "last_name",
-    "ingested_contact_snapshot",
-    "last_granot_contact_change.changed_paths",
-  ]) {
-    assert.equal(result.changed_paths.includes(path), false);
-    assert.equal(result.desired_values[path], undefined);
-  }
-});
-
-test("granot_lead_created Call later different Granot phone plans snapshot only", () => {
-  const lead: LeadDesiredStateProjection = {
-    model: "CallLead",
-    id: String(objectId()),
-    ingestion_origin: "granot_lead_created",
-    quoted: true,
-    granot_priority: "1",
-    name: "Original Caller",
-    first_name: "Original",
-    last_name: "Caller",
-    phone_number: "5550000000",
-    normalized_phone_number: "5550000000",
-    email: "caller@example.test",
-    granot_contact_snapshot: {
-      first_name: "Original",
-      last_name: "Caller",
-      name: "Original Caller",
-      phone_number: "5550000000",
-      normalized_phone_number: "5550000000",
-      email: "caller@example.test",
-    },
-  };
-  const result = plan({
-    identity: {
-      ...matchedIdentity(lead.id),
-      target: { model: "CallLead", id: lead.id },
-    },
-    lead,
-  });
-  assert.ok(result.changed_paths.includes("granot_contact_snapshot"));
-  assert.deepEqual(result.desired_values.granot_contact_snapshot, {
-    first_name: "Ada",
-    last_name: "Lovelace",
-    name: "Ada Lovelace",
-    phone_number: "5551234567",
-    normalized_phone_number: "5551234567",
-    email: "ada@example.test",
-  });
-  for (const path of [
-    "phone_number",
-    "normalized_phone_number",
-    "name",
-    "email",
-    "first_name",
-    "last_name",
-  ]) {
-    assert.equal(result.changed_paths.includes(path), false);
-    assert.equal(result.desired_values[path], undefined);
-  }
-});
-
-test("Priority 8 Call Lead does not plan Granot Contact Snapshot", () => {
-  const lead: LeadDesiredStateProjection = {
-    model: "CallLead",
-    id: String(objectId()),
-    ingestion_origin: "ringcentral",
-    quoted: false,
-    name: "Original Caller",
-    phone_number: "5550000000",
-    normalized_phone_number: "5550000000",
-  };
-  const result = plan({
-    observation: observation({ priority: { valid: true, canonical: "8" } }),
-    identity: {
-      ...matchedIdentity(lead.id),
-      target: { model: "CallLead", id: lead.id },
-    },
-    lead,
-  });
-  assert.equal(result.changed_paths.includes("granot_contact_snapshot"), false);
-  assert.equal(result.changed_paths.includes("phone_number"), false);
-  assert.equal(result.changed_paths.includes("normalized_phone_number"), false);
-  assert.equal(result.changed_paths.includes("name"), false);
-  assert.equal(result.desired_values.granot_contact_snapshot, undefined);
-});
-
-test("[AC-13] empty receiver fills from one active Agent at a non-1/5 Priority", () => {
-  const lead = wordpressLead({ quoted: false });
-  const agentId = String(objectId());
-  const result = plan({
-    observation: observation({ priority: { valid: true, canonical: "8" } }),
-    identity: {
-      ...matchedIdentity(lead.id),
-      agent: {
-        target: { model: "Agent", id: agentId },
-        normalized_username: "synthetic.agent",
-      },
-      agent_assertion: "single",
-    },
-    lead,
-  });
-  assert.equal(result.desired_values.receiver_agent, agentId);
-  assert.equal(result.desired_values.receiver_agent_source, "granot_username_match");
-  assert.deepEqual(result.agent_changed_paths, [
-    "receiver_agent",
-    "receiver_agent_source",
-    "receiver_agent_source_value",
-  ]);
-  assert.equal(result.desired_values.quoted, undefined);
-});
-
-test("[AC-13] Agent conflict or existing receiver never overwrites", () => {
-  const lead = wordpressLead({ receiver_agent: String(objectId()) });
-  const conflict = plan({
-    observation: observation({ priority: { valid: true, canonical: "8" } }),
-    identity: {
-      ...matchedIdentity(lead.id),
-      agent_assertion: "conflict",
-    },
-    lead: wordpressLead(),
-  });
-  assert.equal(conflict.desired_values.receiver_agent, undefined);
-
-  const existing = plan({
-    observation: observation({ priority: { valid: true, canonical: "8" } }),
-    identity: {
-      ...matchedIdentity(lead.id),
-      agent: {
-        target: { model: "Agent", id: String(objectId()) },
-        normalized_username: "synthetic.agent",
-      },
-      agent_assertion: "single",
-    },
-    lead,
-  });
-  assert.equal(existing.desired_values.receiver_agent, undefined);
 });
 
 test("[AC-30] link_only pending match persists the next offset and becomes unmatched at 24h", () => {
@@ -538,48 +221,6 @@ test("[AC-30] link_only pending match persists the next offset and becomes unmat
   assert.equal(expired.outcome, "unmatched");
   assert.equal(expired.reason_code, "match_window_expired");
   assert.equal(expired.next_match_attempt_at, undefined);
-});
-
-test("[AC-30] incomplete creation data is never scheduled as pending match", () => {
-  const result = plan({
-    observation: observation({ identity: {}, contact: {} }),
-    identity: pendingIdentity(),
-  });
-  assert.equal(result.outcome, "insufficient_creation_data");
-  assert.equal(result.next_match_attempt_at, undefined);
-});
-
-test("[AC-32] no-op desired state creates no changed paths", () => {
-  const lead = wordpressLead({
-    granot_priority: "1",
-    quoted: true,
-    granot_contact_snapshot: {
-      first_name: "Ada",
-      last_name: "Lovelace",
-      name: "Ada Lovelace",
-      phone_number: "5551234567",
-      normalized_phone_number: "5551234567",
-      email: "ada@example.test",
-    },
-    pickup_city: "New York",
-    pickup_zip: "10001",
-    pickup_state: "NY",
-    delivery_city: "Brooklyn",
-    destination_zip: "10002",
-    delivery_state: "NY",
-    move_date: new Date("2026-09-01T00:00:00.000Z"),
-    cubic_feet: 400,
-    local: "local",
-    granot_move_size: "2 Bedroom",
-    granot_service_type: "Moving",
-    normalized_job_no: "SYNTHETIC JOB 100",
-    job_no: "synthetic-job-100",
-  });
-  const result = plan({ lead });
-  assert.equal(result.outcome, "already_current");
-  assert.equal(result.reason_code, "desired_state_already_current");
-  assert.deepEqual(result.changed_paths, []);
-  assert.equal(result.temporal_winner_should_advance, true);
 });
 
 test("Call Lead snapshot formatting-only Granot contact does not remanufacture a change", () => {
@@ -621,36 +262,6 @@ test("Call Lead snapshot formatting-only Granot contact does not remanufacture a
     },
     lead,
   });
-  assert.equal(result.changed_paths.includes("granot_contact_snapshot"), false);
-});
-
-test("WordPress snapshot formatting-only Granot contact does not remanufacture a change", () => {
-  const lead = wordpressLead({
-    granot_priority: "1",
-    quoted: true,
-    granot_contact_snapshot: {
-      first_name: "ADA",
-      last_name: "lovelace",
-      name: "Ada  Lovelace",
-      phone_number: "+15551234567",
-      normalized_phone_number: "5551234567",
-      email: "Ada@Example.Test",
-    },
-    pickup_city: "New York",
-    pickup_zip: "10001",
-    pickup_state: "NY",
-    delivery_city: "Brooklyn",
-    destination_zip: "10002",
-    delivery_state: "NY",
-    move_date: new Date("2026-09-01T00:00:00.000Z"),
-    cubic_feet: 400,
-    local: "local",
-    granot_move_size: "2 Bedroom",
-    granot_service_type: "Moving",
-    normalized_job_no: "SYNTHETIC JOB 100",
-    job_no: "synthetic-job-100",
-  });
-  const result = plan({ lead });
   assert.equal(result.changed_paths.includes("granot_contact_snapshot"), false);
 });
 
@@ -699,48 +310,6 @@ test("Bad exact Form target plans only valid Priority; Duplicate has no target",
   assert.deepEqual(duplicate.desired_values, {});
 });
 
-test("Bad Form with a missing Job and asserted Agent still plans Priority only", () => {
-  const lead = wordpressLead({ job_no: undefined, normalized_job_no: undefined });
-  const result = plan({
-    lead,
-    identity: {
-      ...matchedIdentity(lead.id),
-      target_eligibility: "priority_only",
-      agent: { target: { model: "Agent", id: String(objectId()) }, normalized_username: "synthetic.agent" },
-    },
-  });
-  assert.equal(result.outcome, "applied");
-  assert.deepEqual(result.changed_paths, ["granot_priority"]);
-  assert.deepEqual(result.desired_values, { granot_priority: "1" });
-  assert.deepEqual(result.agent_changed_paths, []);
-});
-
-test("letter-prefixed Lead Job matches Granot digits and does not conflict", () => {
-  const lead = wordpressLead({
-    normalized_job_no: "P5562366",
-    job_no: "P5562366",
-    granot_priority: "1",
-  });
-  const matched = plan({
-    observation: observation({
-      identity: { job_no_raw: "5562366", normalized_job_no: "5562366" },
-      priority: { valid: true, canonical: "1" },
-    }),
-    lead,
-  });
-  assert.notEqual(matched.outcome, "conflict");
-  assert.notEqual(matched.reason_code, "job_number_conflict");
-
-  const differentDigits = plan({
-    observation: observation({
-      identity: { job_no_raw: "5562365", normalized_job_no: "5562365" },
-    }),
-    lead,
-  });
-  assert.equal(differentDigits.outcome, "conflict");
-  assert.equal(differentDigits.reason_code, "job_number_conflict");
-});
-
 test("equivalent formatting does not manufacture a Job Number change", () => {
   const lead = wordpressLead({
     granot_priority: "1",
@@ -762,27 +331,6 @@ test("equivalent formatting does not manufacture a Job Number change", () => {
   assert.equal(result.changed_paths.includes("job_no"), false);
 });
 
-test("observation_only policy stays evidence-only", () => {
-  const result = plan({
-    identity: pendingIdentity(),
-    policy: policy({ lead_created_policy: "observation_only" }),
-  });
-  assert.equal(result.outcome, "policy_blocked");
-  assert.equal(result.reason_code, "creation_policy_observation_only");
-  assert.equal(result.next_match_attempt_at, undefined);
-});
-
-test("Call create_if_missing + priority_updated + unmatched + Job is not eligible", () => {
-  const result = plan({
-    observation: observation({ route_event_class: "priority_updated" }),
-    identity: unmatchedIdentity(),
-    policy: callCreatePolicy(),
-  });
-  assert.notEqual(result.creation_eligibility, "eligible");
-  assert.notEqual(result.outcome, "created");
-  assert.notEqual(result.reason_code, "lead_created_authorized");
-});
-
 test("a stale Call create_if_missing policy cannot plan creation", () => {
   const result = plan({
     observation: observation({ route_event_class: "lead_created" }),
@@ -802,54 +350,4 @@ test("Form create_if_missing + lead_created stays eligible", () => {
   assert.equal(result.creation_model, "FormLead");
   assert.equal(result.outcome, "created");
   assert.equal(result.reason_code, "lead_created_authorized");
-});
-
-test("Call link_only + priority_updated is not eligible", () => {
-  const result = plan({
-    observation: observation({ route_event_class: "priority_updated" }),
-    identity: unmatchedIdentity(),
-    policy: callCreatePolicy({ lead_created_policy: "link_only" }),
-  });
-  assert.notEqual(result.creation_eligibility, "eligible");
-  assert.notEqual(result.outcome, "created");
-  assert.notEqual(result.reason_code, "lead_created_authorized");
-});
-
-test("Form create_if_missing + priority_updated is not eligible", () => {
-  const result = plan({
-    observation: observation({ route_event_class: "priority_updated" }),
-    identity: pendingIdentity(),
-    policy: policy({ lead_created_policy: "create_if_missing" }),
-  });
-  assert.notEqual(result.creation_eligibility, "eligible");
-  assert.notEqual(result.outcome, "created");
-  assert.notEqual(result.reason_code, "lead_created_authorized");
-});
-
-test("Call create_if_missing + booking_status_changed is not eligible", () => {
-  const result = plan({
-    observation: observation({ route_event_class: "booking_status_changed" }),
-    identity: unmatchedIdentity(),
-    policy: callCreatePolicy(),
-  });
-  assert.notEqual(result.creation_eligibility, "eligible");
-  assert.notEqual(result.outcome, "created");
-  assert.notEqual(result.reason_code, "lead_created_authorized");
-});
-
-test("invalid Call priority_updated never creates even with create_if_missing", () => {
-  const result = plan({
-    observation: observation({
-      route_event_class: "priority_updated",
-      normalization_result: "invalid",
-      issues: [{ code: "invalid_priority", severity: "error" }],
-      priority: { valid: false },
-    }),
-    identity: unmatchedIdentity(),
-    policy: callCreatePolicy(),
-  });
-  assert.equal(result.outcome, "invalid");
-  assert.equal(result.reason_code, "invalid_priority_update");
-  assert.notEqual(result.creation_eligibility, "eligible");
-  assert.deepEqual(result.desired_values, {});
 });

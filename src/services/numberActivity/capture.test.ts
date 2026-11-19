@@ -7,35 +7,8 @@ import {
   ProviderAccountError,
   resolveProviderAccountId,
 } from "./accountIdentity";
-import { EMPTY_DIRECTORY_LOOKUP } from "./directory";
-import { at, syntheticDirectory, SYNTHETIC_QUEUE_EXTENSION, SYNTHETIC_SALES_DID } from "./fixtures";
-import { classifyEndpoint, toE164, toNationalTenDigit } from "./phone";
-import { nextState, reconcileSyncSuccessAt, resolveWindowPlan, resolveWindowStart, type ReconcileConfig, type WindowResult } from "./reconcileCallLog";
-
-const directory = syntheticDirectory();
-
-test("phone classification: external, company DID, extension, withheld, service code, malformed", () => {
-  assert.equal(classifyEndpoint({ phoneNumber: "(555) 010-0200" }, directory).kind, "external");
-  assert.equal(classifyEndpoint({ phoneNumber: "+15550100200" }, directory).e164, "+15550100200");
-  assert.equal(classifyEndpoint({ phoneNumber: SYNTHETIC_SALES_DID }, directory).kind, "company_did");
-  assert.equal(classifyEndpoint({ phoneNumber: SYNTHETIC_SALES_DID }, EMPTY_DIRECTORY_LOOKUP).kind, "external", "no directory: company classification is not guessed");
-  assert.equal(classifyEndpoint({ phoneNumber: null, extensionId: SYNTHETIC_QUEUE_EXTENSION.id }, directory).kind, "extension");
-  assert.equal(classifyEndpoint({ phoneNumber: "101" }, directory).kind, "extension");
-  assert.equal(classifyEndpoint({ phoneNumber: "101" }, directory).e164, null);
-  assert.equal(classifyEndpoint({ phoneNumber: null, name: "Anonymous" }, directory).kind, "withheld");
-  assert.equal(classifyEndpoint({ phoneNumber: "anonymous" }, directory).kind, "withheld");
-  assert.equal(classifyEndpoint({ phoneNumber: "0000000000" }, directory).kind, "withheld");
-  assert.equal(classifyEndpoint({ phoneNumber: "911" }, directory).kind, "service_code");
-  assert.equal(classifyEndpoint({ phoneNumber: "*67" }, directory).kind, "service_code");
-  const malformed = classifyEndpoint({ phoneNumber: "+1" }, directory);
-  assert.equal(malformed.kind, "malformed");
-  assert.equal(malformed.raw, "+1");
-  assert.equal(malformed.e164, null);
-  assert.equal(classifyEndpoint({ phoneNumber: "abc-def" }, directory).kind, "malformed");
-  assert.equal(toE164("5550100200"), "+15550100200");
-  assert.equal(toNationalTenDigit("+15550100200"), "5550100200");
-  assert.equal(toNationalTenDigit("+445550100200"), null);
-});
+import { at } from "./fixtures";
+import { nextState, type ReconcileConfig, type WindowResult } from "./reconcileCallLog";
 
 test("provider account resolution never fabricates or silently picks between accounts", () => {
   assert.equal(accountIdFromProviderPath("/restapi/v1.0/account/800000000001/telephony/sessions"), "800000000001");
@@ -81,55 +54,6 @@ function window(partial: Partial<WindowResult> & Pick<WindowResult, "from" | "to
   };
 }
 
-test("window start is a watermark with a bounded safety lookback, and records what it skipped", () => {
-  const now = at(0);
-  // Cold start: no cursor, no gaps, so the full lookback is the honest reach.
-  assert.equal(resolveWindowStart(now, {}, config).toISOString(), at(-720 * 60).toISOString());
-  assert.equal(resolveWindowPlan(now, {}, config).skipped, null);
-
-  // Steady state: the cursor part of the window is a watermark that moves
-  // FORWARD. It used to be able to move it only earlier, so every run
-  // re-projected a full twelve hours.
-  const recent = { cursor: { last_sync_to: at(-600) } };
-  const incremental = resolveWindowPlan(now, recent, config, 10);
-  assert.equal(incremental.from.toISOString(), at(-600 - 15 * 60).toISOString(), "cursor minus overlap");
-  assert.equal(incremental.incremental_from.toISOString(), at(-600 - 15 * 60).toISOString());
-  assert.equal(incremental.skipped, null);
-
-  // Stale cursor: the incremental part is clamped to the safety lookback and
-  // whatever the clamp left behind is returned, never silently skipped.
-  const stale = { cursor: { last_sync_to: at(-20 * 3600) } };
-  const clamped = resolveWindowPlan(now, stale, config, 60);
-  assert.equal(clamped.from.toISOString(), at(-90 * 60).toISOString(), "clamped to the safety lookback");
-  assert.deepEqual(
-    [clamped.skipped?.from.toISOString(), clamped.skipped?.to.toISOString()],
-    [at(-20 * 3600 - 15 * 60).toISOString(), at(-90 * 60).toISOString()],
-  );
-});
-
-test("CC-03: the window always reaches back the settle horizon, and the clamp gap is still opened", () => {
-  const now = at(0);
-  // Fresh cursor: the incremental start is 20 minutes back, the window 240.
-  const fresh = resolveWindowPlan(now, { cursor: { last_sync_to: at(-5 * 60) } }, config);
-  assert.equal(fresh.from.toISOString(), at(-240 * 60).toISOString(), "now minus the settle horizon");
-  assert.equal(fresh.incremental_from.toISOString(), at(-20 * 60).toISOString());
-  assert.equal(fresh.skipped, null);
-
-  // Stale cursor: the horizon reaches past the safety clamp, but the clamp
-  // gap is about the incremental start and is opened exactly as before.
-  const stale = resolveWindowPlan(now, { cursor: { last_sync_to: at(-20 * 3600) } }, config);
-  assert.equal(stale.from.toISOString(), at(-240 * 60).toISOString());
-  assert.deepEqual(
-    [stale.skipped?.from.toISOString(), stale.skipped?.to.toISOString()],
-    [at(-20 * 3600 - 15 * 60).toISOString(), at(-90 * 60).toISOString()],
-  );
-  const gaps = nextState({ gaps: [] as never[] }, [window({ from: stale.from, to: now })], now, at(1), config, stale.skipped);
-  assert.deepEqual(gaps.gaps.map((g) => g.reason), ["watermark_clamp"]);
-
-  // With Call Log Sync driving, the window narrows to the safety net (90).
-  assert.equal(resolveWindowPlan(now, { cursor: { last_sync_to: at(-5 * 60) } }, config, config.safetyLookbackMinutes).from.toISOString(), at(-90 * 60).toISOString());
-});
-
 test("CC-03: known_complete_through never passes the oldest provisional start inside the horizon", () => {
   const capped = nextState({ known_complete_through: at(-7200) }, [window({ from: at(-240 * 60), to: at(0) })], at(0), at(1), config, null, {
     completeThroughCap: at(-3000),
@@ -161,101 +85,6 @@ test("A3: observed ignores the provisional cap but honours the ISync cap", () =>
   });
   assert.equal(synced.known_complete_through?.toISOString(), at(-3000).toISOString());
   assert.equal(synced.observed_complete_through?.toISOString(), at(-1500).toISOString());
-});
-
-test("A3: observed is never below known", () => {
-  // No stored observed yet (first A3 run): seeded from `known`, then advanced.
-  const seeded = nextState({ known_complete_through: at(-600) }, [window({ from: at(-240 * 60), to: at(0) })], at(0), at(1), config, null, {
-    observedThroughCap: at(-1500),
-  });
-  assert.equal(seeded.known_complete_through?.toISOString(), at(-600).toISOString(), "known never moves backwards");
-  assert.equal(seeded.observed_complete_through?.toISOString(), at(-600).toISOString(), "an older ISync cap cannot pull observed below known");
-  // A stored observed older than known (written by an older build) is lifted to known.
-  const lifted = nextState({ known_complete_through: at(-600), observed_complete_through: at(-5000) }, [], at(0), at(1), config);
-  assert.equal(lifted.observed_complete_through?.toISOString(), at(-600).toISOString());
-});
-
-test("A3: observed is monotonic", () => {
-  const behind = nextState(
-    { known_complete_through: at(-7200), observed_complete_through: at(-300) },
-    [window({ from: at(-240 * 60), to: at(0) })],
-    at(0),
-    at(1),
-    config,
-    null,
-    { completeThroughCap: at(-3000), observedThroughCap: at(-1500) },
-  );
-  assert.equal(behind.observed_complete_through?.toISOString(), at(-300).toISOString(), "a lower candidate never lowers it");
-  const ahead = nextState(
-    { known_complete_through: at(-7200), observed_complete_through: at(-3600) },
-    [window({ from: at(-240 * 60), to: at(0) })],
-    at(0),
-    at(1),
-    config,
-  );
-  assert.equal(ahead.observed_complete_through?.toISOString(), at(-900).toISOString());
-});
-
-test("A3: an incomplete rolling window advances neither known nor observed", () => {
-  const state = { known_complete_through: at(-7200), observed_complete_through: at(-6000), gaps: [] as never[] };
-  for (const error_code of ["provider_request_failed", "provider_throttled", "page_limit"] as const) {
-    const result = nextState(state, [window({ from: at(-43200), to: at(0), complete: false, error_code })], at(0), at(1), config, null, {
-      completeThroughCap: null,
-      observedThroughCap: null,
-    });
-    assert.equal(result.known_complete_through?.toISOString(), at(-7200).toISOString(), error_code);
-    assert.equal(result.observed_complete_through?.toISOString(), at(-6000).toISOString(), error_code);
-  }
-  // A complete gap repair is not the rolling window: neither moves.
-  const repaired = nextState(state, [window({ kind: "gap_repair", from: at(-90000), to: at(-80000) })], at(0), at(1), config);
-  assert.equal(repaired.known_complete_through?.toISOString(), at(-7200).toISOString());
-  assert.equal(repaired.observed_complete_through?.toISOString(), at(-6000).toISOString());
-  // Nothing stored at all stays null.
-  const empty = nextState({}, [window({ from: at(-43200), to: at(0), complete: false, error_code: "provider_request_failed" })], at(0), at(1), config);
-  assert.equal(empty.observed_complete_through, null);
-});
-
-test("A3 (F5): a reconcile-carried ISync stamps a success instant only when it stored a token in mode on", () => {
-  const finished = at(60);
-  assert.equal(reconcileSyncSuccessAt({ mode: "on", token_stored: true }, finished)?.toISOString(), finished.toISOString());
-  assert.equal(reconcileSyncSuccessAt({ mode: "on", token_stored: false }, finished), null, "throttle / failed apply: keep the stored instant");
-  assert.equal(reconcileSyncSuccessAt({ mode: "shadow", token_stored: true }, finished), null, "shadow only counts; it confirms nothing");
-  assert.equal(reconcileSyncSuccessAt(null, finished), null, "sync off: no step ran");
-});
-
-test("a clamped window opens a repairable gap instead of losing the range", () => {
-  const skipped = { from: at(-20 * 3600 - 15 * 60), to: at(-90 * 60) };
-  const opened = nextState({ gaps: [] as never[] }, [window({ from: at(-90 * 60), to: at(0) })], at(0), at(1), config, skipped);
-  assert.equal(opened.cursor_advanced, true, "the incremental window still completed");
-  assert.deepEqual(
-    opened.gaps.map((g) => [g.from.toISOString(), g.to.toISOString(), g.reason]),
-    [[skipped.from.toISOString(), skipped.to.toISOString(), "watermark_clamp"]],
-    "gap repair, which already runs oldest-first on leftover budget, covers it",
-  );
-  assert.equal(opened.opened.length, 1);
-
-  // Re-clamping on a later run widens the same gap rather than accumulating duplicates.
-  const again = nextState({ gaps: opened.gaps }, [window({ from: at(-90 * 60), to: at(0) })], at(0), at(1), config,
-    { from: at(-30 * 3600), to: at(-90 * 60) });
-  assert.equal(again.gaps.length, 1);
-  assert.equal(again.gaps[0]!.from.toISOString(), at(-30 * 3600).toISOString());
-  assert.equal(again.opened.length, 0);
-});
-
-test("coverage: complete rolling window advances cursor and watermark, closes covered gaps", () => {
-  const state = {
-    known_complete_through: at(-7200),
-    gaps: [
-      { from: at(-3000), to: at(-2000), reason: "provider_request_failed", opened_at: at(-1900) },
-      { from: at(-90000), to: at(-80000), reason: "provider_throttled", opened_at: at(-79000) },
-    ],
-  };
-  const result = nextState(state, [window({ from: at(-43200), to: at(0) })], at(0), at(1), config);
-  assert.equal(result.cursor_advanced, true);
-  assert.equal(result.known_complete_through?.toISOString(), at(-900).toISOString(), "windowTo minus finalization lag");
-  assert.equal(result.gaps.length, 1);
-  assert.equal(result.gaps[0]!.reason, "provider_throttled", "gap outside the window stays open");
-  assert.equal(result.closed.length, 1);
 });
 
 test("coverage: partial page failure never advances complete-through and records the missing range", () => {

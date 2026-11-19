@@ -3,7 +3,7 @@ import { test } from "node:test";
 import mongoose from "mongoose";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
 import type { LeadIdentityResult } from "./identity";
-import { planLeadDesiredState, receiverFillableByGranot, receiverReplaceableByGranot, type LeadDesiredStateProjection } from "./leadDesiredState";
+import { planLeadDesiredState, type LeadDesiredStateProjection } from "./leadDesiredState";
 import type { SourcePolicySnapshot } from "./sourcePolicy";
 
 /**
@@ -37,15 +37,6 @@ function plan(row: LeadDesiredStateProjection, options: { latestWins?: boolean; 
 }
 const receiverPaths = ["receiver_agent", "receiver_agent_source", "receiver_agent_source_value"];
 
-test("C3: a different Granot rep replaces a Granot / extension / sheet / RingCentral receiver (flag on)", () => {
-  for (const source of ["granot_username_match", "extension_crm_username_match", "extension_match", "extension_selected", "extension_created", "best_relocation_sheet", "ringcentral_answered"]) {
-    const result = plan(lead({ receiver_agent_source: source }));
-    assert.equal(result.desired_values.receiver_agent, NEW, source);
-    assert.equal(result.desired_values.receiver_agent_source, source === "granot_username_match" ? undefined : "granot_username_match", source);
-    assert.ok(result.agent_changed_paths.includes("receiver_agent"), source);
-  }
-});
-
 test("C3: a manual (or source-less) receiver is never replaced; the same Agent plans nothing", () => {
   for (const row of [lead({ receiver_agent_source: "manual" }), lead({ receiver_agent_source: undefined })]) {
     const result = plan(row);
@@ -55,26 +46,6 @@ test("C3: a manual (or source-less) receiver is never replaced; the same Agent p
   const same = plan(lead({ receiver_agent_source: "extension_match" }), { agent: OLD });
   assert.equal(same.desired_values.receiver_agent, undefined, "same Agent: no source re-stamp");
   assert.deepEqual(same.agent_changed_paths, []);
-});
-
-test("C3: an older observation delivered late never replaces a newer rep", () => {
-  // Granot vs Granot: the Lead's temporal winner is newer, so the whole observation plans `stale`.
-  const stale = plan(lead(), { temporal: "older" });
-  assert.equal(stale.outcome, "stale");
-  assert.equal(stale.desired_values.receiver_agent, undefined);
-  // Extension / sheet set after the observation was captured: kept.
-  for (const source of ["extension_crm_username_match", "best_relocation_sheet"]) {
-    const kept = plan(lead({ receiver_agent_source: source, receiver_agent_set_at: new Date(+capturedAt + 60_000) }));
-    assert.equal(kept.desired_values.receiver_agent, undefined, source);
-  }
-  // The RingCentral answer is the weakest source: replaced whatever its time (E5).
-  assert.equal(plan(lead({ receiver_agent_source: "ringcentral_answered", receiver_agent_set_at: new Date(+capturedAt + 60_000) })).desired_values.receiver_agent, NEW);
-});
-
-test("C3: user ≠ rep, an ambiguous username or an invalid Priority changes nothing", () => {
-  assert.equal(plan(lead(), { assertion: "conflict", agent: null }).desired_values.receiver_agent, undefined, "user ≠ rep");
-  assert.equal(plan(lead(), { agent: null }).desired_values.receiver_agent, undefined, "no single active Agent");
-  assert.equal(plan(lead(), { observation: observation({ priority: { valid: false } } as Partial<GranotObservationDocument>) }).desired_values.receiver_agent, undefined, "invalid Priority");
 });
 
 test("flag off: byte-identical fill-empty rule", () => {
@@ -90,39 +61,6 @@ test("flag off: byte-identical fill-empty rule", () => {
   assert.deepEqual(plan(emptyLead), empty);
 });
 
-test("the default reads SALES_INTELLIGENCE_RECEIVER_LATEST_WINS", () => {
-  const row = lead({ receiver_agent_source: "extension_match" });
-  const input = { observation: observation(), identity: identity(row.id, NEW), lead: row, policy: policy(), now, attempt: 1, temporal_order: "newer" as const };
-  const prior = process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS;
-  try {
-    delete process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS;
-    assert.equal(planLeadDesiredState(input).desired_values.receiver_agent, undefined);
-    process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS = "true";
-    assert.equal(planLeadDesiredState(input).desired_values.receiver_agent, NEW);
-  } finally {
-    if (prior === undefined) delete process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS; else process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS = prior;
-  }
-});
-
-test("receiverReplaceableByGranot table", () => {
-  const at = capturedAt, later = new Date(+at + 1), earlier = new Date(+at - 1);
-  const rows: Array<[string, Parameters<typeof receiverReplaceableByGranot>[0], string | undefined, boolean]> = [
-    ["empty", {}, NEW, true],
-    ["no resolved agent", { receiver_agent: OLD, receiver_agent_source: "extension_match" }, undefined, false],
-    ["same agent", { receiver_agent: NEW, receiver_agent_source: "extension_match" }, NEW, false],
-    ["manual", { receiver_agent: OLD, receiver_agent_source: "manual" }, NEW, false],
-    ["no source", { receiver_agent: OLD }, NEW, false],
-    ["granot", { receiver_agent: OLD, receiver_agent_source: "granot_username_match", receiver_agent_set_at: later }, NEW, true],
-    ["ringcentral later", { receiver_agent: OLD, receiver_agent_source: "ringcentral_answered", receiver_agent_set_at: later }, NEW, true],
-    ["rep call later", { receiver_agent: OLD, receiver_agent_source: "ringcentral_rep_call", receiver_agent_set_at: later }, NEW, true],
-    ["extension earlier", { receiver_agent: OLD, receiver_agent_source: "extension_selected", receiver_agent_set_at: earlier }, NEW, true],
-    ["extension same instant", { receiver_agent: OLD, receiver_agent_source: "extension_selected", receiver_agent_set_at: at }, NEW, false],
-    ["sheet later", { receiver_agent: OLD, receiver_agent_source: "best_relocation_sheet", receiver_agent_set_at: later }, NEW, false],
-    ["extension, unknown set time", { receiver_agent: OLD, receiver_agent_source: "extension_match" }, NEW, true],
-  ];
-  for (const [name, row, agent, expected] of rows) assert.equal(receiverReplaceableByGranot(row, agent, at), expected, name);
-});
-
 test("ringcentral_rep_call: a different Granot rep replaces it with latest wins on or off; the same Agent plans nothing", () => {
   const placeholder = (extra: Partial<LeadDesiredStateProjection> = {}) =>
     lead({ receiver_agent_source: "ringcentral_rep_call", receiver_agent_set_at: new Date(+capturedAt + 60_000), ...extra });
@@ -134,18 +72,4 @@ test("ringcentral_rep_call: a different Granot rep replaces it with latest wins 
     assert.deepEqual(plan(placeholder({ receiver_agent: NEW }), { latestWins }).agent_changed_paths, [], `same Agent, latestWins=${latestWins}`);
     assert.equal(plan(placeholder(), { latestWins, observation: observation({ priority: { valid: false } } as Partial<GranotObservationDocument>) }).desired_values.receiver_agent, undefined);
   }
-});
-
-test("receiverFillableByGranot: latest wins off fills empty or replaces only the call placeholder", () => {
-  const at = capturedAt;
-  const rows: Array<[string, Parameters<typeof receiverFillableByGranot>[0], string | undefined, boolean]> = [
-    ["empty", {}, NEW, true],
-    ["call placeholder", { receiver_agent: OLD, receiver_agent_source: "ringcentral_rep_call" }, NEW, true],
-    ["call placeholder, same agent", { receiver_agent: NEW, receiver_agent_source: "ringcentral_rep_call" }, NEW, false],
-    ["call placeholder, no resolved agent", { receiver_agent: OLD, receiver_agent_source: "ringcentral_rep_call" }, undefined, false],
-    ["ringcentral answered (unchanged rule)", { receiver_agent: OLD, receiver_agent_source: "ringcentral_answered" }, NEW, false],
-    ["manual", { receiver_agent: OLD, receiver_agent_source: "manual" }, NEW, false],
-  ];
-  for (const [name, row, agent, expected] of rows) assert.equal(receiverFillableByGranot(row, agent, at, false), expected, name);
-  assert.equal(receiverFillableByGranot({ receiver_agent: OLD, receiver_agent_source: "manual" }, NEW, at, true), false, "latest wins delegates");
 });

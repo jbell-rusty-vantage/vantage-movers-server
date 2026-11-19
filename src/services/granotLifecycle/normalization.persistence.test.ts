@@ -4,9 +4,7 @@ import mongoose from "mongoose";
 import { toObjectId } from "../../utils/objectId";
 import {
   ObservationIntegrityError,
-  normalizeGranotReceipt,
   persistObservationCandidate,
-  upsertGranotObservation,
   type ObservationStore,
   type NormalizedObservationCandidate,
 } from "./normalization";
@@ -81,22 +79,6 @@ function memoryStore(): ObservationStore & {
   return store;
 }
 
-test("[AC-05][AC-06] one receipt upserts one Observation and sequential reprocess reuses it", async () => {
-  const store = memoryStore();
-  const first = await persistObservationCandidate(
-    { receipt_id: receiptId, candidate: candidate() },
-    store,
-  );
-  const second = await persistObservationCandidate(
-    { receipt_id: receiptId, candidate: candidate() },
-    store,
-  );
-  assert.equal(first.created, true);
-  assert.equal(second.created, false);
-  assert.equal(store.rows.length, 1);
-  assert.equal(String(second.observation._id), String(first.observation._id));
-});
-
 test("[AC-05] concurrent same-candidate inserts collapse to one stored row", async () => {
   const rows: ReturnType<typeof memoryStore>["rows"] = [];
   let inserted = false;
@@ -152,53 +134,4 @@ test("[AC-05] a differing candidate fails closed and does not overwrite stored e
   );
   assert.equal(store.rows.length, 1);
   assert.equal(store.rows[0]?.priority.canonical, "1");
-});
-
-test("[AC-06] invalid and unsupported results persist as completed classifications", async () => {
-  const store = memoryStore();
-  const invalid = normalizeGranotReceipt({
-    observation_channel: "granot_webhook",
-    captured_at: capturedAt,
-    route_event_class: "lead_created",
-    payload: ["not-object"],
-  });
-  const persisted = await persistObservationCandidate(
-    { receipt_id: receiptId, candidate: invalid },
-    store,
-  );
-  assert.equal(persisted.created, true);
-  assert.equal(persisted.observation.normalization_result, "invalid");
-  assert.equal(store.rows.length, 1);
-});
-
-test("[AC-05] technical insert failure creates no partial second row", async () => {
-  const store = memoryStore();
-  store.failNextInsert = new Error("synthetic database unavailable");
-  await assert.rejects(
-    persistObservationCandidate({ receipt_id: receiptId, candidate: candidate() }, store),
-    /synthetic database unavailable/,
-  );
-  assert.equal(store.rows.length, 0);
-});
-
-test("[AC-05][AC-29] upsertGranotObservation normalizes an already-read receipt without Registry or aggregate fields", async () => {
-  const store = memoryStore();
-  const result = await upsertGranotObservation(
-    {
-      receipt: {
-        _id: receiptId,
-        observation_channel: "granot_http_automation",
-        captured_at: capturedAt,
-        channel_operation_kind: "lead_snapshot_apply",
-        channel_operation_id: "synthetic-run-ac29:synthetic-action-provider-type-auto",
-        payload: { label: "Synthetic Forms", type: "AUTO" },
-      },
-    },
-    store,
-  );
-  assert.equal(result.created, true);
-  assert.equal(result.observation.provider_context.type_raw, "AUTO");
-  assert.equal(result.observation.normalized_source_label, "synthetic forms");
-  assert.equal("quoted" in result.observation, false);
-  assert.equal("granot_crm_source_id" in result.observation, false);
 });

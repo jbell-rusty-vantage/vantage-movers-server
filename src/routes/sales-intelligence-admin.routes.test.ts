@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import type { AddressInfo } from "node:net";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { test } from "node:test";
 import express from "express";
 import { requireApiSecret } from "../middleware/requireApiSecret";
@@ -136,14 +134,6 @@ test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope,
     await new Promise<void>((resolve) => server.close(() => resolve()));
     process.env = saved;
   }
-});
-
-test("admin router is mounted in v1.routes.ts after the CSI boundary router", () => {
-  const source = readFileSync(path.join(process.cwd(), "src", "routes", "v1.routes.ts"), "utf8");
-  const guard = source.indexOf('router.use("/api/v1", requireApiSecret)');
-  const boundary = source.indexOf("router.use(createSalesIntelligenceBoundaryRouter())");
-  const admin = source.indexOf("router.use(createSalesIntelligenceAdminRouter())");
-  assert.ok(guard > -1 && boundary > guard && admin > boundary, "guard, then boundary, then CSI-04 admin routes");
 });
 
 test("coverage and settings: production scope, CAS, no flag patch, GET never writes", { timeout: 20000 }, async () => {

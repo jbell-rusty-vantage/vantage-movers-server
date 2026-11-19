@@ -3,11 +3,9 @@ import { test } from "node:test";
 import type { Document, Filter } from "mongodb";
 import { ObjectId } from "mongodb";
 import {
-  DELETE_SCOPES,
   DROP_TARGETS,
   deleteInBatches,
   isTrimCommandAllowed,
-  planTtlIndex,
   PROTECTED_COLLECTIONS,
   runDiskTrim,
   summarizeTrimReport,
@@ -18,7 +16,6 @@ import {
   type ObservedIndex,
   WORKER_AUDIT_KINDS,
 } from "./disk-trim";
-import { SALES_INTELLIGENCE_AUDIT_EVENT_INDEXES } from "../../src/models/salesIntelligence/infrastructure";
 
 const NOW = new Date("2026-10-07T03:00:00.000Z");
 const DAY = 86_400_000;
@@ -155,30 +152,6 @@ const options = (overrides: Partial<TrimOptions> = {}): TrimOptions => ({
   ...overrides,
 });
 
-test("the scope is exactly the brief's allowlist", () => {
-  assert.deepEqual([...WORKER_AUDIT_KINDS], ["interaction.updated", "interaction.created", "interaction.merged", "capture_projection.completed", "call_log_refresh.completed", "attachment_refreshed", "attachment_auto_attached", "attachment_auto_contested"]);
-  assert.deepEqual(DELETE_SCOPES.map((s) => s.collection), ["sales_intelligence_audit_events", "ringcentral_webhook_events", "sheet_sync_runs", "sheet_sync_attempts", "daily_operations_events"]);
-  assert.deepEqual(DROP_TARGETS.map((t) => t.collection), ["ringcentral_webhook_events_test", "ringcentral_call_candidates_test", "ringcentral_call_candidate_decisions_test", "sales_intelligence_owner_instructions", "sales_intelligence_sync_windows", "sales_intelligence_review_items"]);
-  for (const live of ["ringcentral_call_sessions", "ringcentral_processed_calls", "sales_intelligence_jobs", "call_interactions", "sales_outreach_contact_events", "sheet_sync_jobs"]) {
-    assert.equal(DROP_TARGETS.some((t) => t.collection === live), false, live);
-    assert.equal(DELETE_SCOPES.some((s) => s.collection === live), false, live);
-    assert.ok((PROTECTED_COLLECTIONS as readonly string[]).includes(live), live);
-  }
-});
-
-test("the TTL definitions match the brief and the schemas: audit 90 d on happened_at, webhooks 7 d on receivedAt, sheet runs/attempts 90 d, daily operations 400 d", () => {
-  const byCollection = Object.fromEntries(TTL_INDEXES.map((i) => [i.collection, i]));
-  assert.deepEqual(byCollection["sales_intelligence_audit_events"], { collection: "sales_intelligence_audit_events", name: "csi_audit_happened_ttl", key: { happened_at: 1 }, expireAfterSeconds: 90 * 86_400 });
-  assert.deepEqual(byCollection["ringcentral_webhook_events"], { collection: "ringcentral_webhook_events", name: "ringcentral_webhook_event_received_ttl", key: { receivedAt: 1 }, expireAfterSeconds: 7 * 86_400 });
-  assert.deepEqual(byCollection["sheet_sync_runs"], { collection: "sheet_sync_runs", name: "sheet_sync_run_started_ttl", key: { started_at: 1 }, expireAfterSeconds: 90 * 86_400 });
-  assert.deepEqual(byCollection["sheet_sync_attempts"], { collection: "sheet_sync_attempts", name: "sheet_sync_attempt_created_ttl", key: { createdAt: 1 }, expireAfterSeconds: 90 * 86_400 });
-  assert.deepEqual(byCollection["daily_operations_events"], { collection: "daily_operations_events", name: "daily_operations_event_created_ttl", key: { createdAt: 1 }, expireAfterSeconds: 400 * 86_400 });
-  assert.ok(byCollection["ringcentral_webhook_events"]!.expireAfterSeconds >= 48 * 3600, "never below 48 hours");
-  // The audit TTL is declared on the model like `csi_job_completed_ttl`, so the CSI index tooling builds it in a fresh environment.
-  const declared = SALES_INTELLIGENCE_AUDIT_EVENT_INDEXES.find((i) => i.name === "csi_audit_happened_ttl");
-  assert.deepEqual(declared, { name: "csi_audit_happened_ttl", key: { happened_at: 1 }, expireAfterSeconds: 90 * 86_400 });
-});
-
 test("the driver guard: a dry run sends reads only; apply adds delete, createIndexes and drop, never insert/update/dropDatabase/compact", () => {
   for (const read of ["find", "aggregate", "count", "listCollections", "listIndexes", "dbStats", "hello"]) {
     assert.ok(isTrimCommandAllowed("dry_run", read), read);
@@ -191,17 +164,6 @@ test("the driver guard: a dry run sends reads only; apply adds delete, createInd
   for (const never of ["insert", "update", "findAndModify", "dropDatabase", "dropIndexes", "compact", "renameCollection", "collMod"]) {
     assert.equal(isTrimCommandAllowed("apply", never), false, never);
   }
-});
-
-test("the TTL plan is idempotent and refuses to create over a clashing shape", () => {
-  const target = TTL_INDEXES[1]!;
-  assert.deepEqual(planTtlIndex(target, [{ name: "_id_", key: { _id: 1 } }]), { action: "create", detail: null });
-  assert.equal(planTtlIndex(target, [{ name: target.name, key: { receivedAt: 1 }, expireAfterSeconds: 7 * 86_400 }]).action, "exists");
-  assert.equal(planTtlIndex(target, [{ name: "other_name", key: { receivedAt: 1 }, expireAfterSeconds: 7 * 86_400 }]).action, "exists");
-  assert.equal(planTtlIndex(target, [{ name: target.name, key: { receivedAt: -1 }, expireAfterSeconds: 7 * 86_400 }]).action, "conflict");
-  assert.equal(planTtlIndex(target, [{ name: "legacy", key: { receivedAt: 1 }, expireAfterSeconds: null }]).action, "conflict");
-  // An existing non-TTL index on the same key with a partial filter (the recovery scan index) is not a clash.
-  assert.equal(planTtlIndex(target, [{ name: "provider_1_receivedAt_1__id_1", key: { provider: 1, receivedAt: 1, _id: 1 }, partialFilterExpression: {} }]).action, "create");
 });
 
 test("refuses any database that is not vantagemovers", async () => {

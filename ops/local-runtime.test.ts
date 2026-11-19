@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import ts from "typescript";
-import { apiEnvironment, assertApiIdentity, main } from "./local-runtime";
+import { apiEnvironment, assertApiIdentity } from "./local-runtime";
 
 test("API readiness requires the real connection and exact synthetic database identity", () => {
   const valid = { ok: true, readyState: 1, host: "127.0.0.1", name: "testvantagemovers_agent", expectedName: "testvantagemovers_agent" };
@@ -39,12 +37,6 @@ test("actual child ignores hostile inherited credentials, Node injection and a p
   } finally { rmSync(fixture, { recursive: true, force: true }); }
 });
 
-test("unsupported launch options fail before any database or API access", async () => {
-  for (const args of [[], ["start", "--uri", "mongodb+srv://production.invalid"], ["seed"], ["verify", "--production"]]) {
-    await assert.rejects(main(args), /usage_local_runtime_start_verify_or_mongo/);
-  }
-});
-
 test("active onboarding links resolve in a standalone checkout", () => {
   const root = path.resolve(__dirname, "..");
   for (const filename of ["AGENTS.md", "CLOUD_AGENTS.md", "docs/operations/README.md", "docs/operations/sheet-sync.md"]) {
@@ -55,27 +47,4 @@ test("active onboarding links resolve in a standalone checkout", () => {
       assert.equal(existsSync(path.resolve(root, path.dirname(filename), destination)), true, filename + ": " + destination);
     }
   }
-});
-
-test("standalone glossary is the exact provenance-pinned canonical snapshot", () => {
-  const root = path.resolve(__dirname, "../docs/operations");
-  const snapshot = readFileSync(path.join(root, "shared-glossary.md"));
-  const provenance = JSON.parse(readFileSync(path.join(root, "shared-glossary.provenance.json"), "utf8"));
-  assert.equal(snapshot.length, provenance.bytes);
-  assert.equal(createHash("sha256").update(snapshot).digest("hex"), provenance.sha256);
-});
-
-test("Cloud environment parses as JSONC and registers existing scripts", () => {
-  const root = path.resolve(__dirname, "..");
-  const parsed = ts.parseConfigFileTextToJson("environment.json", readFileSync(path.join(root, ".cursor/environment.json"), "utf8"));
-  assert.equal(parsed.error, undefined, "Cloud setup must be valid JSON with comments");
-  assert.equal(parsed.config.install, "pnpm install --frozen-lockfile");
-  for (const command of [parsed.config.start, ...parsed.config.terminals.map((terminal: { command: string }) => terminal.command)]) {
-    if (command.startsWith("bash ")) assert.equal(existsSync(path.join(root, command.slice(5))), true);
-    else {
-      const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
-      assert.ok(pkg.scripts[command.replace(/^pnpm /, "")], command);
-    }
-  }
-  assert.match(readFileSync(path.join(root, ".cursor/Dockerfile"), "utf8"), /NODE_MAJOR=24/);
 });

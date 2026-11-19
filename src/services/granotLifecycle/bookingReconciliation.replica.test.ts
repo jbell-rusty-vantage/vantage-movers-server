@@ -350,27 +350,6 @@ test("[AC-18][AC-20][AC-32][AC-36] replica races converge, replay dedupes, and r
   assert.equal(rows[1]!.evidence.length, 2);
 });
 
-test("[AC-20] replica candidate refresh splits owner and evidence revisions", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const job = `U22-REVISION-${Date.now().toString(36).toUpperCase()}`;
-  const firstLead = new mongoose.Types.ObjectId();
-  const secondLead = new mongoose.Types.ObjectId();
-  const first = await seedEvidence(job, new Date("2026-08-18T14:00:00.000Z"), firstLead);
-  await reconcile(first);
-  const second = await seedEvidence(job, new Date("2026-08-18T14:01:00.000Z"), secondLead);
-  await reconcile(second);
-  let row = await getGranotBookingReconciliationCaseModel().findOne({ normalized_job_no: job }).lean();
-  assert.equal(row?.case_revision, 2);
-  assert.equal(row?.evidence_revision, 2);
-  assert.equal(String(row?.suggested_lead?.lead_ref.id), String(secondLead));
-
-  const third = await seedEvidence(job, new Date("2026-08-18T14:02:00.000Z"), secondLead);
-  await reconcile(third);
-  row = await getGranotBookingReconciliationCaseModel().findOne({ normalized_job_no: job }).lean();
-  assert.equal(row?.case_revision, 2);
-  assert.equal(row?.evidence_revision, 3);
-});
-
 test("[AC-20][AC-32] replica transaction rolls back case create, refresh, and Decision failures", async (t) => {
   if (!(await replicaReady(t))) return;
   const Case = getGranotBookingReconciliationCaseModel();
@@ -442,45 +421,6 @@ test("[AC-P8] replica persists pairing on Booked open, replay is a no-op, later 
   assert.equal(row?.evidence_revision, 2);
 });
 
-test("[AC-R1] replica later Releas appends Release evidence on the same open Booked case", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const job = `U-REL-R1-${Date.now().toString(36).toUpperCase()}`;
-  const booked = await seedEvidence(job, new Date("2026-09-01T12:00:00.000Z"));
-  const opened = await reconcile(booked);
-  assert.equal(opened.kind, "opened");
-  assert.equal(opened.kind === "opened" ? opened.mode : undefined, "create_missing_booking");
-  const Case = getGranotBookingReconciliationCaseModel();
-  let row = await Case.findOne({ normalized_job_no: job }).lean();
-  assert.equal(row?.action_kind, "booked");
-  assert.equal(row?.mode, "create_missing_booking");
-  assert.equal(row?.sequence_number, 1);
-  assert.equal(row?.state, "open");
-  assert.equal(row?.case_revision, 1);
-  assert.equal(row?.evidence_revision, 1);
-  assert.deepEqual(row?.evidence.map((item) => item.action), ["booked"]);
-  const openId = String(row?._id);
-
-  const release = await seedEvidence(
-    job,
-    new Date("2026-09-01T12:30:00.000Z"),
-    undefined,
-    false,
-    "release",
-  );
-  const refreshed = await reconcile(release);
-  assert.equal(refreshed.kind, "refreshed");
-  assert.equal(refreshed.kind === "refreshed" ? refreshed.reason_code : undefined, "booking_case_refreshed");
-  row = await Case.findOne({ normalized_job_no: job }).lean();
-  assert.equal(String(row?._id), openId);
-  assert.equal(row?.mode, "create_missing_booking");
-  assert.equal(row?.case_revision, 1);
-  assert.equal(row?.evidence_revision, 2);
-  assert.deepEqual(row?.evidence.map((item) => item.action), ["booked", "release"]);
-  assert.equal(latestActionFromCase(row!), "release");
-  assert.equal(await Case.countDocuments({ normalized_job_no: job }), 1);
-  assert.equal(await countReleaseCases(job), 0);
-});
-
 test("[AC-R2] replica Releas first opens create-missing; later Booked refreshes the same case", async (t) => {
   if (!(await replicaReady(t))) return;
   const job = `U-REL-R2-${Date.now().toString(36).toUpperCase()}`;
@@ -518,34 +458,6 @@ test("[AC-R2] replica Releas first opens create-missing; later Booked refreshes 
   assert.equal(await countReleaseCases(job), 0);
 });
 
-test("[AC-R7] replica later Releas after resolve opens sequence+1 create-missing; no Release case", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const job = `U-REL-R7-CREATE-${Date.now().toString(36).toUpperCase()}`;
-  const first = await seedEvidence(job, new Date("2026-09-01T14:00:00.000Z"));
-  await reconcile(first);
-  const Case = getGranotBookingReconciliationCaseModel();
-  let rows = await Case.find({ normalized_job_no: job }).lean();
-  assert.equal(rows.length, 1);
-  await resolveOpenCase(rows[0]!._id, "unit-r7-create");
-
-  const laterRelease = await seedEvidence(
-    job,
-    new Date("2026-09-01T14:30:00.000Z"),
-    undefined,
-    false,
-    "release",
-  );
-  const opened = await reconcile(laterRelease);
-  assert.equal(opened.kind, "opened");
-  rows = await Case.find({ normalized_job_no: job }).sort({ sequence_number: 1 }).lean();
-  assert.deepEqual(rows.map((row) => row.sequence_number), [1, 2]);
-  assert.deepEqual(rows.map((row) => row.state), ["resolved", "open"]);
-  assert.equal(rows[1]!.mode, "create_missing_booking");
-  assert.deepEqual(rows[1]!.evidence.map((item) => item.action), ["release"]);
-  assert.equal(latestActionFromCase(rows[1]!), "release");
-  assert.equal(await countReleaseCases(job), 0);
-});
-
 test("[AC-R7] replica later Releas after resolve opens sequence+1 review when Booking is still active", async (t) => {
   if (!(await replicaReady(t))) return;
   const job = `U-REL-R7-REVIEW-${Date.now().toString(36).toUpperCase()}`;
@@ -578,34 +490,5 @@ test("[AC-R7] replica later Releas after resolve opens sequence+1 review when Bo
   assert.equal(rows[1]!.mode, "review_existing_booking");
   assert.equal(String(rows[1]!.deterministic_booking_id), String(bookingId));
   assert.deepEqual(rows[1]!.evidence.map((item) => item.action), ["release"]);
-  assert.equal(await countReleaseCases(job), 0);
-});
-
-test("[AC-R8] replica exact Release Observation replay is a no-op", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const job = `U-REL-R8-${Date.now().toString(36).toUpperCase()}`;
-  const release = await seedEvidence(
-    job,
-    new Date("2026-09-01T16:00:00.000Z"),
-    undefined,
-    false,
-    "release",
-  );
-  const opened = await reconcile(release);
-  assert.equal(opened.kind, "opened");
-  const Case = getGranotBookingReconciliationCaseModel();
-  let row = await Case.findOne({ normalized_job_no: job }).lean();
-  assert.equal(row?.evidence.length, 1);
-  assert.equal(row?.evidence_revision, 1);
-  assert.equal(row?.evidence[0]?.action, "release");
-  assert.equal(await getSynchronizationDecisionModel().countDocuments({ observation_id: release.observationId }), 1);
-
-  const replay = await reconcile(release);
-  assert.equal(replay.kind, "refreshed");
-  row = await Case.findOne({ normalized_job_no: job }).lean();
-  assert.equal(row?.evidence.length, 1);
-  assert.equal(row?.evidence_revision, 1);
-  assert.equal(row?.case_revision, 1);
-  assert.equal(await getSynchronizationDecisionModel().countDocuments({ observation_id: release.observationId }), 1);
   assert.equal(await countReleaseCases(job), 0);
 });

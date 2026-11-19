@@ -80,7 +80,7 @@ async function main() {
     await Model.createIndexes();
   }
   const db = mongoose.connection.useDb(database, { useCache: true }).db!;
-  for (const name of ["form_leads", "call_leads", "rep_identity_links", "granot_observations", "contact_numbers"]) await db.createCollection(name);
+  for (const name of ["agents", "form_leads", "call_leads", "rep_identity_links", "granot_observations", "contact_numbers"]) await db.createCollection(name);
 
   const ownerCsi = csiOperatorActor("sod-commands-replica");
   const owner = { role: "owner" as const, actor: ownerCsi, agent_id: null };
@@ -97,7 +97,13 @@ async function main() {
   for (const [agent, name] of [
     [TEST_AGENT_A, "Alice Rep"],
     [TEST_AGENT_B, "Bob Rep"],
-  ] as const)
+  ] as const) {
+    await db.collection("agents").insertOne({
+      _id: new mongoose.Types.ObjectId(agent),
+      name,
+      normalized_name: name.toLowerCase(),
+      active: true,
+    });
     await db.collection("rep_identity_links").insertOne({
       agent_id: new mongoose.Types.ObjectId(agent),
       agent_name_snapshot: name,
@@ -109,6 +115,7 @@ async function main() {
       effective_to: null,
       revision: 1,
     });
+  }
   const number = oid();
   await db.collection("contact_numbers").insertOne({ _id: number, e164: "+15550100000" });
   const leadId = oid();

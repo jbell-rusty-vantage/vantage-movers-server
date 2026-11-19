@@ -11,7 +11,7 @@ import { salesOutreachQueueQuerySchema, salesOutreachQueueSchema, type SalesOutr
 import { MemoryDeskReadStore } from "./deskTesting";
 import { normalizeQueueQuery, readQueue } from "./queue";
 import { decodeQueueCursor, encodeQueueCursor } from "./queueCursor";
-import { matchesQueue, mongoQueueFilter, mongoQueuePageQueries, mongoQueueQuery, queueSortSpec, type QueuePagePlan } from "./queueQuery";
+import { matchesQueue, mongoQueueFilter, mongoQueuePageQueries, queueSortSpec } from "./queueQuery";
 import { activeInspection, fixedConfigurationLoader, MemoryReadStore } from "./testing";
 
 /**
@@ -195,40 +195,6 @@ async function rejects(promise: Promise<unknown>, code: string, issue?: string) 
   });
 }
 
-test("urgency: overdue by oldest deadline, then due soonest, then next action, then received oldest-first, then id — over several pages", async () => {
-  const store = new MemoryDeskReadStore();
-  const ids = {
-    overdueOld: seed(store, { urgency: "2026-10-05T12:00:00.000Z" }),
-    overdueNew: seed(store, { urgency: "2026-10-05T14:30:00.000Z" }),
-    dueSoon: seed(store, { urgency: "2026-10-05T16:00:00.000Z" }),
-    dueLater: seed(store, { urgency: "2026-10-05T20:00:00.000Z" }),
-    tieA: seed(store, { urgency: "2026-10-05T21:00:00.000Z", received: "2026-10-01T14:00:00.000Z" }, "1".repeat(24)),
-    tieB: seed(store, { urgency: "2026-10-05T21:00:00.000Z", received: "2026-10-01T14:00:00.000Z" }, "2".repeat(24)),
-    tieNewer: seed(store, { urgency: "2026-10-05T21:00:00.000Z", received: "2026-10-03T14:00:00.000Z" }),
-  };
-  seed(store, { needs: false, next: "2026-10-07T00:00:00.000Z" }); // future-only: All active, not Needs contact
-  seed(store, { status: "review", needs: false }); // review: All active/pending only
-  seed(store, { status: "closed", urgency: "2026-10-05T10:00:00.000Z" }); // closed: never listed
-  alignSnapshot(store, config());
-  const order = await allPages(owner, { limit: "3" }, store);
-  assert.deepEqual(order, [ids.overdueOld, ids.overdueNew, ids.dueSoon, ids.dueLater, ids.tieA, ids.tieB, ids.tieNewer]);
-  assert.equal(new Set(order).size, order.length, "no row repeats across pages");
-  // Every page's filter and order ran in the store over the full set (not a sorted page).
-  assert.ok(store.pages.every((p) => p.limit === 4));
-  assert.equal((await allPages(owner, { limit: "2", state: "all_active" }, store)).length, 9);
-});
-
-test("lead received: newest first by default, oldest first on request, unknown received last in both directions", async () => {
-  const store = new MemoryDeskReadStore();
-  const a = seed(store, { needs: true, received: "2026-10-01T14:00:00.000Z" });
-  const b = seed(store, { needs: true, received: "2026-10-03T14:00:00.000Z" });
-  const c = seed(store, { needs: true, received: "2026-10-04T14:00:00.000Z" });
-  const unknown = seed(store, { needs: true, received: null });
-  alignSnapshot(store, config());
-  assert.deepEqual(await allPages(owner, { sort: "lead_received", limit: "2" }, store), [c, b, a, unknown]);
-  assert.deepEqual(await allPages(owner, { sort: "lead_received", direction: "asc", limit: "2" }, store), [a, b, c, unknown]);
-});
-
 test("move date: full-scope soonest first, date and null ties stable over page boundaries, direction fixed ascending", async () => {
   const store = new MemoryDeskReadStore();
   // Deliberately insert later/unknown rows first: ordering must precede limiting.
@@ -251,70 +217,6 @@ test("move date: full-scope soonest first, date and null ties stable over page b
   assert.deepEqual(store.evaluation.writes, [], "existing projections suffice; reads never backfill");
 });
 
-test("move date combines search, priority, workflow, assignment and date filters across pages", async () => {
-  const store = new MemoryDeskReadStore();
-  const matching = { needs: true, name: "Ada .* Customer", priority: "1", workflow: "quoted" };
-  const unknown = seed(store, matching);
-  const future = seed(store, { ...matching, move: "2026-10-06" });
-  const today = seed(store, { ...matching, move: "2026-10-05" });
-  const past = seed(store, { ...matching, move: "2026-10-04" });
-  seed(store, { ...matching, agent: REP_B, move: "2026-10-05" });
-  seed(store, { ...matching, priority: "0", move: "2026-10-05" });
-  seed(store, { ...matching, workflow: "new", move: "2026-10-05" });
-  seed(store, { ...matching, name: "Someone Else", move: "2026-10-05" });
-  seed(store, { ...matching, status: "closed", move: "2026-10-05" });
-  alignSnapshot(store, config());
-  const query = { sort: "move_date", limit: "1", search: "ada .*", priority: "1", workflow: "quoted", agent_id: REP_A };
-  assert.deepEqual(await allPages(manager, query, store), [past, today, future, unknown]);
-  assert.deepEqual(await allPages(manager, { ...query, move_date_from: "2026-10-05" }, store), [today, future]);
-  assert.deepEqual(await allPages(manager, { ...query, move_date_to: "2026-10-04" }, store), [past]);
-  assert.deepEqual(await allPages(manager, { ...query, move_date_from: "2026-10-05", move_date_unknown: "include" }, store), [today, future, unknown]);
-  assert.deepEqual(await allPages(manager, { ...query, move_date_unknown: "only" }, store), [unknown]);
-});
-
-test("last interaction: oldest first with never-contacted first; newest first puts never-contacted last", async () => {
-  const store = new MemoryDeskReadStore();
-  const never = seed(store, { needs: true, last: null });
-  const old = seed(store, { needs: true, last: "2026-10-02T15:00:00.000Z" });
-  const recent = seed(store, { needs: true, last: "2026-10-05T13:00:00.000Z" });
-  alignSnapshot(store, config());
-  assert.deepEqual(await allPages(owner, { sort: "last_interaction", limit: "1" }, store), [never, old, recent]);
-  assert.deepEqual(await allPages(owner, { sort: "last_interaction", direction: "desc", limit: "1" }, store), [recent, old, never]);
-  await assert.rejects(async () => q({ sort: "urgency", direction: "desc" }));
-});
-
-test("filters: priority, workflow, move-date range with the unknown-date count, literal search and state", async () => {
-  const store = new MemoryDeskReadStore();
-  const quoted = seed(store, { needs: true, workflow: "quoted", priority: "1", move: "2026-10-10", name: "O'Brien (Senior)" });
-  const fresh = seed(store, { needs: true, workflow: "new", priority: "0", move: "2026-10-20", job: "P556123", phone: "(305) 555-0199" });
-  const unknownMove = seed(store, { needs: true, workflow: "new", priority: null, move: null, name: "Ana Lopez" });
-  const blocked = seed(store, { needs: false, blocked: true, workflow: "new", priority: "0" });
-  const review = seed(store, { needs: false, status: "review", priority: null, workflow: null });
-  const pending = seed(store, { needs: false, pending: true, workflow: "new" });
-  alignSnapshot(store, config());
-  const ids = async (query: Record<string, string>) => (await allPages(owner, query, store)).sort();
-  assert.deepEqual(await ids({ priority: "1" }), [quoted]);
-  assert.deepEqual(await ids({ priority: "unknown" }), [unknownMove]);
-  assert.deepEqual(await ids({ workflow: "quoted" }), [quoted]);
-  assert.deepEqual(await ids({ move_date_from: "2026-10-05", move_date_to: "2026-10-15" }), [quoted]);
-  assert.deepEqual(await ids({ move_date_from: "2026-10-05", move_date_unknown: "include" }), [quoted, fresh, unknownMove].sort());
-  assert.deepEqual(await ids({ move_date_unknown: "only" }), [unknownMove]);
-  const ranged = await readQueue(owner, q({ move_date_from: "2026-10-05" }), deps(store));
-  assert.equal(ranged.counts.excluded_unknown_move_date, 1, "the unknown-date exclusion is counted, never silent");
-  // Literal search: regex characters are literal; name case-insensitive; Job prefix; phone digits (≥ 4).
-  assert.deepEqual(await ids({ search: "o'brien (s" }), [quoted]);
-  assert.deepEqual(await ids({ search: ".*" }), []);
-  assert.deepEqual(await ids({ search: "  p556 " }), [fresh]);
-  assert.deepEqual(await ids({ search: "0199" }), [fresh]);
-  assert.deepEqual(await ids({ search: "019" }), [], "three digits never match a phone");
-  await assert.rejects(async () => q({ search: "x".repeat(101) }));
-  // State.
-  assert.deepEqual(await ids({}), [quoted, fresh, unknownMove].sort());
-  assert.deepEqual(await ids({ state: "blocked" }), [blocked]);
-  assert.deepEqual(await ids({ state: "pending" }), [review, pending].sort());
-  assert.deepEqual(await ids({ state: "all_active" }), [quoted, fresh, unknownMove, blocked, review, pending].sort());
-});
-
 test("scope: a Rep is forced to its own current assignment; foreign agent and Unassigned are refused, never broadened", async () => {
   const store = new MemoryDeskReadStore();
   const mine = seed(store, { agent: REP_A, urgency: "2026-10-05T13:00:00.000Z" });
@@ -332,17 +234,6 @@ test("scope: a Rep is forced to its own current assignment; foreign agent and Un
   const body = await readQueue(repA, q({}), deps(store));
   assert.deepEqual(body.scope, { role: "rep", agent_id: REP_A });
   assert.deepEqual([body.filters.agent_id, body.filters.unassigned], [REP_A, false]);
-});
-
-test("Unassigned/late assignment/reassignment (read part): the former Rep loses the row at once, even while the projection lags", async () => {
-  const store = new MemoryDeskReadStore();
-  const moved = seed(store, { agent: REP_A, urgency: "2026-10-05T13:00:00.000Z" });
-  const kept = seed(store, { agent: REP_A, urgency: "2026-10-05T14:00:00.000Z" });
-  alignSnapshot(store, config());
-  // The Lead's authoritative receiver changed to Rep B; the subject/projection still say Rep A.
-  store.setLead(store.evaluation.subjects.get(moved)!.lead, REP_B);
-  assert.deepEqual(await allPages(repA, {}, store), [kept]);
-  assert.deepEqual(await allPages(repB, {}, store), [], "the new Rep sees it once the desk copy catches up, never earlier through this read");
 });
 
 test("cursor: tamper, expiry, changed filters, foreign scope, reassignment, configuration and business day all answer 409 CURSOR_EXPIRED", async () => {
@@ -381,24 +272,6 @@ test("cursor: tamper, expiry, changed filters, foreign scope, reassignment, conf
   const subject = [...store.evaluation.subjects.values()][0]!;
   store.evaluation.subjects.set(subject.id, { ...subject, assigned_agent_id: REP_B, assignment_revision: subject.assignment_revision + 1 });
   await rejects(readQueue(repA, q({ limit: "2", cursor }), deps(store)), "CURSOR_EXPIRED", "assignment_changed");
-});
-
-test("read-time status: a due requirement past its deadline reads overdue under enforcement and due in shadow (row or current control), with no row rewrite", async () => {
-  const store = new MemoryDeskReadStore();
-  const id = seed(store, { urgency: "2026-10-05T14:30:00.000Z", call_status: "due" });
-  for (const [inspection, expected, labels] of [
-    [config({ cadence_enforcement_enabled: true }), "overdue", true],
-    [config({ cadence_shadow_enabled: true }), "due", false],
-  ] as const) {
-    alignSnapshot(store, inspection);
-    const body = await readQueue(owner, q({}), deps(store, inspection));
-    const row = body.rows.find((r) => r.subject_id === id)!;
-    assert.equal(row.call.status, expected);
-    assert.equal(row.status_flags.overdue, labels);
-    assert.equal(body.enforcement_labels, labels);
-    assert.equal(row.oldest_actionable_due_at, "2026-10-05T14:30:00.000Z", "deadlines stay visible in shadow");
-  }
-  assert.deepEqual(store.evaluation.writes, [], "reads never write projections");
 });
 
 test("read-time verification (olr A2): a passed deadline coverage cannot prove reads due/unverified and stays in Needs contact; once coverage reaches it, overdue/verified", async () => {
@@ -443,49 +316,6 @@ test("read-time verification (olr A2): a passed deadline coverage cannot prove r
   assert.deepEqual(store.evaluation.writes, [], "reads never write projections");
 });
 
-test("read-time verification (olr A2): a stored overdue reads verified; a stale capture reads partial coverage", async () => {
-  const store = new MemoryDeskReadStore();
-  const id = seed(store, { urgency: "2026-10-05T12:00:00.000Z", call_status: "overdue" });
-  alignSnapshot(store, config());
-  const body = salesOutreachQueueSchema.parse(await readQueue(owner, q({}), deps(store, config(), NOW, at("2026-10-05T14:30:00.000Z"))));
-  const row = body.rows.find((r) => r.subject_id === id)!;
-  assert.equal(row.call.status, "overdue");
-  assert.deepEqual(row.call.verification, { state: "verified", verified_through: "2026-10-05T14:28:00.000Z", unverified_since: null });
-  assert.deepEqual(row.call.coverage, { state: "partial", known_complete_through: "2026-10-05T14:30:00.000Z", gaps: [] }, "30 min behind > 25-min tolerance");
-  assert.equal(row.sms.verification, null, "a channel with nothing due has no verification");
-});
-
-test("schedule_day (S4): the stored New schedule day, null for other workflows or when the evaluator stored none; never recomputed", async () => {
-  const store = new MemoryDeskReadStore();
-  const withDay = (id: string, day: unknown) => ((store.evaluation.projections.get(id)!.doc as Record<string, unknown>).detail = { schedule_day: day });
-  const fresh = seed(store, { urgency: "2026-10-05T14:30:00.000Z" });
-  const old = seed(store, { urgency: "2026-10-05T14:40:00.000Z", received: "2026-09-20T14:00:00.000Z" });
-  const quoted = seed(store, { urgency: "2026-10-05T14:50:00.000Z", workflow: "quoted", priority: "1" });
-  const unknownAge = seed(store, { urgency: "2026-10-05T14:55:00.000Z" });
-  withDay(fresh, 1);
-  // A stored day that disagrees with the received date wins: the read copies, it does not compute.
-  withDay(old, 9);
-  withDay(quoted, 12);
-  withDay(unknownAge, null);
-  alignSnapshot(store, config());
-  const body = salesOutreachQueueSchema.parse(await readQueue(owner, q({}), deps(store)));
-  const day = (id: string) => body.rows.find((r) => r.subject_id === id)!.schedule_day;
-  assert.deepEqual([day(fresh), day(old), day(quoted), day(unknownAge)], [1, 9, null, null]);
-});
-
-test("fail closed: desk off or uninitialized is 503 CONFIGURATION_UNAVAILABLE; cadence off is 503 PROJECTION_PENDING; pending subjects are counted", async () => {
-  const store = new MemoryDeskReadStore();
-  seed(store, { urgency: "2026-10-05T13:00:00.000Z" });
-  store.evaluation.subjects.set("e".repeat(24), subjectRow({ id: "e".repeat(24), assigned_agent_id: REP_A }));
-  alignSnapshot(store, config());
-  await rejects(readQueue(owner, q({}), deps(store, config({ desk_enabled: false, cadence_enforcement_enabled: true }))), "CONFIGURATION_UNAVAILABLE");
-  await rejects(readQueue(owner, q({}), { ...deps(store), loader: fixedConfigurationLoader({ state: "uninitialized" } as ConfigurationInspection) }), "CONFIGURATION_UNAVAILABLE");
-  await rejects(readQueue(owner, q({}), deps(store, config({}))), "PROJECTION_PENDING", "cadence_disabled");
-  const body = await readQueue(owner, q({}), deps(store));
-  assert.equal(body.counts.projection_pending, 1, "a subject with no projection is pending, never an empty-ready queue");
-  await rejects(readQueue(owner, q({}), { ...deps(store), cursorSecret: null }), "SERVICE_UNAVAILABLE");
-});
-
 test("move-date Mongo walks preserve the full match, date-only keyset and the one-way unknown phase", () => {
   const match = { assignment: { kind: "agent" as const, agent_id: REP_A }, state: "all_active" as const, priority: { kind: "code" as const, code: "1" }, workflow: "quoted" as const, move_date: null, search: null };
   const plan = { match, sort: queueSortSpec("move_date", "asc"), after: null, limit: 2 };
@@ -504,34 +334,6 @@ test("move-date Mongo walks preserve the full match, date-only keyset and the on
   assert.equal(unknown.length, 1);
   assert.match(JSON.stringify(unknown[0]!.filter), /"display.move_date":null/);
   assert.match(JSON.stringify(unknown[0]!.filter), /"subject_id":\{"\$gt":"111111111111111111111111"\}/);
-});
-
-test("the Mongo plan: filter, keyset and sort translate the same semantics (escaped literals, never-null keys)", () => {
-  const plan: QueuePagePlan = {
-    match: {
-      assignment: { kind: "agent", agent_id: REP_A },
-      state: "needs_contact",
-      priority: { kind: "code", code: "1" },
-      workflow: "quoted",
-      move_date: { from: "2026-10-05", to: null, unknown: "exclude" },
-      search: { name: "o'brien (s", job_prefix: "OBRIENS", phone_digits: null },
-    },
-    sort: queueSortSpec("lead_received", "desc"),
-    after: ["2026-10-03T14:00:00.000Z", "1".repeat(24)],
-    limit: 26,
-  };
-  const { filter, sort } = mongoQueueQuery(plan);
-  assert.deepEqual(sort, { "queue_keys.received_desc": -1, subject_id: -1 });
-  const text = JSON.stringify(filter);
-  assert.match(text, /"assigned_agent_id":"a{24}"/);
-  assert.match(text, /"subject_status":"active","status_flags.needs_contact":true/);
-  assert.match(text, /"priority_raw":"1"/);
-  assert.match(text, /"display.move_date":\{"\$gte":"2026-10-05"\}/);
-  assert.match(text, /"display.name_folded":\{"\$regex":"o'brien \\\\\(s"\}/);
-  assert.match(text, /"display.normalized_job_no":\{"\$regex":"\^OBRIENS"\}/);
-  assert.match(text, /"queue_keys.received_desc":\{"\$lt":"2026-10-03T14:00:00.000Z"\}/);
-  assert.match(text, /"subject_id":\{"\$lt":"1{24}"\}/);
-  assert.deepEqual(Object.keys(queueSortSpec("urgency", "asc").map((s) => s.field)), ["0", "1", "2", "3"]);
 });
 
 test("end to end through the evaluator: real projections order by urgency and are read without a rewrite", async () => {

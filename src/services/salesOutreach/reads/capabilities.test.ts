@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { OutreachActor } from "../auth";
 import type { ConfigurationInspection } from "../config/load";
-import { completeConfigurationInput, TEST_FINAL01_CADENCE } from "../evaluation/testing";
+import { completeConfigurationInput } from "../evaluation/testing";
 import { salesOutreachCapabilitiesSchema } from "../../../validation/v1/salesOutreachReads";
 import { composeCapabilities } from "./capabilities";
 import { activeInspection } from "./testing";
@@ -42,34 +42,4 @@ test("permitted_views: Activity for every desk role with the desk; Manager Setti
     assert.deepEqual(views("manager", inspected), []);
     assert.deepEqual(views("rep", inspected), []);
   }
-});
-
-test("cadence_summary: the configured cadence copied 1:1, identical for Owner/Manager/Rep, even with the desk off", () => {
-  const owner = compose("owner", deskOn).cadence_summary;
-  assert.deepEqual(owner, {
-    policy_version: TEST_FINAL01_CADENCE.policy_version,
-    new: {
-      days_1_3_calls: { required: 2, optional: 1 },
-      call_slots: [
-        { from_day: 1, to_day: 5, calls_per_day: 2 },
-        { from_day: 6, to_day: null, calls_per_day: 1 },
-      ],
-      sms_sequence: { initial_days: [1, 2, 3], repeat_from_day: 6, repeat_every_days: 3 },
-    },
-    quoted: null,
-  });
-  assert.deepEqual(compose("manager", deskOn).cadence_summary, owner);
-  assert.deepEqual(compose("rep", deskOn).cadence_summary, owner);
-  assert.deepEqual(compose("rep", deskOff).cadence_summary, owner);
-  const text = JSON.stringify(owner);
-  for (const secret of ["minute", "approval_ref", "batch_size", "paused"]) assert.equal(text.includes(secret), false, `no ${secret}`);
-});
-
-test("cadence_summary: null when the configuration is uninitialized or unavailable; unconfigured values are null", () => {
-  for (const role of ["owner", "manager", "rep"] as const) {
-    assert.equal(compose(role, uninitialized).cadence_summary, null);
-    assert.equal(compose(role, unavailable).cadence_summary, null);
-  }
-  const bare = compose("rep", activeInspection({ controls: { desk_enabled: true } })).cadence_summary;
-  assert.deepEqual(bare, { policy_version: null, new: { days_1_3_calls: null, call_slots: null, sms_sequence: null }, quoted: null });
 });

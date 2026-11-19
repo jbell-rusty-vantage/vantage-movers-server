@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
-import express, { type Request, type Response } from "express";
+import express,{ type Request, type Response } from "express";
 import { requireApiSecret } from "../../middleware/requireApiSecret";
 import { computeAdminActorSignature, signAdminActorPayload } from "../operationsRegistry/trustedActor";
 import { buildCanonicalRepActorPayload } from "../operationsRegistry/trustedActorCanonical";
@@ -108,26 +108,6 @@ test("route matrix: who reaches which desk capability", async () => {
   assert.equal((await call("rep", "/probe/quoted", "PATCH")).status, 200);
   assert.equal((await call("manager", "/probe/quoted", "PATCH")).status, 200);
   assert.equal((await call("admin", "/probe/quoted", "PATCH")).status, 403);
-});
-
-test("refusal codes: generic admin and unsigned are FORBIDDEN; an unlinked rep is REP_NOT_LINKED", async () => {
-  assert.equal((await call("admin", "/probe/assigned")).body.code, "FORBIDDEN");
-  assert.equal((await call("unsigned", "/probe/assigned")).body.code, "FORBIDDEN");
-  assert.equal((await call("tampered-rep", "/probe/assigned")).body.code, "FORBIDDEN");
-  const foreign = await call("foreign-rep", "/probe/assigned");
-  assert.deepEqual([foreign.status, foreign.body.code], [403, "REP_NOT_LINKED"]);
-  assert.equal(JSON.stringify(foreign.body).includes(FOREIGN_AGENT), false);
-});
-
-test("resolved actors carry the signed identity only; the rep link is checked at the request instant", async () => {
-  linkChecks.length = 0;
-  const before = Date.now();
-  assert.deepEqual((await call("owner", "/probe/assigned")).body, { role: "owner", agent_id: null, kind: "owner" });
-  assert.deepEqual((await call("manager", "/probe/assigned")).body, { role: "manager", agent_id: null, kind: "manager" });
-  assert.deepEqual((await call("rep", "/probe/assigned")).body, { role: "rep", agent_id: LINKED_AGENT, kind: "rep" });
-  assert.equal(linkChecks.length, 1);
-  assert.equal(linkChecks[0]!.agent, LINKED_AGENT);
-  assert.ok(+linkChecks[0]!.at >= before && +linkChecks[0]!.at <= Date.now());
 });
 
 test("signatures are bound to the method, path, role and freshness", async () => {

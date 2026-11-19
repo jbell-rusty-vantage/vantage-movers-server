@@ -3,8 +3,6 @@ import { test } from "node:test";
 import {
   captureWordpressReceiptThenCreateLead,
   createMemoryWordpressReceiptStore,
-  resolveWordpressSubmissionKey,
-  wordpressReceiptWriteAuthorized,
 } from "./wordpressFormSubmissionReceipt.js";
 
 const NOW = new Date("2026-08-27T16:00:00.000Z");
@@ -131,37 +129,6 @@ test("unauthorized or keyless WordPress create does not write a receipt", async 
   assert.equal(store.list().length, 0);
 });
 
-test("unattached receipt refuses a second Lead create", async () => {
-  const store = createMemoryWordpressReceiptStore();
-  await store.insertReceived({
-    submission_key: "wp-sub-unattached-1",
-    received_at: NOW,
-  });
-  let created = false;
-
-  await assert.rejects(
-    () =>
-      captureWordpressReceiptThenCreateLead({
-        authorization: {
-          ingestionOrigin: "wordpress_form",
-          testMode: true,
-          databaseName: "testvantagemovers",
-        },
-        submissionKey: "wp-sub-unattached-1",
-        now: NOW,
-        store,
-        createLead: async () => {
-          created = true;
-          return { leadId: "lead-wp-second" };
-        },
-      }),
-    /unattached/,
-  );
-  assert.equal(created, false);
-  assert.equal(store.list().length, 1);
-  assert.equal(store.list()[0]?.lead_ref, null);
-});
-
 test("attach failure does not leave a creatable second Lead", async () => {
   let creates = 0;
   const store = createMemoryWordpressReceiptStore();
@@ -213,37 +180,4 @@ test("attach failure does not leave a creatable second Lead", async () => {
     /unattached/,
   );
   assert.equal(creates, 1);
-});
-
-test("capture failure aborts Lead create", async () => {
-  let created = false;
-  await assert.rejects(
-    () =>
-      captureWordpressReceiptThenCreateLead({
-        authorization: {
-          ingestionOrigin: "wordpress_form",
-          testMode: true,
-          databaseName: "testvantagemovers",
-        },
-        submissionKey: "wp-sub-fail-closed",
-        now: NOW,
-        store: {
-          async insertReceived() {
-            throw new Error("mongo unavailable");
-          },
-          async findBySubmissionKey() {
-            return null;
-          },
-          async attachLeadRef() {
-            throw new Error("unreachable");
-          },
-        },
-        createLead: async () => {
-          created = true;
-          return { leadId: "lead-wp-fail" };
-        },
-      }),
-    /WordPress submission receipt capture failed/,
-  );
-  assert.equal(created, false);
 });

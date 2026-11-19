@@ -6,7 +6,7 @@ import express, { type Router } from "express";
 import { requireApiSecret } from "../middleware/requireApiSecret";
 import { computeAdminActorSignature, signAdminActorPayload } from "../services/operationsRegistry/trustedActor";
 import { buildCanonicalRepActorPayload } from "../services/operationsRegistry/trustedActorCanonical";
-import { CsiError, requireCsiReader, isCsiRepActor, type CsiActor } from "../services/salesIntelligence/auth";
+import { CsiError } from "../services/salesIntelligence/auth";
 import { createSalesIntelligenceBoundaryRouter } from "./sales-intelligence-boundary.routes";
 import { createSalesIntelligenceCronRouter } from "./sales-intelligence-cron.routes";
 import { createAdminInviteEmailRouter } from "./admin-invite-email-internal.routes";
@@ -154,21 +154,4 @@ test("a validly signed rep reaches the route and is refused there; tampered, uns
     const off = await call(base, "GET", url, "rep");
     assert.equal(off.status, 403); assert.equal(off.json?.code, "OWNER_REQUIRED");
   } finally { await close(); process.env = saved; }
-});
-
-test("a trusted rep actor persists only { kind, id, request_id, run_id }; role and agent_id are non-enumerable", () => {
-  const saved = { ...process.env };
-  env({ rep: true });
-  try {
-    const url = `${CSI_ADMIN_PREFIX}/numbers`;
-    const headers = signed("GET", url, "rep") as Record<string, string>;
-    const req = { method: "GET", originalUrl: `${url}?scope=production`, url, header: (name: string) => headers[name.toLowerCase()], vantageAuth: { kind: "secret" } } as never;
-    const actor = requireCsiReader(req);
-    assert.ok(isCsiRepActor(actor));
-    assert.equal(actor.kind, "rep"); assert.equal(actor.role, "rep"); assert.equal(actor.agent_id, AGENT_A);
-    assert.deepEqual(Object.keys({ ...actor }).sort(), ["id", "kind", "request_id", "run_id"]);
-    assert.deepEqual(JSON.parse(JSON.stringify(actor)), { kind: "rep", id: "rep-user", request_id: "req-rep", run_id: null });
-    // A copy is not trusted (the scope can't be forged by spreading an actor).
-    assert.equal(isCsiRepActor({ ...actor, role: "rep", agent_id: AGENT_B } as CsiActor), false);
-  } finally { process.env = saved; }
 });

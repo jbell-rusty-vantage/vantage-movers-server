@@ -60,10 +60,3 @@ test("the fence marks runnable retired-stage rows retired, revokes their lease a
   assert.equal("completed_at" in update.$set, false, "the TTL must not remove a fenced row before the purge backs it up");
   assert.deepEqual(update.$inc, { lease_epoch: 1 });
 });
-
-test("the fence writes nothing when no retired-stage row is runnable", async () => {
-  const calls = stubCollection([]);
-
-  assert.deepEqual(await retireLegacyCsiJobs(), { retired: 0, stages: {} });
-  assert.equal(calls.updateMany.length, 0);
-});

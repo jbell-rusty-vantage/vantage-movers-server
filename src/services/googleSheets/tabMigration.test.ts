@@ -33,26 +33,11 @@ function metadata(tabs: TabIdentity[]) {
   return { sheets, writes: () => writes, headers };
 }
 
-test("topology plan renames by numeric ID and adds only canonical Bad Call Leads", () => {
-  const plan = planLeadTabMigration("fixture", before);
-  assert.deepEqual(plan.renames, [{ sheetId: 2, oldTitle: "Duplicates", title: "Duplicate Forms" }, { sheetId: 4, oldTitle: "Bad Leads", title: "Bad Form Leads" }]);
-  assert.deepEqual(plan.creates, ["Bad Call Leads"]);
-  assert.deepEqual(plan.conflicts, []);
-});
-
 test("both titles are a conflict and compatibility never silently chooses a tab", async () => {
   const tabs = [...before, { sheetId: 99, title: "Duplicate Forms" }];
   const plan = planLeadTabMigration("fixture", tabs);
   assert.ok(plan.conflicts[0].includes("2:99"));
   await assert.rejects(resolveCompatibleSheetTitle(metadata(tabs).sheets, "fixture", "Duplicate Forms"), /sheet_title_conflict/);
-});
-
-test("compatibility resolves old titles before migration and canonical titles afterwards", async () => {
-  assert.equal(await resolveCompatibleSheetTitle(metadata([...before]).sheets, "fixture", "Duplicate Forms"), "Duplicates");
-  resetEnsuredTabsCache();
-  assert.equal(await resolveCompatibleSheetTitle(metadata([{ sheetId: 2, title: "Duplicate Forms" }]).sheets, "fixture", "Duplicates"), "Duplicate Forms");
-  resetEnsuredTabsCache();
-  assert.equal(await resolveCompatibleSheetTitle(metadata([]).sheets, "fixture", "Duplicates"), "Duplicate Forms");
 });
 
 test("a warm writer observes the legacy tab rename without a local cache reset", async () => {

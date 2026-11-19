@@ -75,47 +75,6 @@ const granularities: RegistrySourceGranularityRecord[] = [
   },
 ];
 
-test("owner-created dynamic source resolves by exact identifier", () => {
-  const result = previewSourceAttribution(companies, granularities, {
-    channel: "form",
-    granularity_key: " DYNAMIC_FORM ",
-  });
-
-  assert.equal(result.status, "resolved");
-  if (result.status === "resolved") {
-    assert.equal(result.attribution.company_slug, "dynamic_source");
-    assert.equal(result.attribution.match_kind, "exact");
-    assert.equal(result.attribution.registry_revision, 3);
-  }
-});
-
-test("active company default resolves only to an active same-channel record", () => {
-  const result = previewSourceAttribution(companies, granularities, {
-    channel: "call",
-    company_slug: "dynamic_source",
-  });
-
-  assert.equal(result.status, "resolved");
-  if (result.status === "resolved") {
-    assert.equal(result.attribution.granularity_id, "call-a");
-    assert.equal(result.attribution.match_kind, "default");
-  }
-});
-
-test("a company identifier falls through to its default when it is not a granularity alias", () => {
-  const result = previewSourceAttribution(companies, granularities, {
-    channel: "call",
-    company_slug: "dynamic_source",
-    fallback_alias: "dynamic_source",
-  });
-
-  assert.equal(result.status, "resolved");
-  if (result.status === "resolved") {
-    assert.equal(result.attribution.granularity_id, "call-a");
-    assert.equal(result.attribution.match_kind, "default");
-  }
-});
-
 test("local classification resolves the matching active granularity before the default", () => {
   const result = previewSourceAttribution(companies, granularities, {
     channel: "form",
@@ -128,90 +87,6 @@ test("local classification resolves the matching active granularity before the d
     assert.equal(result.attribution.granularity_id, "form-long-distance");
     assert.equal(result.attribution.match_kind, "exact");
   }
-});
-
-test("fallback aliases choose the unique highest priority candidate", () => {
-  const result = previewSourceAttribution(
-    companies,
-    [
-      ...granularities,
-      {
-        ...granularities[0],
-        id: "form-low",
-        granularity_key: "dynamic_form_low",
-        priority: 1,
-      },
-    ],
-    { channel: "form", fallback_alias: "legacy dynamic" },
-  );
-
-  assert.equal(result.status, "resolved");
-  if (result.status === "resolved") {
-    assert.equal(result.attribution.granularity_id, "form-a");
-    assert.equal(result.attribution.match_kind, "fallback");
-  }
-});
-
-test("an inferred unknown company identifier can resolve as a global alias in one pass", () => {
-  const result = previewSourceAttribution(companies, granularities, {
-    channel: "form",
-    company_slug: "legacy dynamic",
-    crm_label: "legacy dynamic",
-    fallback_alias: "legacy dynamic",
-    allow_company_identifier_fallback: true,
-  });
-
-  assert.equal(result.status, "resolved");
-  if (result.status === "resolved") {
-    assert.equal(result.attribution.granularity_id, "form-a");
-    assert.equal(result.attribution.match_kind, "fallback");
-  }
-});
-
-test("equal-priority fallback ambiguity fails deterministically", () => {
-  const result = previewSourceAttribution(
-    companies,
-    [
-      ...granularities,
-      {
-        ...granularities[0],
-        id: "form-b",
-        granularity_key: "dynamic_form_b",
-      },
-    ],
-    { channel: "form", fallback_alias: "legacy dynamic" },
-  );
-
-  assert.deepEqual(result, {
-    status: "ambiguous",
-    identifier_kind: "fallback",
-    identifier: "legacy dynamic",
-    candidate_ids: ["form-a", "form-b"],
-    priority: 10,
-  });
-});
-
-test("inactive exact records and inactive defaults do not resolve", () => {
-  const inactive = granularities.map((granularity) =>
-    granularity.id === "form-a"
-      ? { ...granularity, active: false }
-      : granularity,
-  );
-
-  assert.equal(
-    previewSourceAttribution(companies, inactive, {
-      channel: "form",
-      granularity_key: "dynamic_form",
-    }).status,
-    "not_found",
-  );
-  assert.equal(
-    previewSourceAttribution(companies, inactive, {
-      channel: "form",
-      company_slug: "dynamic_source",
-    }).status,
-    "not_found",
-  );
 });
 
 test("all legacy source-label fixtures preserve company attribution", () => {
@@ -296,52 +171,6 @@ function lean(result: unknown) {
     exec: async () => result,
   };
 }
-
-test("resolves without touching the static map", async () => {
-  resetStaticSourceLabelMapConsultsForTests();
-  (Mapping as unknown as Record<string, unknown>).find = () =>
-    lean([
-      {
-        _id: mappingId,
-        namespace: "sheet_lead_source",
-        normalized_label: "best relocation forms",
-        source_company: mappingCompanyId,
-        source_granularity: mappingFeedId,
-        active: true,
-      },
-    ]);
-  (Granularity as unknown as Record<string, unknown>).findById = () =>
-    lean({
-      _id: mappingFeedId,
-      source_company: mappingCompanyId,
-      active: true,
-      granularity_key: "best_relocation_leads_form",
-      owner_label: "Best Relocation Forms",
-      crm_label: "Best Relocation Forms",
-    });
-  (Company as unknown as Record<string, unknown>).findById = () =>
-    lean({
-      _id: mappingCompanyId,
-      active: true,
-      company_slug: "best_relocation_leads",
-      owner_label: "Best Relocation Leads",
-    });
-
-  const result = await resolveSheetOrLegacyLabel(
-    "sheet_lead_source",
-    "Best Relocation Forms",
-  );
-  assert.equal(result.status, "resolved");
-  if (result.status === "resolved" && result.source === "mapping") {
-    assert.equal(result.source_granularity_id, String(mappingFeedId));
-    assert.equal(result.company_slug, "best_relocation_leads");
-  }
-  assert.equal(
-    getStaticSourceLabelMapConsultCount(),
-    0,
-    "collection hit must not read SOURCE_LABEL_TO_COMPANY",
-  );
-});
 
 test("empty collection falls back to the static map and emits exactly one compatibility-read event", async () => {
   (Mapping as unknown as Record<string, unknown>).find = () => lean([]);

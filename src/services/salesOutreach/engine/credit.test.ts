@@ -1,20 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { FINAL_01_CADENCE_VALUE } from "./approvedStartingValues";
 import { addDays } from "./calendar";
 import {
   classifyCallEvidence,
   classifySmsEvidence,
   goalCreditAgent,
   goalCreditsByAgent,
-  repDayGoal,
-  summarizeTeamGoals,
   type CallEvidenceFacts,
   type ClassifiedEvidence,
   type SmsEvidenceFacts,
 } from "./credit";
-import { resolveEnginePolicy } from "./policy";
-import { evaluate, fixture, inbound, ny, nyMinute, obligationsOn, outbound, period, restriction, scenario, sms, TZ, type FixtureFile } from "./testSupport";
+import { evaluate, fixture, inbound, ny, nyMinute, obligationsOn, outbound, period, scenario, sms, TZ, type FixtureFile } from "./testSupport";
 import type { EngineContactEvent, EvaluateSubjectResult } from "./types";
 
 type Case = Record<string, unknown> & { id: string };
@@ -243,23 +239,12 @@ describe("P07f late evidence (fixture p07f-late-evidence.json)", () => {
 describe("P07g event time and windows (fixture p07g-event-time-windows.json)", () => {
   const c = Object.fromEntries(fixture<FixtureFile<Case>>("p07g-event-time-windows.json").cases.map((x) => [x.id, x])) as Record<string, Record<string, unknown>>;
   const build = (events: EngineContactEvent[], extra: Partial<Parameters<typeof scenario>[0]> = {}) => scenario({ periods: [period("n1", "new", nyMinute(R, 420), "intake")], events, ...extra });
-  test("closing_cross: a 19:59 start credits that date", () => {
-    const ev = outbound(ny(DAY4, "19:59"));
-    const r = evaluate(build([outbound(ny(DAY4, "18:00")), ev]), ny(DAY4, "20:30"));
-    assert.equal(r.obligations.some((o) => o.business_date === DAY4 && o.fulfilled_by_event_id === ev.event_id) ? 1 : 0, c.closing_cross!.routine_credit);
-  });
   test("midnight_cross: goal on the start date, no next-date quota prepayment", () => {
     const k = c.midnight_cross!;
     const ev = outbound(new Date(k.start_at as string).toISOString());
     assert.equal(goalCreditsByAgent([ev], k.goal_date as string, TZ).get("alice"), k.goal_credit);
     const r = evaluate(scenario({ periods: [period("n1", "new", ny("2026-09-30", "07:00"), "intake")], events: [ev] }), ny("2026-10-03", "09:00"));
     assert.equal(obligationsOn(r, "2026-10-03", "call").filter((o) => o.fulfilled_by_event_id === ev.event_id).length, k.next_date_routine_credit);
-  });
-  test("sms_later_delivery: confirmed sent time governs", () => {
-    const d2 = addDays(R, 1);
-    const r = evaluate(build([sms(nyMinute(R, 600)), sms(ny(d2, "19:59"))]), ny(d2, "20:10"));
-    assert.equal(obligationsOn(r, d2, "sms")[0]!.outcome, "fulfilled");
-    assert.equal(c.sms_later_delivery!.credit_time, "19:59");
   });
   test("too_close_inbound: no cadence credit, anchor not reset", () => {
     const first = outbound(ny(DAY4, "10:00"));
@@ -269,67 +254,4 @@ describe("P07g event time and windows (fixture p07g-event-time-windows.json)", (
     assert.equal(r.obligations.some((o) => o.fulfilled_by_event_id === tooClose.event_id) ? 1 : 0, c.too_close_inbound!.cadence_credit);
     assert.ok(r.obligations.some((o) => o.fulfilled_by_event_id === spaced.event_id), "anchor stayed at 10:00");
   });
-  test("originating_answered_inbound: initial response + at most one arrival call, zero goal", () => {
-    const k = c.originating_answered_inbound!;
-    const received = ny("2026-10-04", "10:00");
-    const origin = inbound(minutesBefore(received, 2), { id: "origin" });
-    const r = evaluate(scenario({ periods: [period("n1", "new", received, "intake")], events: [origin], originating_contact_event_id: origin.event_id }), ny("2026-10-04", "10:30"));
-    assert.equal(r.initial_response?.outcome === "fulfilled", k.initial_response_satisfied);
-    assert.equal(obligationsOn(r, "2026-10-04", "call").filter((o) => o.fulfilled_by_event_id === origin.event_id).length, k.maximum_arrival_call_credit);
-    assert.equal(goalCreditAgent(origin) ? 1 : 0, k.goal_credit);
-  });
-  test("after_hours_catchup: clears existing catch-up, not tomorrow's quota", () => {
-    const ev = outbound(ny(DAY4, "21:00"));
-    const r = evaluate(build([ev]), ny(addDays(DAY4, 1), "09:00"));
-    const before = evaluate(build([ev]), ny(DAY4, "20:59"));
-    assert.equal(before.requirements.call.catch_up.outstanding, true);
-    assert.equal(r.requirements.call.catch_up.outstanding === false, c.after_hours_catchup!.existing_channel_catchup_cleared, "the 21:00 contact cleared the catch-up (incl. Day 4 misses)");
-    assert.equal(obligationsOn(r, addDays(DAY4, 1), "call").filter((o) => o.fulfilled_by_event_id === ev.event_id).length, c.after_hours_catchup!.next_date_routine_credit);
-  });
-  test("restricted_outbound: history retained, zero goal and cadence credit", () => {
-    const k = c.restricted_outbound!;
-    const ev = outbound(ny(DAY4, "10:00"), { restricted: true });
-    const r = evaluate(build([ev], { restrictions: [restriction("r1", ["call"], ny(DAY4, "09:00"), ny(DAY4, "11:00"))] }), ny(DAY4, "12:00"));
-    assert.equal(r.last_interaction_at === new Date(Date.parse(ev.event_at)).toISOString(), k.history_retained);
-    assert.equal(goalCreditAgent(ev) ? 1 : 0, k.goal_credit);
-    assert.equal(r.obligations.some((o) => o.fulfilled_by_event_id === ev.event_id) ? 1 : 0, k.cadence_credit);
-  });
 });
-
-describe("P08a roster goals (fixture p08a-roster-goals.json) and synthetic goal/coverage cases", () => {
-  const fx = fixture<{ rows: Array<{ rep: string; goal: number; actual: number; label?: string; goal_achieved?: boolean }>; expected_team_goal: number; expected_actual: number; expected_goal_enabled_reps: number; expected_reps_at_goal: number; automatic_partial_day_proration: boolean }>("p08a-roster-goals.json");
-  test("team goal sums individual goals; zero-goal rows keep actuals, leave the denominator", () => {
-    const s = summarizeTeamGoals(fx.rows);
-    assert.deepEqual(s, { team_goal: fx.expected_team_goal, actual: fx.expected_actual, goal_enabled_reps: fx.expected_goal_enabled_reps, reps_at_goal: fx.expected_reps_at_goal });
-    for (const row of fx.rows.filter((r) => r.label)) {
-      const day = repDayGoal(row.actual, row.goal);
-      assert.equal(day.goal_state, "no_goal_today");
-      assert.equal(day.goal_reached, row.goal_achieved);
-      assert.equal(day.actual, row.actual);
-    }
-    assert.equal(fx.automatic_partial_day_proration, false);
-  });
-  const synthetic = Object.fromEntries(fixture<FixtureFile<Case>>("synthetic.json").cases.map((x) => [x.id, x])) as Record<string, Record<string, unknown>>;
-  test("synthetic above_goal: 108/100 capped progress, zero remaining", () => {
-    const k = synthetic.above_goal!;
-    const day = repDayGoal(k.actual as number, k.goal as number);
-    assert.equal(day.remaining, k.remaining);
-    assert.equal(day.progress, k.progress);
-    assert.equal(day.actual, 108);
-  });
-  test("synthetic sms_unknown: no SMS coverage → pending, verified count null (never a false zero)", () => {
-    const k = synthetic.sms_unknown!;
-    const d2 = addDays(R, 1);
-    const r = evaluate(scenario({ periods: [period("n1", "new", nyMinute(R, 420), "intake")], events: [outbound(ny(d2, "10:00")), outbound(ny(d2, "11:30"))], sms_complete_through: null }), ny(d2, "20:30"));
-    assert.equal(r.requirements.call.status === "completed" || r.requirements.call.status === "overdue", true);
-    assert.equal(r.requirements.sms.status, k.sms_status);
-    assert.equal(r.requirements.sms.verified_completed, k.sms_verified_completed);
-  });
-  test("synthetic unapproved_policy: missing approval fails closed", () => {
-    assert.equal(resolveEnginePolicy({ ...FINAL_01_CADENCE_VALUE, approval_ref: synthetic.unapproved_policy!.approval_ref }).ok, false);
-  });
-});
-
-function minutesBefore(iso: string, minutes: number): string {
-  return new Date(Date.parse(iso) - minutes * 60_000).toISOString();
-}

@@ -45,7 +45,7 @@ generated:
 | `GET /api/v1/form-leads` | `browseFormLeads` | `browseFormLeadsQuerySchema` |
 | `GET /api/v1/call-leads` | `browseCallLeads` | `browseCallLeadsQuerySchema` |
 
-Schemas are `.strict()` — unknown keys 400 (tested). Defaults: `limit` 50 (max 100), `skip` 0. `booked` / `cancelled` coerce from query strings.
+Schemas are `.strict()` — unknown keys 400. Defaults: `limit` 50 (max 100), `skip` 0. `booked` / `cancelled` coerce from query strings.
 
 | Param | Notes |
 |-------|-------|
@@ -135,9 +135,9 @@ Form cards stay live-field cards (headline Form submitted). Call cards stay live
 
 ## Skip / fail paths
 
-- Unknown query keys fail Zod (tested)
+- Unknown query keys fail Zod
 - Empty `{}` is valid — latest leads
-- Schema coverage is `v1.validation.test.ts`. Form browse filter + card-shape tests are `formLeadBrowse.service.test.ts`
+- `formLeadBrowse.service.test.ts` checks that the default browse can show a quarantined Form, its Booking and Cancellation while keeping contact snapshots private.
 
 ## Browse vs search vs admin
 

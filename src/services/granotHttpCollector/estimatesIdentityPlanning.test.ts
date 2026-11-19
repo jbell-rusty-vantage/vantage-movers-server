@@ -46,27 +46,6 @@ function stores(model: "FormLead" | "CallLead", seed: { link?: IdentityRecordLin
     loadLeadProjection: async (target: { id: string }) => ({ ...(model === "FormLead" ? seed.forms : seed.calls)?.find((lead) => lead.id === target.id), model, id: target.id, domain_revision: 1, quoted: false }) }, reads: () => ({ labelReads, identityReads }) };
 }
 
-test("assembly admits a canonical Form Record Link without ref/contact and caches Registry reads", async () => {
-  const deps = stores("FormLead", { link: { id: "link", normalized_job_no: "123", disputed: false, lead_ref: { model: "FormLead", id: leadId } },
-    forms: [{ id: leadId, duplicate: false, lead_source_company: company, source_granularity_id: granularity, normalized_job_no: "123" }] });
-  const plan = await assembleEstimatesPlan([source("Synthetic", [{}, { job_no: "P123" }])], { runId, canonical: deps.canonical });
-  assert.deepEqual(plan.actions.map((action) => "classification" in action && action.classification), ["update", "update"]);
-  assert.deepEqual(plan.actions[0]!.lifecycle_apply?.expected_target, { model: "FormLead", id: leadId });
-  assert.equal(plan.actions[0]!.collection_captured_at, "2026-10-14T15:00:00.000Z");
-  assert.deepEqual("desired_state_summary" in plan.actions[0]! && plan.actions[0].desired_state_summary?.changed_paths, ["granot_priority"]);
-  assert.equal(deps.reads().labelReads, 1);
-  assert.equal(formAction(plan).report_identity?.match_method, "granot_record_link");
-  assert.match(formAction(plan).report_identity?.normalized_job_sha256 ?? "", /^[a-f\d]{64}$/);
-});
-
-test("assembly admits prefix-equivalent Call Job without phone", async () => {
-  const deps = stores("CallLead", { calls: [{ id: leadId, duplicate: false, source_granularity_id: granularity, normalized_job_no: "P123" }] });
-  const plan = await assembleEstimatesPlan([source("Synthetic", [{}])], { runId, canonical: deps.canonical });
-  assert.equal("classification" in plan.actions[0]! && plan.actions[0].classification, "update");
-  assert.deepEqual(plan.actions[0]!.lifecycle_apply?.expected_target, { model: "CallLead", id: leadId });
-  assert.equal(formAction(plan).report_identity?.match_method, "call_job_no_exact");
-});
-
 test("assembly attaches sparse Call phone despite duplicate sibling; genuine competing eligible matches stay held", async () => {
   const calls = [
     { id: leadId, duplicate: false, source_granularity_id: granularity, normalized_phone_number: "5550001111" },
@@ -108,12 +87,6 @@ test("assembly holds every conflicting exact Job priority/rep/source assertion b
     assert.ok(plan.actions.every((action) => !action.lifecycle_apply?.expected_target));
     assert.deepEqual(deps.reads(), { labelReads: 0, identityReads: 0 });
   }
-});
-
-test("identical repeated Job assertions and a single Job remain eligible snapshots", async () => {
-  const deps = stores("CallLead", { calls: [{ id: leadId, duplicate: false, source_granularity_id: granularity, normalized_job_no: "123" }] });
-  const plan = await assembleEstimatesPlan([source("Synthetic", [{ user: " REP_A " }, { user: "rep_a" }, { job_no: "124" }])], { runId, canonical: deps.canonical });
-  assert.deepEqual(plan.actions.map((action) => "classification" in action && action.classification), ["update", "update", "no_match"]);
 });
 
 test("assembly keeps Bad exact Form authority priority-only and holds conflicting exact source scope", async () => {

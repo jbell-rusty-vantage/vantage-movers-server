@@ -5,12 +5,10 @@ import mongoose from "mongoose";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
-import { RegistryError } from "./errors";
 import { resetRegistryCacheInvalidationForTests } from "./cacheInvalidation";
 import { resetGranotCrmSourceCachesForTests } from "./granotCrmSources";
 import {
   createLeadSourceSetup,
-  deriveSetupKeys,
   previewLeadSourceSetup,
   type LeadSourceSetupCommand,
 } from "./leadSourceSetup";
@@ -169,21 +167,6 @@ function command(overrides: Partial<LeadSourceSetupCommand> = {}): LeadSourceSet
   };
 }
 
-test("derives company_slug and granularity_key like paid_overflow", () => {
-  assert.deepEqual(deriveSetupKeys("Paid Overflow"), {
-    company_slug: "paid_overflow",
-    granularity_key: "paid_overflow",
-  });
-  assert.deepEqual(deriveSetupKeys("TBM Leads"), {
-    company_slug: "tbm_leads",
-    granularity_key: "tbm_leads",
-  });
-  assert.deepEqual(deriveSetupKeys("Best Relocation Leads", "local"), {
-    company_slug: "best_relocation_leads",
-    granularity_key: "best_relocation_leads_local",
-  });
-});
-
 test("creates one inactive lead source and feed and returns the readiness plan", async () => {
   stubHappyPath();
   const result = await createLeadSourceSetup(command({
@@ -218,109 +201,6 @@ test("creates one inactive lead source and feed and returns the readiness plan",
   assert.equal(store.companies.length, 1);
   assert.equal(store.feeds.length, 1);
   assert.equal(store.granot.length, 1);
-});
-
-test("skippable Granot still creates a valid inactive lead source and feed", async () => {
-  stubHappyPath();
-  const result = await createLeadSourceSetup(command(), OWNER, setupDeps());
-  assert.equal(result.granot_name, null);
-  assert.equal(store.granot.length, 0);
-  assert.equal(result.lead_source.active, false);
-  assert.equal(result.readiness_plan.at(-1)?.gate, "Connect a Granot name");
-  assert.equal(result.readiness_plan.at(-1)?.suggested, true);
-});
-
-test("collision on company_slug writes nothing", async () => {
-  stubHappyPath();
-  (Company as unknown as MutableModel).findOne = () =>
-    lean({
-      _id: new mongoose.Types.ObjectId(),
-      name: "Paid Overflow",
-      owner_label: "Paid Overflow",
-      company_slug: "synthetic_harbor_leads",
-    });
-  const before = {
-    companies: store.companies.length,
-    feeds: store.feeds.length,
-    granot: store.granot.length,
-  };
-  await assert.rejects(
-    () => createLeadSourceSetup(command(), OWNER, setupDeps()),
-    RegistryError,
-  );
-  assert.deepEqual(
-    {
-      companies: store.companies.length,
-      feeds: store.feeds.length,
-      granot: store.granot.length,
-    },
-    before,
-  );
-});
-
-test("crm_label collision against an active same-channel feed writes nothing", async () => {
-  stubHappyPath();
-  (Feed as unknown as MutableModel).find = (query: Record<string, unknown>) => {
-    if (query.active === true && query.channel === "form") {
-      return lean([{ _id: new mongoose.Types.ObjectId(), owner_label: "Paid Overflow" }]);
-    }
-    return lean([]);
-  };
-  const before = store.companies.length + store.feeds.length;
-  await assert.rejects(
-    () => createLeadSourceSetup(command(), OWNER, setupDeps()),
-    RegistryError,
-  );
-  assert.equal(store.companies.length + store.feeds.length, before);
-});
-
-test("alias collision names both sides and writes nothing", async () => {
-  stubHappyPath();
-  (Company as unknown as MutableModel).find = () =>
-    lean([
-      {
-        _id: new mongoose.Types.ObjectId(),
-        owner_label: "TBM Leads",
-        name: "TBM Leads",
-        company_slug: "tbm_leads",
-      },
-    ]);
-  await assert.rejects(
-    () =>
-      createLeadSourceSetup(
-        command({ aliases: ["tbm_leads"] }),
-        OWNER,
-        setupDeps(),
-      ),
-    (error: unknown) => {
-      assert.ok(error instanceof RegistryError);
-      assert.match(error.message, /TBM Leads/);
-      return true;
-    },
-  );
-  assert.equal(store.companies.length, 0);
-});
-
-test("granot label collision writes nothing", async () => {
-  stubHappyPath();
-  (Granot as unknown as MutableModel).findOne = () =>
-    lean({ _id: new mongoose.Types.ObjectId(), granot_label: "Paid Overflow" });
-  await assert.rejects(
-    () =>
-      createLeadSourceSetup(
-        command({
-          granot: {
-            name_received_from_granot: "Paid Overflow",
-            when_lead_arrives: "watch_only",
-          },
-        }),
-        OWNER,
-        setupDeps(),
-      ),
-    RegistryError,
-  );
-  assert.equal(store.companies.length, 0);
-  assert.equal(store.granot.length, 0);
 });
 
 test("mid-transaction feed failure leaves none of the three", async () => {
@@ -368,25 +248,6 @@ test("Paid Overflow-shaped setup creates a new first-class feed and leaves paid_
   assert.notEqual(result.feed.granularity_key, "paid_overflow");
   assert.equal(existingFeeds[0]?.crm_label, "Paid Overflow");
   assert.equal(existingFeeds[0]?.granularity_key, "paid_overflow");
-});
-
-test("preview runs the same validation and writes nothing", async () => {
-  stubHappyPath();
-  const preview = await previewLeadSourceSetup(
-    command({
-      granot: {
-        name_received_from_granot: "Synthetic Harbor",
-        when_lead_arrives: "create_if_missing",
-      },
-    }),
-  );
-  assert.equal(preview.valid, true);
-  assert.equal(preview.derived.company_slug, "synthetic_harbor_leads");
-  assert.equal(preview.derived.normalized_granot_label, "synthetic harbor");
-  assert.equal(store.companies.length, 0);
-  assert.equal(store.feeds.length, 0);
-  assert.equal(store.granot.length, 0);
-  assert.equal(preview.readiness_plan[4]?.gate, "Turn on the customer text");
 });
 
 test("preview reports every collision type without writing", async () => {

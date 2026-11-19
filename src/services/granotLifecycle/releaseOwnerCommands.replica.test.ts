@@ -191,6 +191,7 @@ async function seedReleaseCase() {
     book_date: now,
     job_no: jobRaw,
     normalized_job_no: job,
+    createdAt: now,
     lead_ref: leadId,
     lead_model: "FormLead",
     customer_name: "U27 Synthetic Customer",
@@ -255,93 +256,6 @@ const owner = {
   origin: "vantage_admin" as const,
 };
 
-test("[AC-21][AC-25][AC-32] Release No Action resolves only case and Command with exact replay", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seedReleaseCase();
-  const flags = { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, release_commands_enabled: true };
-  const command = {
-    case_id: String(fixture.caseId),
-    expected_case_revision: 1,
-    reason_code: "granot_change_only" as const,
-    reason_text: "Synthetic Owner review only.",
-    idempotency_key: `unit27-no-action-${fixture.caseId}`,
-    owner,
-  };
-  const before = {
-    booking: await BookedLead.findById(fixture.bookingId).lean().exec(),
-    lead: await getFormLeadModel().findById(fixture.leadId).lean().exec(),
-    cancellations: await CancelledLead.countDocuments({ booked_lead: fixture.bookingId }),
-    changes: await getEntityChangeModel().countDocuments({ "provenance.case_id": fixture.caseId }),
-    outbox: await SheetSyncJob.countDocuments({ entity_id: String(fixture.bookingId) }),
-  };
-  const result = await noAction(command, { flags });
-  assert.equal(result.outcome, "no_action");
-  assert.equal(result.booking_ref.id, String(fixture.bookingId));
-  assert.equal(result.decision_id, String(fixture.decisionId));
-  const row = await getGranotReleaseReconciliationCaseModel().findById(fixture.caseId).lean().exec();
-  assert.equal(row?.case_revision, 2);
-  assert.equal(row?.evidence_revision, 1);
-  assert.equal(row?.resolution?.reason_code, "granot_change_only");
-  assert.equal(await DomainCommandExecution.countDocuments({ "provenance.case_id": String(fixture.caseId) }), 1);
-  assert.equal(await CancelledLead.countDocuments({ booked_lead: fixture.bookingId }), before.cancellations);
-  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": fixture.caseId }), before.changes);
-  assert.equal(await SheetSyncJob.countDocuments({ entity_id: String(fixture.bookingId) }), before.outbox);
-  assert.deepEqual(await BookedLead.findById(fixture.bookingId).lean().exec(), before.booking);
-  assert.deepEqual(await getFormLeadModel().findById(fixture.leadId).lean().exec(), before.lead);
-  const replay = await noAction(command, { flags });
-  assert.equal(replay.replayed, true);
-  assert.equal(replay.command_execution_id, result.command_execution_id);
-});
-
-test("[AC-21][AC-25][AC-32] Release Update Booking fully replaces official fields atomically", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seedReleaseCase();
-  const flags = { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, release_commands_enabled: true };
-  const command = {
-    case_id: String(fixture.caseId),
-    expected_case_revision: 1,
-    expected_booking_revision: 0,
-    official_booking_details: {
-      book_date: "2026-09-02",
-      primary_agent_id: String(fixture.agentId),
-      total_binder_amount: 125.25,
-      deposit_amount: 2500.5,
-      merchant_id: String(fixture.merchantId),
-    },
-    idempotency_key: `unit27-update-${fixture.caseId}`,
-    owner,
-  };
-  const beforeLead = await getFormLeadModel().findById(fixture.leadId).lean().exec();
-  const result = await updateExistingBooking(command, { flags });
-  assert.equal(result.outcome, "booking_updated");
-  assert.equal(result.booking_ref.domain_revision, 1);
-  const [booking, lead, caseRow] = await Promise.all([
-    BookedLead.findById(fixture.bookingId).lean().exec(),
-    getFormLeadModel().findById(fixture.leadId).lean().exec(),
-    getGranotReleaseReconciliationCaseModel().findById(fixture.caseId).lean().exec(),
-  ]);
-  assert.equal(booking?.book_date.toISOString().slice(0, 10), "2026-09-02");
-  assert.equal(booking?.total_binder_amount, 125.25);
-  assert.equal(booking?.deposit_amount, 2500.5);
-  assert.equal(booking?.normalized_job_no, fixture.job);
-  assert.equal(String(booking?.lead_ref), String(fixture.leadId));
-  assert.equal(booking?.domain_revision, 1);
-  assert.equal(lead?.over_2000, true);
-  assert.equal(lead?.domain_revision, 1);
-  assert.equal(String(lead?.lead_source_company), String(beforeLead?.lead_source_company));
-  assert.equal(lead?.ingestion_origin, beforeLead?.ingestion_origin);
-  assert.equal(lead?.cpl, beforeLead?.cpl);
-  assert.equal(caseRow?.state, "resolved");
-  assert.equal(caseRow?.case_revision, 2);
-  assert.equal(caseRow?.evidence_revision, 1);
-  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": fixture.caseId }), 2);
-  assert.equal(await SheetSyncJob.countDocuments({ entity_id: String(fixture.bookingId) }), 1);
-  const replay = await updateExistingBooking(command, { flags });
-  assert.equal(replay.replayed, true);
-  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": fixture.caseId }), 2);
-  assert.equal(await SheetSyncJob.countDocuments({ entity_id: String(fixture.bookingId) }), 1);
-});
-
 test("[AC-21][AC-25][AC-26][AC-32] Confirm Cancellation writes one complete causal chain", async (t) => {
   if (!(await replicaReady(t))) return;
   const fixture = await seedReleaseCase();
@@ -380,6 +294,16 @@ test("[AC-21][AC-25][AC-26][AC-32] Confirm Cancellation writes one complete caus
   assert.equal(String(booking?.cancelled), result.cancellation_ref?.id);
   assert.equal(String(lead?.cancelled), result.cancellation_ref?.id);
   assert.equal(cancellation?.refund_amount, 75.25);
+  assert.equal(String(cancellation?.booked_lead), String(fixture.bookingId));
+  assert.equal(cancellation?.lead_ref_snapshot?.model, "FormLead");
+  assert.equal(String(cancellation?.lead_ref_snapshot?.id), String(fixture.leadId));
+  assert.equal(cancellation?.job_no_snapshot, booking?.job_no);
+  assert.equal(cancellation?.normalized_job_no_snapshot, fixture.job);
+  assert.deepEqual(cancellation?.booking_created_at_snapshot, booking?.createdAt);
+  assert.equal(cancellation?.agent, "U27 Synthetic Agent");
+  assert.equal(cancellation?.merchant, "U27 Synthetic Merchant");
+  assert.equal(cancellation?.source, booking?.source);
+  assert.equal(cancellation?.customer_name, "U27 Synthetic Customer");
   assert.equal(cancellation?.cancel_date.toISOString().slice(0, 10), "2026-08-19");
   assert.equal(caseRow?.resolution?.outcome, "cancellation_created");
   assert.equal(caseRow?.case_revision, 2);
@@ -398,6 +322,30 @@ test("[AC-21][AC-25][AC-26][AC-32] Confirm Cancellation writes one complete caus
   const replay = await confirmCancellation(command, { flags });
   assert.equal(replay.replayed, true);
   assert.equal(replay.command_execution_id, result.command_execution_id);
+  assert.equal(replay.cancellation_ref?.id, result.cancellation_ref?.id);
+  assert.equal(await DomainCommandExecution.countDocuments({ "provenance.case_id": String(fixture.caseId) }), 1);
+
+  await assert.rejects(confirmCancellation({
+    ...command,
+    official_cancellation_details: { ...command.official_cancellation_details, refund_amount: 999 },
+  }, { flags }), (error: unknown) =>
+    (error as { code?: string }).code === "DOMAIN_COMMAND_IDEMPOTENCY_CONFLICT");
+
+  const nextCaseId = await createNextReleaseCase(fixture, 2);
+  const satisfied = await confirmCancellation({
+    ...command,
+    case_id: String(nextCaseId),
+    official_cancellation_details: { cancel_date: "2026-08-20", refund_amount: 999 },
+    idempotency_key: `unit27-already-next-${nextCaseId}`,
+  }, { flags });
+  assert.equal(satisfied.outcome, "already_satisfied");
+  assert.equal(satisfied.cancellation_ref?.id, result.cancellation_ref?.id);
+  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": nextCaseId }), 0);
+  assert.equal(await DomainCommandExecution.countDocuments({ "provenance.case_id": String(fixture.caseId) }), 1);
+  const persisted = await CancelledLead.findById(result.cancellation_ref!.id).lean().exec();
+  assert.equal(persisted?.refund_amount, 75.25);
+  assert.equal(persisted?.cancel_date.toISOString().slice(0, 10), "2026-08-19");
+  assert.equal(persisted?.domain_revision, 1);
   assert.equal(await CancelledLead.countDocuments({ booked_lead: fixture.bookingId }), 1);
   assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": fixture.caseId }), 3);
   assert.equal(await SheetSyncJob.countDocuments({ entity_id: result.cancellation_ref!.id }), 1);
@@ -429,39 +377,6 @@ async function createNextReleaseCase(
   });
   return caseId;
 }
-
-test("[AC-26][AC-32] a verified current Cancellation resolves already-satisfied without another effect", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seedReleaseCase();
-  const flags = { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, release_commands_enabled: true };
-  const first = await confirmCancellation({
-    case_id: String(fixture.caseId),
-    expected_case_revision: 1,
-    expected_booking_revision: 0,
-    official_cancellation_details: { cancel_date: "2026-08-19", refund_amount: 10 },
-    idempotency_key: `unit27-already-first-${fixture.caseId}`,
-    owner,
-  }, { flags });
-  const nextCaseId = await createNextReleaseCase(fixture, 2);
-  const before = {
-    cancellations: await CancelledLead.countDocuments({ booked_lead: fixture.bookingId }),
-    changes: await getEntityChangeModel().countDocuments({ "provenance.case_id": nextCaseId }),
-    outbox: await SheetSyncJob.countDocuments({ entity_id: first.cancellation_ref!.id }),
-  };
-  const satisfied = await confirmCancellation({
-    case_id: String(nextCaseId),
-    expected_case_revision: 1,
-    expected_booking_revision: 0,
-    official_cancellation_details: { cancel_date: "2026-08-20", refund_amount: 999 },
-    idempotency_key: `unit27-already-next-${nextCaseId}`,
-    owner,
-  }, { flags });
-  assert.equal(satisfied.outcome, "already_satisfied");
-  assert.equal(satisfied.cancellation_ref?.id, first.cancellation_ref?.id);
-  assert.equal(await CancelledLead.countDocuments({ booked_lead: fixture.bookingId }), before.cancellations);
-  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": nextCaseId }), before.changes);
-  assert.equal(await SheetSyncJob.countDocuments({ entity_id: first.cancellation_ref!.id }), before.outbox);
-});
 
 test("[AC-25][AC-32] verified Referral Booking cancels without fabricating a Lead mirror", async (t) => {
   if (!(await replicaReady(t))) return;

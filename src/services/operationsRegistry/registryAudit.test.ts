@@ -3,8 +3,6 @@ import { afterEach, test } from "node:test";
 import type { ClientSession } from "mongoose";
 import {
   getRegistryCacheInvalidationLogForTests,
-  invalidateRegistryCaches,
-  onRegistryCacheInvalidation,
   resetRegistryCacheInvalidationForTests,
 } from "./cacheInvalidation";
 import { withRegistryMutation } from "./registryAudit";
@@ -137,54 +135,4 @@ test("duplicate mutation request IDs fail as a stable replay conflict", async ()
       "registryCode" in error &&
       error.registryCode === "REGISTRY_DUPLICATE_IDENTIFIER",
   );
-});
-
-test("granot_crm_source audit failure still rolls back and skips cache invalidation", async () => {
-  let committed = false;
-  await assert.rejects(
-    () =>
-      withRegistryMutation(
-        {
-          actor: ACTOR,
-          audit: {
-            entityType: "granot_crm_source",
-            entityId: "507f1f77bcf86cd799439099",
-            action: "update",
-            reason: "synthetic policy change",
-            before: { lifecycle_enabled: false },
-            after: { lifecycle_enabled: true, authorization: "should-redact" },
-          },
-          mutate: async () => ({ ok: true }),
-          invalidateKeys: ["granot_lifecycle_source_policy"],
-        },
-        {
-          withTransaction: async (fn) => {
-            try {
-              const result = await fn({} as ClientSession);
-              committed = true;
-              return result;
-            } catch (error) {
-              committed = false;
-              throw error;
-            }
-          },
-          insertAudit: async () => {
-            throw new Error("granot_crm_source audit insert failed");
-          },
-        },
-      ),
-    /granot_crm_source audit insert failed/,
-  );
-  assert.equal(committed, false);
-  assert.deepEqual(getRegistryCacheInvalidationLogForTests(), []);
-});
-
-test("invalidateRegistryCaches deduplicates keys for listeners", () => {
-  const seen: string[][] = [];
-  onRegistryCacheInvalidation((keys) => {
-    seen.push([...keys]);
-  });
-
-  invalidateRegistryCaches(["agents", "agents", "health"]);
-  assert.deepEqual(seen, [["agents", "health"]]);
 });

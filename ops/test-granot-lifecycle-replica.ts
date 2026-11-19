@@ -5,7 +5,7 @@
  * gitignored) and kept in tracked `ops/`. It refuses anything but a disposable test database on a replica set,
  * forces the safe lifecycle gate posture, runs every lifecycle replica proof except the queued-effect ones in one
  * serial pass (sheet sync disabled), then runs the queued-effect proofs with sheet sync queued (test-setup blocks
- * publication and Google delivery). The per-unit selection of the original is gone: the sweep is the whole set.
+ * publication and Google delivery). The sweep uses tracked tests so local migration scripts cannot change it.
  *
  * Target: TEST_MODE=true is required; MONGO_URI defaults to the loopback `csi01` replica and any other value must
  * be loopback too. `.env` is never read (dotenv is pinned to a missing file) and provider secrets are dropped.
@@ -44,15 +44,11 @@ const FORBIDDEN_DB = /^(vantagemovers|historical|prod|production)/i;
 const ALLOWED_DB = /^(testvantagemovers)(_[a-z0-9]+)?$/i;
 
 const LIFECYCLE_DIR = "src/services/granotLifecycle";
-const OTHER_FILES = [
+const REQUIRED_EXTRA_FILES = [
   "src/services/leads/leadProvenance.replica.test.ts",
   "src/services/ringcentral/call-log-sync-state.store.test.ts",
   "src/services/ringcentral/call-log-sync-lease.replica.test.ts",
   "src/services/ringcentral/callLeadConvergence.replica.test.ts",
-  // Local operator proofs (gitignored `scripts/`): run when present.
-  "scripts/migrations/granot-lifecycle-shadow.replica.test.ts",
-  "scripts/migrations/granot-lifecycle-lead-provenance.replica.test.ts",
-  "scripts/migrations/granot-lifecycle-revisions.replica.test.ts",
 ] as const;
 /** Proofs that assert Sheet Sync outbox rows: they need `SHEET_SYNC_MODE=queued`, so they run in the second pass only. */
 const QUEUED_EFFECT_FILES = [
@@ -65,11 +61,12 @@ const QUEUED_EFFECT_FILES = [
 /**
  * Non-secret configuration the proofs used to inherit from `.env`. Sheet container ids are synthetic: the planner
  * needs a target id, and test-setup blocks queue publication and Google delivery. Call Lead creation is on, as
- * in the deployed posture; ingest makes no provider call.
+ * in the deployed posture; ingest makes no provider call. Outreach refresh writes use a synthetic CSI dataset.
  */
 const SYNTHETIC_ENV: Record<string, string> = {
   RINGCENTRAL_CREATE_CALL_LEADS: "true",
   RINGCENTRAL_SHADOW_CALL_LEADS: "false",
+  SALES_INTELLIGENCE_DEPLOYMENT_ID: "granot-lifecycle-local-replica",
   ...Object.fromEntries(
     ["MASTER_LEADS", "MASTER_BOOKED", "TBM_LEADS", "TBM_PRIME_LEADS", "TOP10_LEADS", "BEST_RELOCATION_LEADS", "GETMOVERS_LEADS", "MAINSITE_LEADS"].map(
       (name) => [`TEST_${name}_SHEET_ID`, `synthetic-replica-${name.toLowerCase()}`],
@@ -78,12 +75,15 @@ const SYNTHETIC_ENV: Record<string, string> = {
 };
 
 function sweepFiles(): string[] {
+  for (const file of [...REQUIRED_EXTRA_FILES, ...QUEUED_EFFECT_FILES]) {
+    if (!existsSync(path.join(ROOT, file))) throw new Error(`Required replica proof is missing: ${file}`);
+  }
   const lifecycle = readdirSync(path.join(ROOT, LIFECYCLE_DIR))
     .filter((name) => name.endsWith(".replica.test.ts"))
     .sort()
     .map((name) => `${LIFECYCLE_DIR}/${name}`);
   const queued = new Set<string>(QUEUED_EFFECT_FILES);
-  return [...lifecycle, ...OTHER_FILES.filter((file) => existsSync(path.join(ROOT, file)))].filter((file) => !queued.has(file));
+  return [...lifecycle, ...REQUIRED_EXTRA_FILES].filter((file) => !queued.has(file));
 }
 
 async function assertSafeReplica(): Promise<string> {
@@ -142,10 +142,11 @@ function runFiles(files: readonly string[], sheetSyncMode: "disabled" | "queued"
 
 async function main(): Promise<void> {
   pinEnvironment();
+  const files = sweepFiles();
   const database = await assertSafeReplica();
   await mongoose.disconnect().catch(() => undefined);
   console.log(`Granot lifecycle replica sweep: ${database} on the loopback replica`);
-  let code = await runFiles(sweepFiles(), "disabled", database);
+  let code = await runFiles(files, "disabled", database);
   if (code === 0) code = await runFiles(QUEUED_EFFECT_FILES, "queued", database);
   process.exit(code);
 }

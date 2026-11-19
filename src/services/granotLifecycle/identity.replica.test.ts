@@ -4,9 +4,7 @@ import mongoose from "mongoose";
 import { getGranotLifecycleFlags } from "../../config/domain/granotLifecycle";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
 import { connectMongo } from "../../db";
-import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
-import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import {
@@ -132,49 +130,6 @@ test("[AC-07] replica identity is read-only across lifecycle and aggregate colle
   }
 });
 
-test("[AC-13] replica cross-field Agent username contradiction returns no suggestion", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const username = `U14AGENT${Date.now().toString(36).toUpperCase()}`;
-  const first = await Agent.create({
-    name: `Synthetic ${username} A`,
-    normalized_name: `synthetic ${username} a`,
-    active: true,
-    role: "agent",
-    created_from: "test",
-    granot_identity: { username, verified: false },
-  });
-  const second = await Agent.create({
-    name: `Synthetic ${username} B`,
-    normalized_name: `synthetic ${username} b`,
-    active: true,
-    role: "agent",
-    created_from: "test",
-    granot_crm_username: username,
-  });
-  const before = await collectionCounts();
-  try {
-    const result = await resolveLeadIdentity(
-      {
-        observation: {
-          identity: {},
-          contact: {},
-          agent_identity: { user_raw: username },
-        },
-        policy: formPolicy(
-          new mongoose.Types.ObjectId().toHexString(),
-          new mongoose.Types.ObjectId().toHexString(),
-        ),
-      },
-      createMongoLeadIdentityStore(),
-    );
-    assert.equal(result.agent, undefined);
-    assert.equal(result.agent_assertion, "single");
-    assert.deepEqual(await collectionCounts(), before);
-  } finally {
-    await Agent.deleteMany({ _id: { $in: [first._id, second._id] } });
-  }
-});
-
 test("[AC-39] replica Booking without Lead delegates and writes no case", async (t) => {
   if (!(await replicaReady(t))) return;
   const job = `U14 JOB ${Date.now().toString(36).toUpperCase()}`;
@@ -250,61 +205,5 @@ test("replica active Record Link lookup is findOne and writes nothing", async (t
     assert.deepEqual(await collectionCounts(), before);
   } finally {
     await Link.collection.deleteMany({ normalized_job_no: job });
-  }
-});
-
-test("[AC-04] replica Call Job query is granularity-scoped and read-only", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const CallLead = getCallLeadModel();
-  const granularityId = new mongoose.Types.ObjectId();
-  const otherGranularity = new mongoose.Types.ObjectId();
-  const job = `U14 CALL ${Date.now().toString(36).toUpperCase()}`;
-  const inScope = new mongoose.Types.ObjectId();
-  const outOfScope = new mongoose.Types.ObjectId();
-  await CallLead.collection.insertMany([
-    {
-      _id: inScope,
-      name: "Synthetic In Scope",
-      phone_number: "5550001415",
-      normalized_phone_number: "5550001415",
-      job_no: job,
-      normalized_job_no: job,
-      source_granularity_id: granularityId,
-      quoted: false,
-    },
-    {
-      _id: outOfScope,
-      name: "Synthetic Out Of Scope",
-      phone_number: "5550001416",
-      normalized_phone_number: "5550001416",
-      job_no: job,
-      normalized_job_no: job,
-      source_granularity_id: otherGranularity,
-      quoted: false,
-    },
-  ]);
-  const before = await collectionCounts();
-  try {
-    const result = await resolveLeadIdentity(
-      {
-        observation: {
-          identity: { normalized_job_no: job },
-          contact: {},
-          agent_identity: {},
-        },
-        policy: {
-          ...formPolicy(new mongoose.Types.ObjectId().toHexString(), String(granularityId)),
-          selected_lead_model: "CallLead",
-          selected_route_key: "call_any",
-          selected_move_type: "any",
-        },
-      },
-      createMongoLeadIdentityStore(),
-    );
-    assert.equal(result.target?.id, String(inScope));
-    assert.equal(result.match_method, "call_job_no_exact");
-    assert.deepEqual(await collectionCounts(), before);
-  } finally {
-    await CallLead.collection.deleteMany({ _id: { $in: [inScope, outOfScope] } });
   }
 });

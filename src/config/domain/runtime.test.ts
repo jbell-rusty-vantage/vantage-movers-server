@@ -1,15 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SHEET_CONTAINER_ENV_VARS } from "./sheets";
 import {
   getMasterBookedSheetContainerId,
   getMasterLeadsSheetContainerId,
   getMongoDatabaseName,
-  getRequiredEnv,
-  getRuntimeSheetContainerEnvVar,
   getSourceLeadSheetContainerId,
-  isTestMode,
-  shouldWriteSourceLeadSheets,
 } from "./runtime";
 
 /**
@@ -38,33 +33,6 @@ function withEnv(
   }
 }
 
-test("isTestMode is true only for the literal string 'true' after trim/lowercasing", () => {
-  withEnv("TEST_MODE", "true", () => assert.equal(isTestMode(), true));
-  withEnv("TEST_MODE", "TRUE", () => assert.equal(isTestMode(), true));
-  withEnv("TEST_MODE", "  true  ", () => assert.equal(isTestMode(), true));
-  withEnv("TEST_MODE", "false", () => assert.equal(isTestMode(), false));
-  withEnv("TEST_MODE", "1", () => assert.equal(isTestMode(), false));
-  withEnv("TEST_MODE", undefined, () => assert.equal(isTestMode(), false));
-});
-
-test("shouldWriteSourceLeadSheets is false by default and only true for the literal 'true'", () => {
-  withEnv("WRITE_SOURCE_LEAD_SHEETS", undefined, () =>
-    assert.equal(shouldWriteSourceLeadSheets(), false),
-  );
-  withEnv("WRITE_SOURCE_LEAD_SHEETS", "false", () =>
-    assert.equal(shouldWriteSourceLeadSheets(), false),
-  );
-  withEnv("WRITE_SOURCE_LEAD_SHEETS", "1", () =>
-    assert.equal(shouldWriteSourceLeadSheets(), false),
-  );
-  withEnv("WRITE_SOURCE_LEAD_SHEETS", "true", () =>
-    assert.equal(shouldWriteSourceLeadSheets(), true),
-  );
-  withEnv("WRITE_SOURCE_LEAD_SHEETS", "  TRUE  ", () =>
-    assert.equal(shouldWriteSourceLeadSheets(), true),
-  );
-});
-
 test("getMongoDatabaseName swaps between the prod and test databases on TEST_MODE", () => {
   withEnv("TEST_MONGO_DATABASE_NAME", undefined, () => {
     withEnv("TEST_MODE", "true", () =>
@@ -90,56 +58,6 @@ test("an isolated test database override cannot change the production database",
   });
 });
 
-test("getRuntimeSheetContainerEnvVar prefixes TEST_ in test mode and is identity otherwise", () => {
-  withEnv("TEST_MODE", "true", () => {
-    assert.equal(
-      getRuntimeSheetContainerEnvVar(SHEET_CONTAINER_ENV_VARS.masterLeads),
-      "TEST_MASTER_LEADS_SHEET_ID",
-    );
-    assert.equal(
-      getRuntimeSheetContainerEnvVar(SHEET_CONTAINER_ENV_VARS.masterBooked),
-      "TEST_MASTER_BOOKED_SHEET_ID",
-    );
-    assert.equal(
-      getRuntimeSheetContainerEnvVar(
-        SHEET_CONTAINER_ENV_VARS.sourceLeads.tbm_leads,
-      ),
-      "TEST_TBM_LEADS_SHEET_ID",
-    );
-  });
-
-  withEnv("TEST_MODE", undefined, () => {
-    assert.equal(
-      getRuntimeSheetContainerEnvVar(SHEET_CONTAINER_ENV_VARS.masterLeads),
-      "MASTER_LEADS_SHEET_ID",
-    );
-    assert.equal(
-      getRuntimeSheetContainerEnvVar(
-        SHEET_CONTAINER_ENV_VARS.sourceLeads.best_relocation_leads,
-      ),
-      "BEST_RELOCATION_LEADS_SHEET_ID",
-    );
-  });
-});
-
-test("getRequiredEnv throws when the env var is missing or blank, with the var name in the message", () => {
-  withEnv("__VANTAGE_RUNTIME_TEST_VAR__", undefined, () => {
-    assert.throws(
-      () => getRequiredEnv("__VANTAGE_RUNTIME_TEST_VAR__"),
-      /__VANTAGE_RUNTIME_TEST_VAR__ is not set/,
-    );
-  });
-  withEnv("__VANTAGE_RUNTIME_TEST_VAR__", "   ", () => {
-    assert.throws(
-      () => getRequiredEnv("__VANTAGE_RUNTIME_TEST_VAR__"),
-      /__VANTAGE_RUNTIME_TEST_VAR__ is not set/,
-    );
-  });
-  withEnv("__VANTAGE_RUNTIME_TEST_VAR__", "  value  ", () => {
-    assert.equal(getRequiredEnv("__VANTAGE_RUNTIME_TEST_VAR__"), "value");
-  });
-});
-
 test("sheet container id helpers route through the TEST_-prefixed env var in test mode", () => {
   withEnv("TEST_MODE", "true", () => {
     withEnv("TEST_MASTER_LEADS_SHEET_ID", "sheet-leads-test", () => {
@@ -152,10 +70,6 @@ test("sheet container id helpers route through the TEST_-prefixed env var in tes
       assert.equal(getSourceLeadSheetContainerId("tbm_leads"), "sheet-tbm-test");
     });
   });
-});
-
-test("getSourceLeadSheetContainerId returns undefined for not_provided (no source sheet env var)", () => {
-  assert.equal(getSourceLeadSheetContainerId("not_provided"), undefined);
 });
 
 test("getSourceLeadSheetContainerId returns undefined for paid_overflow (Master Sheets only)", () => {

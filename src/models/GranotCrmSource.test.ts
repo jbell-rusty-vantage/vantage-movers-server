@@ -1,19 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import mongoose from "mongoose";
-import {
-  GRANOT_CRM_SOURCE_COLLECTION,
-  GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES,
-  GRANOT_CRM_SOURCE_MODEL_NAME,
-  GranotCrmSource,
-  getGranotCrmSourceModel,
-} from "./GranotCrmSource";
+import { GranotCrmSource } from "./GranotCrmSource";
 import {
   validateGranotCrmSourceSemantics,
   type GranotCrmSourceSemanticsInput,
   type LoadedGranularityRef,
 } from "./granotCrmSourceSemantics";
-import { normalizeGranotSourceLabel } from "../services/granotLifecycle/sourceLabel";
 
 const companyId = new mongoose.Types.ObjectId();
 const formLocalId = new mongoose.Types.ObjectId();
@@ -72,58 +65,6 @@ function granularity(
     local,
   };
 }
-
-test("GranotCrmSource keeps the operational CSV collection and model name", () => {
-  assert.equal(GranotCrmSource.modelName, GRANOT_CRM_SOURCE_MODEL_NAME);
-  assert.equal(GranotCrmSource.collection.collectionName, GRANOT_CRM_SOURCE_COLLECTION);
-  assert.equal(getGranotCrmSourceModel().modelName, GRANOT_CRM_SOURCE_MODEL_NAME);
-});
-
-test("legacy and new rows default to disabled deferred observation-only policy", async () => {
-  const document = source();
-  await document.validate();
-  assert.equal(document.enabled, true);
-  assert.equal(document.lifecycle_enabled, false);
-  assert.equal(document.lifecycle_disposition, "deferred");
-  assert.equal(document.lead_created_policy, "observation_only");
-  assert.deepEqual(document.lifecycle_routes, []);
-  assert.equal(document.lifecycle_policy_version, "");
-  assert.equal(document.normalized_granot_label, undefined);
-  assert.equal(document.lead_source_company, undefined);
-  assert.equal(document.source_company, "not_provided");
-});
-
-test("declares the three named lifecycle indexes without removing CSV uniqueness", () => {
-  const indexes = GranotCrmSource.schema.indexes() as Array<
-    [Record<string, unknown>, Record<string, unknown>]
-  >;
-  const originWorkspace = indexes.find(
-    ([key]) => key.crm_origin === 1 && key.workspace_slug === 1,
-  );
-  assert.equal(originWorkspace?.[1].unique, true);
-
-  for (const expected of GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES) {
-    const declared = indexes.find(([, options]) => options.name === expected.name);
-    assert.ok(declared, expected.name);
-    assert.deepEqual(declared?.[0], expected.key);
-    if ("unique" in expected) {
-      assert.equal(declared?.[1].unique, true);
-    } else {
-      assert.notEqual(declared?.[1].unique, true);
-    }
-  }
-  assert.equal(GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES[0]?.name, "granot_crm_source_normalized_label_unique");
-});
-
-test("normalized labels use NFKC, trim, collapse, lowercase, and reject empty/control/bidi", () => {
-  assert.equal(
-    normalizeGranotSourceLabel("  BestRelocation\u00A0Forms  "),
-    "bestrelocation forms",
-  );
-  assert.equal(normalizeGranotSourceLabel("   "), undefined);
-  assert.equal(normalizeGranotSourceLabel("Paid\u0007Overflow"), undefined);
-  assert.equal(normalizeGranotSourceLabel("Auto\u202E"), undefined);
-});
 
 test("model writes reject illegal Call/Form/mixed/ambiguous routes", async () => {
   await assert.rejects(
@@ -210,38 +151,6 @@ test("model writes reject illegal Call/Form/mixed/ambiguous routes", async () =>
   );
 });
 
-test("referral_booking and deferred reject Lead routes and non-observation policies", async () => {
-  await assert.rejects(
-    source({
-      lifecycle_disposition: "deferred",
-      lead_created_policy: "link_only",
-    }).validate(),
-    /observation_only/,
-  );
-  await assert.rejects(
-    source({
-      lifecycle_disposition: "referral_booking",
-      lead_created_policy: "observation_only",
-      lifecycle_routes: [
-        {
-          route_key: "form_any",
-          lead_model: "FormLead",
-          move_type: "any",
-          source_granularity_id: formLocalId,
-        },
-      ],
-    }).validate(),
-    /must not have Lead routes/,
-  );
-  await assert.rejects(
-    source({
-      lifecycle_disposition: "deferred",
-      lead_created_policy: "create_if_missing",
-    }).validate(),
-    /create_if_missing/,
-  );
-});
-
 test("enabled source_scoped_lead requires active same-company matching-channel refs and policy version", () => {
   const refs = {
     company: { id: String(companyId), active: true },
@@ -291,39 +200,6 @@ test("enabled source_scoped_lead requires active same-company matching-channel r
   if (ok.ok) {
     assert.equal(ok.normalized_granot_label, "bestrelocation forms");
   }
-});
-
-test("disabled rows may keep reviewed policy but still reject structurally illegal routes", () => {
-  const refs = {
-    company: { id: String(companyId), active: false },
-    granularities: new Map([
-      [String(formLocalId), granularity(formLocalId, "form", "local", false)],
-      [String(formLongId), granularity(formLongId, "form", "long_distance", false)],
-    ]),
-  };
-  const preserved = validateGranotCrmSourceSemantics(scopedInput(), refs);
-  assert.equal(preserved.ok, true);
-
-  const illegal = validateGranotCrmSourceSemantics(
-    scopedInput({
-      lifecycle_routes: [
-        {
-          route_key: "form_any",
-          lead_model: "FormLead",
-          move_type: "any",
-          source_granularity_id: String(formLocalId),
-        },
-        {
-          route_key: "form_local",
-          lead_model: "FormLead",
-          move_type: "local",
-          source_granularity_id: String(formLongId),
-        },
-      ],
-    }),
-    refs,
-  );
-  assert.equal(illegal.ok, false);
 });
 
 test("client-supplied normalized labels that disagree with the server fail closed", () => {

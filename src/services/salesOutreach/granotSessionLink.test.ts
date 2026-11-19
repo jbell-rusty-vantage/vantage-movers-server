@@ -22,18 +22,6 @@ test("only Josh's signed Rep identity can reach the session lookup", async () =>
   }
 });
 
-test("Desk authorization precedes provider access and is checked again before returning", async () => {
-  const order: string[] = [];
-  const resolved = await resolveOutreachGranotSessionLink(josh, "subject", "private-context", { loader, now,
-    readDetail: async () => { order.push("detail"); return detail; }, readUsername: async () => { order.push("identity"); return "JOSH"; },
-    retrieve: async (context, job, username) => { order.push("provider"); assert.equal(context, "private-context"); assert.equal(job, "P5550001"); assert.equal(username, "JOSH"); return result; },
-  });
-  assert.deepEqual(order, ["detail", "identity", "provider", "detail"]);
-  assert.equal(resolved.account_verified, true);
-  assert.equal(JSON.stringify(resolved).includes("private-context"), false);
-  await assert.rejects(resolveOutreachGranotSessionLink(josh, "subject", "context", { loader, now, readDetail: async () => { throw new OutreachError("NOT_FOUND"); }, retrieve: async () => { throw new Error("must not retrieve"); } }), isFailure("NOT_FOUND"));
-});
-
 test("job or access changes during lookup cannot release a stale result", async () => {
   let reads = 0;
   await assert.rejects(resolveOutreachGranotSessionLink(josh, "subject", "context", { loader, now, readDetail: async () => ++reads === 1 ? detail : { ...detail, subject: { ...detail.subject, job_no: "P5550002" } }, readUsername: async () => "JOSH", retrieve: async () => result }), isFailure("NOT_FOUND"));

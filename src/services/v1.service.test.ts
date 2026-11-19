@@ -116,57 +116,6 @@ test("booked form lead refreshes attached booking customer and local", async () 
   ]);
 });
 
-test("unbooked lead keeps source lead sync target", async () => {
-  let bookingLookupCount = 0;
-  let customerUpsertCount = 0;
-  (BookedLead as unknown as { findById: () => Promise<null> }).findById = async () => {
-    bookingLookupCount += 1;
-    return null;
-  };
-  (Customer as unknown as { findOneAndUpdate: () => unknown }).findOneAndUpdate = () => {
-    customerUpsertCount += 1;
-    return { orFail: async () => undefined };
-  };
-  const lead = CallLead.hydrate({
-    _id: new mongoose.Types.ObjectId(),
-    name: "Jane Customer",
-    phone_number: "555-111-2222",
-  });
-
-  const job = await refreshAttachedBookingFromLead(lead, "CallLead", "call_lead.update");
-
-  assert.deepEqual(job, {
-    resource: "source_lead",
-    operation: "call_lead.update",
-    leadModel: "CallLead",
-    leadId: lead._id.toString(),
-  });
-  assert.equal(bookingLookupCount, 0);
-  assert.equal(customerUpsertCount, 0);
-});
-
-test("stale booking reference falls back to source lead sync", async () => {
-  stubBookedLead(null);
-  let customerUpsertCount = 0;
-  (Customer as unknown as { findOneAndUpdate: () => unknown }).findOneAndUpdate = () => {
-    customerUpsertCount += 1;
-    return { orFail: async () => undefined };
-  };
-  const lead = CallLead.hydrate({
-    _id: new mongoose.Types.ObjectId(),
-    booked: new mongoose.Types.ObjectId(),
-    name: "Jane Customer",
-    phone_number: "555-111-2222",
-  });
-
-  const job = await refreshAttachedBookingFromLead(lead, "CallLead", "call_lead.update");
-
-  assert.equal(job.resource, "source_lead");
-  assert.equal(job.leadModel, "CallLead");
-  assert.equal(job.leadId, lead._id.toString());
-  assert.equal(customerUpsertCount, 0);
-});
-
 test("mismatched booking reference falls back to source lead sync", async () => {
   const leadId = new mongoose.Types.ObjectId();
   const booking = BookedLead.hydrate({

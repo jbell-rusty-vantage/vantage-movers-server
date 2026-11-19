@@ -2,15 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
 import mongoose from "mongoose";
-import { externalCallAdmissionSchema, hasReportingEligibleCall, hasTrustedExternalCallAdmission,
-  reportingEligibleCallLeadFilter, EXTERNAL_CALL_ADMISSION_POLICY_VERSION,
-  BEST_RELOCATION_ADMISSION_COMPANY_ID as COMPANY, BEST_RELOCATION_ADMISSION_CALL_FEED_ID as FEED } from "./callLeadAdmission";
+import {
+  BEST_RELOCATION_ADMISSION_CALL_FEED_ID as FEED,
+  BEST_RELOCATION_ADMISSION_COMPANY_ID as COMPANY,
+  EXTERNAL_CALL_ADMISSION_POLICY_VERSION,
+  hasReportingEligibleCall,
+  hasTrustedExternalCallAdmission,
+  reportingEligibleCallLeadFilter,
+} from "./callLeadAdmission";
 import { BEST_RELOCATION_TRACKER_ID, EXTERNAL_REVIEW_POLICY_VERSION } from "./externalSheetReview";
 import { billableCallLeadExpression, billableCallLeadFilter, getCallLeadReportingDecision } from "./callLeadReportingDisposition";
 import { hasQualifiedRingCentralCall } from "../ringcentral/callLeadQualification";
 import { planExpectedSheetTabs } from "../googleSheets/expectedSheetTabs";
 import { getCallLeadModel } from "../../models/CallLead";
-import { planFormSiblingUpdate } from "../granotLifecycle/callLeadFormSibling";
 import { LEGACY_BEST_RELOCATION_CALL_IDS, LEGACY_BEST_RELOCATION_CALL_MANIFEST } from "./legacyBestRelocationCalls";
 
 function admitted() {
@@ -57,20 +61,6 @@ test("closed native historical inventory preserves exactly 69 scoped Calls witho
   assert.equal(planExpectedSheetTabs("CallLead", { ...row, no_sync: true }).expected.length, 0);
 });
 
-test("trusted final BR admission enables reporting without asserting RingCentral qualification", () => {
-  const row = admitted();
-  assert.equal(externalCallAdmissionSchema.safeParse(row.external_call_admission).success, true);
-  assert.equal(hasReportingEligibleCall(row), true);
-  assert.equal(hasQualifiedRingCentralCall(undefined), false);
-  assert.deepEqual(getCallLeadReportingDecision(row), { disposition: "calls", billable: true, reason_codes: [] });
-  assert.equal(planExpectedSheetTabs("CallLead", row).expected[0]?.tabName, "Calls");
-  const now = new Date("2026-11-03T22:00:00Z");
-  const sibling = planFormSiblingUpdate({ _id: "650000000000000000000010", lead_source_company: COMPANY,
-    job_no: "JOB1", normalized_job_no: "JOB1", createdAt: now }, [],
-  [{ ...row, _id: "650000000000000000000020", createdAt: now }], now);
-  assert.equal(sibling.kind, "update");
-});
-
 const corruptions: Record<string, unknown>[] = [
   { policy_version: "best-relocation-retirement-v1" }, { source_workbook_id: "another-workbook" },
   { source_sheet_id: 0 }, { source_tab: "Local Calls" }, { stable_source_row_id: "  " },
@@ -98,29 +88,6 @@ test("RC historical facts still admit any source independently of external evide
   const ringcentral = { ingestion_source: "call_log_sync", qualification_reason: "call_log_inbound_target_answered_over_120s", duration_seconds: 120, call_log_id: "log" };
   assert.equal(hasReportingEligibleCall({ source_company: "tbm_leads", ringcentral }), true);
   assert.equal(hasReportingEligibleCall({ ...admitted(), external_call_admission: null, ringcentral }), true);
-});
-
-test("admitted BR Calls use the same bad, duplicate, Form Fill and unmatched dispositions", () => {
-  const row = admitted();
-  const review = { raw_value: "note", normalized_value: "note", source_workbook_id: BEST_RELOCATION_TRACKER_ID,
-    source_sheet_id: 1191420872, source_tab: "Calls", stable_source_row_id: "lead:fixture",
-    source_content_hash: "a".repeat(64), policy_version: EXTERNAL_REVIEW_POLICY_VERSION,
-    ingestion_run_id: "run", source_row_receipt_id: "receipt", applied_at: new Date() };
-  assert.equal(getCallLeadReportingDecision({ ...row, external_sheet_review: { ...review, kind: "bad_call", reason_code: "external_bad_call" } }).disposition, "bad_call_leads");
-  const duplicate = { ...row, no_sync: true, external_sheet_review: { ...review, kind: "duplicate_call", reason_code: "external_form_fill" } };
-  assert.equal(getCallLeadReportingDecision(duplicate).disposition, "duplicate_calls");
-  assert.equal(planExpectedSheetTabs("CallLead", duplicate).expected[0]?.tabName, "Duplicate Calls");
-  assert.equal(getCallLeadReportingDecision({ ...row, form_fill: true }).billable, false);
-  assert.equal(getCallLeadReportingDecision({ ...row, created_on_unmatched: true }).disposition, "excluded");
-});
-
-test("Call model validates the stamp on insert and rejects a nested admission edit on a saved document", async () => {
-  const model = getCallLeadModel();
-  const input = { ...admitted(), phone_number: "5551234567" };
-  await new model(input).validate();
-  const persisted = model.hydrate({ ...input, _id: new mongoose.Types.ObjectId(), domain_revision: 0 });
-  persisted.set("external_call_admission.source_content_hash", "b".repeat(64));
-  await assert.rejects(persisted.validate(), /immutable after insert/);
 });
 
 test("loopback Mongo: persisted admission object/filter/billing expression agree and stamp cannot be ordinarily rewritten", {

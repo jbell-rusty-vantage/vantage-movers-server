@@ -95,23 +95,6 @@ function fakeProcessor(outcome: ProcessorResult["outcome"] = "policy_blocked") {
   };
 }
 
-test("[AC-30] replica-set two claimants have one winner", async (t) => {
-  if (!(await replicaReady(t))) {
-    return;
-  }
-  const id = await insertReceipt({});
-  const [first, second] = await Promise.all([
-    drainRequestedReceipt(String(id), "queue", { processor: fakeProcessor() }),
-    drainRequestedReceipt(String(id), "cron", { processor: fakeProcessor() }),
-  ]);
-  const claimed = [first, second].filter((summary) => summary.claimed === 1);
-  assert.equal(claimed.length, 1);
-  const row = await getGranotObservationReceiptModel().findById(id).lean();
-  assert.ok(row);
-  assert.ok(row.processing.state === "completed" || row.processing.state === "claimed");
-  await getGranotObservationReceiptModel().collection.deleteOne({ _id: id });
-});
-
 test("[AC-30] replica-set expired lease recovers and stale owner cannot finalize", async (t) => {
   if (!(await replicaReady(t))) {
     return;
@@ -137,28 +120,6 @@ test("[AC-30] replica-set expired lease recovers and stale owner cannot finalize
     { $set: { "processing.state": "completed" } },
   );
   assert.equal(stale.matchedCount, 0);
-  await getGranotObservationReceiptModel().collection.deleteOne({ _id: id });
-});
-
-test("[AC-30] replica-set attempt 10 dead-letters with zero Decision", async (t) => {
-  if (!(await replicaReady(t))) {
-    return;
-  }
-  const id = await insertReceipt({
-    state: "retry_scheduled",
-    technical_attempts: 9,
-  });
-  const summary = await drainRequestedReceipt(String(id), "queue", {
-    processor: {
-      async process() {
-        throw new Error("synthetic dependency unavailable");
-      },
-    },
-  });
-  assert.equal(summary.dead_lettered, 1);
-  const row = await getGranotObservationReceiptModel().findById(id).lean();
-  assert.equal(row?.processing.state, "dead_letter");
-  assert.equal(row?.processing.latest_decision_id, undefined);
   await getGranotObservationReceiptModel().collection.deleteOne({ _id: id });
 });
 

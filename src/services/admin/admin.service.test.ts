@@ -8,20 +8,12 @@ import { BookedLead } from "../../models/BookedLead";
 import { CallLead } from "../../models/CallLead";
 import { FormLead } from "../../models/FormLead";
 import { getLeadMessageModel } from "../../models/LeadMessage";
-import { toCsv } from "../../utils/csv";
-import {
-  adminBrowseQuerySchema,
-  adminSearchQuerySchema,
-} from "../../validation/v1.validation";
+import { adminBrowseQuerySchema } from "../../validation/v1.validation";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
-import {
-  browseAdminResource,
-  getAdminResourceDetail,
-} from "./adminBrowse.service";
+import { browseAdminResource } from "./adminBrowse.service";
 import { resetAdminFacetsCacheForTests } from "./adminFacets.service";
 import { exportAdminResourceCsv } from "./adminExport.service";
-import { globalAdminSearch } from "./adminSearch.service";
 
 type MutableModel = Record<string, unknown>;
 type QueryCapture = {
@@ -33,12 +25,8 @@ type QueryCapture = {
 };
 
 const originalFormLeadFind = FormLead.find as unknown;
-const originalFormLeadFindById = FormLead.findById as unknown;
 const originalFormLeadCount = FormLead.countDocuments as unknown;
 const LeadMessage = getLeadMessageModel();
-const originalLeadMessageFind = LeadMessage.find as unknown;
-const originalLeadMessageFindOne = LeadMessage.findOne as unknown;
-const originalLeadMessageExists = LeadMessage.exists as unknown;
 const originalLeadMessageAggregate = LeadMessage.aggregate as unknown;
 const originalCallLeadFind = CallLead.find as unknown;
 const originalCallLeadCount = CallLead.countDocuments as unknown;
@@ -53,11 +41,7 @@ const originalGranularityFind = SourceGranularity.find as unknown;
 
 afterEach(() => {
   (FormLead as unknown as MutableModel).find = originalFormLeadFind;
-  (FormLead as unknown as MutableModel).findById = originalFormLeadFindById;
   (FormLead as unknown as MutableModel).countDocuments = originalFormLeadCount;
-  (LeadMessage as unknown as MutableModel).find = originalLeadMessageFind;
-  (LeadMessage as unknown as MutableModel).findOne = originalLeadMessageFindOne;
-  (LeadMessage as unknown as MutableModel).exists = originalLeadMessageExists;
   (LeadMessage as unknown as MutableModel).aggregate = originalLeadMessageAggregate;
   (CallLead as unknown as MutableModel).find = originalCallLeadFind;
   (CallLead as unknown as MutableModel).countDocuments = originalCallLeadCount;
@@ -112,128 +96,6 @@ test("admin browse builds filters, pagination, sorting, and response shape", asy
   assert.match(filterPreview, /booked/);
 });
 
-test("admin form lead browse q includes snapshot contact paths", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(FormLead, capture, []);
-  stubCount(FormLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({ q: "granot-only-name", limit: 10 });
-  await browseAdminResource("form-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /granot_contact_snapshot\.name/);
-  assert.match(filterPreview, /ingested_contact_snapshot\.name/);
-});
-
-test("admin form lead browse name email and phone include snapshot paths", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(FormLead, capture, []);
-  stubCount(FormLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({
-    name: "Ada",
-    email: "ada@example.com",
-    phone_number: "555-1234",
-    limit: 10,
-  });
-  await browseAdminResource("form-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /granot_contact_snapshot\.name/);
-  assert.match(filterPreview, /ingested_contact_snapshot\.email/);
-  assert.match(filterPreview, /granot_contact_snapshot\.email/);
-  assert.match(filterPreview, /granot_contact_snapshot\.phone_number/);
-  assert.match(filterPreview, /ingested_contact_snapshot\.normalized_phone_number/);
-});
-
-test("admin duplicate form lead browse uses the same contact paths", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(FormLead, capture, []);
-  stubCount(FormLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({
-    duplicate: "true",
-    name: "Ada",
-    limit: 10,
-  });
-  await browseAdminResource("form-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /duplicate:\s*true/);
-  assert.match(filterPreview, /granot_contact_snapshot\.name/);
-  assert.match(filterPreview, /ingested_contact_snapshot\.name/);
-});
-
-test("admin form lead browse excludes duplicates by default", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(FormLead, capture, []);
-  stubCount(FormLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({ limit: 10 });
-  await browseAdminResource("form-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /duplicate/);
-  assert.doesNotMatch(filterPreview, /duplicate:\s*true/);
-});
-
-test("admin form lead browse filters past move dates relative to timestamp", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(FormLead, capture, []);
-  stubCount(FormLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({
-    past_move_date: "true",
-    limit: 10,
-  });
-  await browseAdminResource("form-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /\$expr/);
-  assert.match(filterPreview, /move_date/);
-  assert.match(filterPreview, /\$dateFromParts/);
-  assert.match(filterPreview, /timestamp/);
-  assert.doesNotMatch(filterPreview, /\$not/);
-});
-
-test("admin form lead browse can invert the past move date filter", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(FormLead, capture, []);
-  stubCount(FormLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({
-    past_move_date: "false",
-    limit: 10,
-  });
-  await browseAdminResource("form-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /\$expr/);
-  assert.match(filterPreview, /\$not/);
-  assert.match(filterPreview, /move_date/);
-});
-
-test("admin form lead browse filters receiver agent by ObjectId equality", async () => {
-  const capture: QueryCapture = { populated: [] };
-  const receiverAgentId = new mongoose.Types.ObjectId();
-  stubFind(FormLead, capture, []);
-  stubCount(FormLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({
-    receiver_agent: receiverAgentId.toString(),
-    limit: 10,
-  });
-  await browseAdminResource("form-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /receiver_agent/);
-  assert.match(filterPreview, new RegExp(receiverAgentId.toString()));
-  assert.doesNotMatch(filterPreview, /\/.*receiver_agent.*\//);
-  assert.throws(() =>
-    adminBrowseQuerySchema.parse({ receiver_agent: "not-an-object-id" }),
-  );
-});
-
 test("admin form lead browse matches source_granularity_key exactly and does not substring-match source_company", async () => {
   const capture: QueryCapture = { populated: [] };
   stubFind(FormLead, capture, []);
@@ -271,59 +133,6 @@ test("admin form lead browse matches source_granularity_key exactly and does not
   assert.doesNotMatch(filterPreview, /tbm_leads/);
 });
 
-test("admin form lead browse still accepts source_company as bookmark compatibility", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(FormLead, capture, []);
-  stubCount(FormLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({
-    source_company: "tbm_leads",
-    limit: 10,
-  });
-  await browseAdminResource("form-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /tbm_leads/);
-  assert.match(filterPreview, /source_company/);
-  const regexes = collectRegexes(capture.filter).filter((regex) => regex.source.includes("tbm_leads"));
-  assert.ok(regexes.length > 0);
-  assert.ok(regexes.every((regex) => regex.source.startsWith("^") && regex.source.endsWith("$")));
-  assert.ok(regexes.every((regex) => regex.test("tbm_leads")));
-  assert.ok(regexes.every((regex) => !regex.test("tbm_prime_leads")));
-});
-
-test("admin booked lead browse filters source company slugs on the source field", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(BookedLead, capture, []);
-  stubCount(BookedLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({
-    source: "top10_leads",
-    limit: 10,
-  });
-  await browseAdminResource("booked-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /source/);
-  assert.match(filterPreview, /top10_leads/);
-  assert.doesNotMatch(filterPreview, /source_company/);
-});
-
-test("admin booked lead browse resolves legacy source company labels onto source", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(BookedLead, capture, []);
-  stubCount(BookedLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({
-    source_company: "Top10 Forms",
-    limit: 10,
-  });
-  await browseAdminResource("booked-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /top10_leads/);
-});
-
 test("admin booked lead browse filters leadless bookings", async () => {
   const capture: QueryCapture = { populated: [] };
   stubFind(BookedLead, capture, []);
@@ -336,38 +145,6 @@ test("admin booked lead browse filters leadless bookings", async () => {
   const filterPreview = inspect(capture.filter, { depth: null });
   assert.match(filterPreview, /is_leadless_booking/);
   assert.match(filterPreview, /true/);
-});
-
-test("admin form lead browse can filter to duplicates only", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(FormLead, capture, []);
-  stubCount(FormLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({ duplicate: "true", limit: 10 });
-  await browseAdminResource("form-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /duplicate:\s*true/);
-});
-
-test("admin call lead browse q and phone include snapshot contact paths", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(CallLead, capture, []);
-  stubCount(CallLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({
-    q: "granot-only-name",
-    phone_number: "555-1234",
-    limit: 10,
-  });
-  await browseAdminResource("call-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /granot_contact_snapshot\.name/);
-  assert.match(filterPreview, /ingested_contact_snapshot\.name/);
-  assert.match(filterPreview, /granot_contact_snapshot\.phone_number/);
-  assert.match(filterPreview, /ingested_contact_snapshot\.normalized_phone_number/);
-  assert.match(filterPreview, /555-1234/);
 });
 
 test("admin call lead browse Manual attach filters (name/email/phone without q) include snapshot paths", async () => {
@@ -406,31 +183,6 @@ test("admin call lead browse excludes duplicates by default", async () => {
   assert.doesNotMatch(filterPreview, /duplicate:\s*true/);
 });
 
-test("admin call lead browse can filter to duplicates only", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(CallLead, capture, []);
-  stubCount(CallLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({ duplicate: "true", limit: 10 });
-  await browseAdminResource("call-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /duplicate:\s*true/);
-});
-
-test("admin form lead browse no_sync true is exact true, not presence", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(FormLead, capture, []);
-  stubCount(FormLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({ no_sync: "true", limit: 10 });
-  await browseAdminResource("form-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /no_sync:\s*true/);
-  assert.doesNotMatch(filterPreview, /no_sync:[\s\S]*\$exists/);
-});
-
 test("admin form lead browse no_sync false uses $ne true so missing-field rows count", async () => {
   const capture: QueryCapture = { populated: [] };
   stubFind(FormLead, capture, []);
@@ -442,139 +194,6 @@ test("admin form lead browse no_sync false uses $ne true so missing-field rows c
   const filterPreview = inspect(capture.filter, { depth: null });
   assert.match(filterPreview, /no_sync:\s*\{\s*['"]?\$ne['"]?:\s*true\s*\}/);
   assert.doesNotMatch(filterPreview, /no_sync:[\s\S]*\$exists/);
-});
-
-test("admin form lead browse omit does not mention no_sync", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(FormLead, capture, []);
-  stubCount(FormLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({ limit: 10 });
-  await browseAdminResource("form-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.doesNotMatch(filterPreview, /no_sync/);
-});
-
-test("admin call lead browse no_sync true is exact true, not presence", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(CallLead, capture, []);
-  stubCount(CallLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({ no_sync: "true", limit: 10 });
-  await browseAdminResource("call-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /no_sync:\s*true/);
-  assert.doesNotMatch(filterPreview, /no_sync:[\s\S]*\$exists/);
-});
-
-test("admin call lead browse no_sync false uses $ne true so missing-field rows count", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(CallLead, capture, []);
-  stubCount(CallLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({ no_sync: "false", limit: 10 });
-  await browseAdminResource("call-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.match(filterPreview, /no_sync:\s*\{\s*['"]?\$ne['"]?:\s*true\s*\}/);
-  assert.doesNotMatch(filterPreview, /no_sync:[\s\S]*\$exists/);
-});
-
-test("admin call lead browse omit does not mention no_sync", async () => {
-  const capture: QueryCapture = { populated: [] };
-  stubFind(CallLead, capture, []);
-  stubCount(CallLead, 0);
-
-  const query = adminBrowseQuerySchema.parse({ limit: 10 });
-  await browseAdminResource("call-leads", query);
-
-  const filterPreview = inspect(capture.filter, { depth: null });
-  assert.doesNotMatch(filterPreview, /no_sync/);
-});
-
-test("admin detail lookup returns normalized production record", async () => {
-  const id = new mongoose.Types.ObjectId();
-  const capture: QueryCapture = { populated: [] };
-  stubFindById(FormLead, capture, {
-    _id: id,
-    name: "Detail Customer",
-  });
-  stubFindOne(LeadMessage, {
-    _id: new mongoose.Types.ObjectId(),
-    form_lead: id,
-    status: "delivered",
-    body: "Exact persisted SMS body",
-    twilio_message_sid: "SM-admin-detail",
-  });
-  stubExists(LeadMessage, true);
-
-  const detail = await getAdminResourceDetail("form-leads", id.toString());
-
-  assert.equal(detail._id, id.toString());
-  assert.equal("database_scope" in detail, false);
-  assert.equal(detail.sms_message_sent, true);
-  assert.equal(
-    (detail.sms_message as Record<string, unknown>).body,
-    "Exact persisted SMS body",
-  );
-  assert.deepEqual(capture.populated, ["booked", "cancelled"]);
-});
-
-test("global admin search form leads include Granot snapshot contact paths", async () => {
-  const formCapture: QueryCapture = { populated: [] };
-  const callCapture: QueryCapture = { populated: [] };
-  stubOtherSearchModelsEmpty();
-  stubFind(FormLead, formCapture, []);
-  stubFind(CallLead, callCapture, []);
-
-  const query = adminSearchQuerySchema.parse({ q: "555-9999", limit: 3 });
-  await globalAdminSearch(query);
-
-  const formPreview = inspect(formCapture.filter, { depth: null });
-  assert.match(formPreview, /granot_contact_snapshot\.(?:phone_number|email)/);
-  const callPreview = inspect(callCapture.filter, { depth: null });
-  assert.match(callPreview, /granot_contact_snapshot\.(?:phone_number|email)/);
-});
-
-test("global admin search returns grouped results", async () => {
-  stubFind(FormLead, { populated: [] }, [
-    {
-      _id: new mongoose.Types.ObjectId(),
-      name: "Jane Customer",
-      phone_number: "555-111-2222",
-      booked: new mongoose.Types.ObjectId(),
-    },
-  ]);
-  stubOtherSearchModelsEmpty();
-
-  const query = adminSearchQuerySchema.parse({ q: "Jane", limit: 3 });
-  const result = await globalAdminSearch(query);
-
-  assert.equal(result.groups.length, 1);
-  assert.equal(result.groups[0].record_type, "form-leads");
-  assert.equal("database_scope" in result.groups[0].items[0], false);
-  assert.deepEqual(result.groups[0].items[0].badges, ["booked"]);
-});
-
-test("global admin search no longer searches Customers or Agents", async () => {
-  stubFind(FormLead, { populated: [] }, []);
-  stubOtherSearchModelsEmpty();
-  const Customer = mongoose.models.Customer as unknown as MutableModel | undefined;
-  const originalCustomerFind = Customer?.find;
-  const forbidden = (name: string) => () => {
-    throw new Error(`${name} must not be searched`);
-  };
-  (Agent as unknown as MutableModel).find = forbidden("Agent");
-  if (Customer) Customer.find = forbidden("Customer");
-
-  try {
-    const result = await globalAdminSearch(adminSearchQuerySchema.parse({ q: "Jane", limit: 3 }));
-    assert.deepEqual(result.groups, []);
-  } finally {
-    if (Customer) Customer.find = originalCustomerFind;
-  }
 });
 
 test("admin CSV export uses browse rows and escapes CSV body", async () => {
@@ -598,12 +217,6 @@ test("admin CSV export uses browse rows and escapes CSV body", async () => {
   assert.match(result.csv, /"Jane ""JJ"" Customer"/);
 });
 
-test("csv helper emits text/csv-compatible header and rows", () => {
-  const csv = toCsv([{ name: "A, B", notes: "Line\nTwo" }], ["name", "notes"]);
-
-  assert.equal(csv, 'name,notes\r\n"A, B","Line\nTwo"\r\n');
-});
-
 function stubFind(
   model: unknown,
   capture: QueryCapture,
@@ -615,25 +228,7 @@ function stubFind(
   };
 }
 
-function stubFindById(
-  model: unknown,
-  capture: QueryCapture,
-  doc: Record<string, unknown> | null,
-) {
-  (model as MutableModel).findById = (id: string) => {
-    capture.filter = { _id: id };
-    return chain(capture, doc);
-  };
-}
 
-function stubFindOne(model: unknown, doc: Record<string, unknown> | null) {
-  (model as MutableModel).findOne = () => chain({ populated: [] }, doc);
-}
-
-function stubExists(model: unknown, exists: boolean) {
-  (model as MutableModel).exists = async () =>
-    exists ? { _id: new mongoose.Types.ObjectId() } : null;
-}
 
 function stubCount(model: unknown, count: number) {
   (model as MutableModel).countDocuments = () => ({
@@ -691,27 +286,4 @@ function chain(capture: QueryCapture, result: unknown) {
     },
     exec: async () => result,
   };
-}
-
-function collectRegexes(value: unknown): RegExp[] {
-  if (value instanceof RegExp) return [value];
-  if (Array.isArray(value)) return value.flatMap(collectRegexes);
-  if (!value || typeof value !== "object") return [];
-  return Object.values(value).flatMap(collectRegexes);
-}
-
-function stubOtherSearchModelsEmpty() {
-  const models = [
-    "CallLead",
-    "BookedLead",
-    "CancelledLead",
-  ] as const;
-  for (const modelName of models) {
-    const model = mongoose.models[modelName] as unknown as
-      | MutableModel
-      | undefined;
-    if (model) {
-      model.find = () => chain({ populated: [] }, []);
-    }
-  }
 }

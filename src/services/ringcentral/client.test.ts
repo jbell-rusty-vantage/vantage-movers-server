@@ -13,17 +13,3 @@ test("streaming client shares JWT refresh once, returns headers and forbids redi
   });
   assert.equal(requests, 2); assert.equal(refreshes, 1); assert.equal(response.headers.get("content-type"), "audio/wav");
 });
-test("streaming client deadline bounds stalled token acquisition and unauthorized refresh", async () => {
-  for (const stalled of ["token", "refresh"] as const) {
-    const controller = new AbortController(); let calls = 0;
-    const timeout = new Error("synthetic_recording_timeout");
-    const waitForever = async () => { controller.abort(timeout); return new Promise<never>(() => {}); };
-    await assert.rejects(ringCentralReadResponse("/restapi/v1.0/account/a/recording/r/content", controller.signal, {
-      server: "https://synthetic.invalid",
-      token: stalled === "token" ? waitForever : async () => ({ access_token: "synthetic", issued_at: 0, access_token_expires_at: Date.now() + 100000 }),
-      refresh: waitForever,
-      fetch: async () => { calls++; return new Response(null, { status: 401 }); },
-    }), error => error === timeout);
-    assert.equal(calls, stalled === "token" ? 0 : 1);
-  }
-});

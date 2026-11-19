@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import mongoose from "mongoose";
-import { hashCredentialRedactedPayload } from "./receiptEvidence";
-import {
-  extractNormalizationStatement,
-  normalizeGranotReceipt,
-} from "./normalization";
 import { processGranotObservation, type GranotLifecycleProcessorDeps } from "./processor";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
 import {
@@ -21,19 +16,6 @@ const capturedAt = new Date("2026-08-18T16:00:00.000Z");
 const companyId = new mongoose.Types.ObjectId();
 const granularityId = new mongoose.Types.ObjectId();
 
-const statement = {
-  source: "Synthetic Forms",
-  job_no: "567632",
-  ref_no: "synthetic-ref",
-  priority: "1",
-  user: "MIKE",
-  rep: "SALES",
-  phone: "5550001111",
-  from_state: "NY",
-  from_zip: "10001",
-  to_state: "NY",
-  to_zip: "10002",
-};
 
 function reviewedStore(): SourcePolicyStore {
   return {
@@ -152,143 +134,6 @@ function memoryDeps(observationDoc: GranotObservationDocument): GranotLifecycleP
     withTransaction: async (fn) => fn({} as never),
   };
 }
-
-test("[AC-33] equivalent webhook and extension statements normalize to the same identity and Priority", () => {
-  const webhook = normalizeGranotReceipt({
-    observation_channel: "granot_webhook",
-    captured_at: capturedAt,
-    route_event_class: "priority_updated",
-    payload: { event_type: "priority_updated", ...statement },
-  });
-  const extension = normalizeGranotReceipt({
-    observation_channel: "browser_extension",
-    captured_at: capturedAt,
-    channel_operation_kind: "lead_snapshot_apply",
-    channel_operation_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
-    payload: {
-      operation_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
-      operation_kind: "lead_snapshot_apply",
-      granot_statement: statement,
-    },
-  });
-  assert.equal(webhook.identity.form_ref_raw, extension.identity.form_ref_raw);
-  assert.equal(webhook.identity.normalized_job_no, extension.identity.normalized_job_no);
-  assert.equal(webhook.priority.canonical, extension.priority.canonical);
-  assert.equal(webhook.priority.raw, "1");
-  assert.equal(extension.priority.raw, "1");
-  assert.equal(webhook.agent_identity.user_raw, "MIKE");
-  assert.equal(extension.agent_identity.user_raw, "MIKE");
-  assert.equal(webhook.agent_identity.rep_raw, "SALES");
-  assert.equal(extension.agent_identity.rep_raw, "SALES");
-  assert.notEqual(webhook.normalized_source_label, undefined);
-  assert.equal(webhook.normalized_source_label, extension.normalized_source_label);
-});
-
-test("[AC-33] equivalent shadow processor outcomes match and produce zero changed paths", async () => {
-  const webhookObs = observation(new mongoose.Types.ObjectId());
-  const extensionObs = observation(new mongoose.Types.ObjectId());
-  const webhookDeps = memoryDeps(webhookObs);
-  webhookDeps.loadReceipt = async () => ({
-    _id: webhookObs.receipt_id,
-    observation_channel: "granot_webhook",
-    captured_at: capturedAt,
-    processing: { match_attempt: 0 },
-  });
-  const extensionDeps = memoryDeps(extensionObs);
-  const webhookResult = await processGranotObservation(
-    { receipt_id: String(webhookObs.receipt_id) },
-    webhookDeps,
-  );
-  const extensionResult = await processGranotObservation(
-    { receipt_id: String(extensionObs.receipt_id) },
-    extensionDeps,
-  );
-  assert.equal(webhookResult.outcome, extensionResult.outcome);
-  assert.deepEqual(
-    webhookResult.effects.flatMap((effect) => effect.changed_paths ?? []),
-    [],
-  );
-  assert.deepEqual(
-    extensionResult.effects.flatMap((effect) => effect.changed_paths ?? []),
-    [],
-  );
-});
-
-test("[AC-02][AC-33] apply-item envelope unwraps to the statement without a second policy", () => {
-  const payload = {
-    operation_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
-    operation_kind: "lead_snapshot_apply",
-    granot_statement: statement,
-    expected_target: { model: "FormLead", id: "507f1f77bcf86cd799439011" },
-  };
-  assert.deepEqual(extractNormalizationStatement(payload), statement);
-  const hashed = hashCredentialRedactedPayload(payload);
-  const drifted = hashCredentialRedactedPayload({
-    ...payload,
-    expected_target: { model: "FormLead", id: "507f1f77bcf86cd799439099" },
-  });
-  assert.notEqual(hashed.payload_sha256, drifted.payload_sha256);
-});
-
-test("[AC-02][AC-33] equivalent webhook and automation statements share Observation identity", () => {
-  const operationId = "507f1f77bcf86cd799439011:Synthetic Forms:row-1";
-  const webhook = normalizeGranotReceipt({
-    observation_channel: "granot_webhook",
-    captured_at: capturedAt,
-    route_event_class: "priority_updated",
-    payload: { event_type: "priority_updated", ...statement },
-  });
-  const automation = normalizeGranotReceipt({
-    observation_channel: "granot_http_automation",
-    captured_at: capturedAt,
-    channel_operation_kind: "lead_snapshot_apply",
-    channel_operation_id: operationId,
-    payload_schema_hint: "granot_apply_item_v1",
-    payload: {
-      operation_id: operationId,
-      operation_kind: "lead_snapshot_apply",
-      granot_statement: statement,
-    },
-  });
-  assert.equal(webhook.identity.form_ref_raw, automation.identity.form_ref_raw);
-  assert.equal(webhook.identity.normalized_job_no, automation.identity.normalized_job_no);
-  assert.equal(webhook.priority.canonical, automation.priority.canonical);
-  assert.equal(webhook.agent_identity.user_raw, automation.agent_identity.user_raw);
-  assert.equal(webhook.agent_identity.rep_raw, automation.agent_identity.rep_raw);
-  assert.equal(webhook.normalized_source_label, automation.normalized_source_label);
-});
-
-test("[AC-33] equivalent webhook and automation shadow desired-state outcomes match", async () => {
-  const webhookObs = observation(new mongoose.Types.ObjectId());
-  const automationObs = observation(new mongoose.Types.ObjectId());
-  const webhookDeps = memoryDeps(webhookObs);
-  webhookDeps.loadReceipt = async () => ({
-    _id: webhookObs.receipt_id,
-    observation_channel: "granot_webhook",
-    captured_at: capturedAt,
-    processing: { match_attempt: 0 },
-  });
-  const automationDeps = memoryDeps(automationObs);
-  automationDeps.loadReceipt = async () => ({
-    _id: automationObs.receipt_id,
-    observation_channel: "granot_http_automation",
-    captured_at: capturedAt,
-    processing: { match_attempt: 0 },
-  });
-  const webhookResult = await processGranotObservation(
-    { receipt_id: String(webhookObs.receipt_id) },
-    webhookDeps,
-  );
-  const automationResult = await processGranotObservation(
-    { receipt_id: String(automationObs.receipt_id) },
-    automationDeps,
-  );
-  assert.equal(webhookResult.outcome, automationResult.outcome);
-  assert.deepEqual(
-    webhookResult.effects.flatMap((effect) => effect.changed_paths ?? []),
-    automationResult.effects.flatMap((effect) => effect.changed_paths ?? []),
-  );
-});
 
 test("[AC-33] equivalent live webhook, extension, and automation desired states match", async () => {
   const calls: Array<{

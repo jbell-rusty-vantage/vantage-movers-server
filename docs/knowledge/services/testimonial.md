@@ -137,4 +137,3 @@ Ingest (outside this service): normalize name → parse date → fingerprint →
 - Model: `src/models/Testimonial.ts`
 - Validation: `src/validation/v1/testimonials.validation.ts`
 - Barrel: `src/services/testimonials/index.ts`
-- Tests: `src/services/testimonials/testimonial.service.test.ts`, `testimonial.helpers.test.ts`

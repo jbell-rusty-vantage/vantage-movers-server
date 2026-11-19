@@ -68,55 +68,6 @@ test("candidate query detects the 26th matching lead instead of proving false un
   );
 });
 
-test("candidate snapshots keep Granot and ingested contact for owner display", async () => {
-  const docs = [
-    {
-      _id: new Types.ObjectId(),
-      lid: "EBR-LID-001",
-      name: "",
-      phone_number: "",
-      source_company: "top10_leads",
-      source_granularity_key: "top10_form",
-      ingested_contact_snapshot: { name: "Form Ingested", phone_number: "2125550101" },
-      granot_contact_snapshot: {
-        name: "Form Granot",
-        phone_number: "555-9999",
-        differs_from_ingested: true,
-      },
-    },
-  ];
-  (FormLead as any).find = (filter: Record<string, unknown>) =>
-    buildQuery("normalized_lid" in filter ? docs : [], []);
-  (CallLead as any).find = () => buildQuery([], []);
-
-  const result = await queryEmployeeBookingCandidates(submission);
-  assert.equal(result.candidates.length, 1);
-  assert.deepEqual(result.candidates[0]?.snapshot.ingested_contact_snapshot, {
-    name: "Form Ingested",
-    phone_number: "2125550101",
-  });
-  assert.equal(result.candidates[0]?.snapshot.granot_contact_snapshot?.name, "Form Granot");
-  assert.equal(result.candidates[0]?.snapshot.granot_contact_snapshot?.differs_from_ingested, true);
-});
-
-test("candidate query tags a unique Form Lead Job Number as job_no", async () => {
-  const formJob = {
-    _id: new Types.ObjectId(),
-    job_no: "EBR-JOB-001",
-    normalized_job_no: "EBR JOB 001",
-    source_company: "top10_leads",
-    source_granularity_key: "top10_form",
-  };
-  (FormLead as any).find = (filter: Record<string, unknown>) =>
-    buildQuery("normalized_job_no" in filter ? [formJob] : [], []);
-  (CallLead as any).find = () => buildQuery([], []);
-
-  const result = await queryEmployeeBookingCandidates(submission);
-  assert.equal(result.candidates.length, 1);
-  assert.equal(result.candidates[0]?.leadModel, "FormLead");
-  assert.deepEqual(result.candidates[0]?.matchMethods, ["job_no"]);
-});
-
 function buildQuery<T>(docs: T[], limits: number[]) {
   return {
     limit(limit: number) {

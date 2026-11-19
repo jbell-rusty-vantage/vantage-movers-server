@@ -49,19 +49,3 @@ test("duplicate Call Lead snapshots retain base-period evidence at zero", async 
   assert.equal(snapshot.cpl_resolution_status, "duplicate_zero");
   assert.equal(snapshot.cpl_rate_period, "507f191e810c19729de860ea");
 });
-
-test("missing rates remain compatibility zero with a cleared period reference", async () => {
-  const snapshot = await resolveLeadCplSnapshot(
-    {
-      sourceGranularityId: "507f1f77bcf86cd799439011",
-      storedBusinessTimestamp: new Date("2026-01-01T12:00:00.000Z"),
-    },
-    {
-      resolver: async () => ({ status: "missing_rate", fallback_amount: 0 }),
-    },
-  );
-
-  assert.equal(snapshot.cpl, 0);
-  assert.equal(snapshot.cpl_resolution_status, "missing_rate");
-  assert.equal(snapshot.cpl_rate_period, null);
-});

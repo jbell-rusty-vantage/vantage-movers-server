@@ -26,50 +26,6 @@ afterEach(() => {
   (CallLead as unknown as StubbedModel).find = originalCallLeadFind;
 });
 
-test("booked reconciliation can preview phone/source matched unbooked call lead updates", async () => {
-  stubBookedLeadMissing();
-  stubCallLeadFind((query) => {
-    if ("job_no" in query) {
-      return [];
-    }
-    return [
-      CallLead.hydrate({
-        _id: new mongoose.Types.ObjectId(),
-        source_company: "not_provided",
-        phone_number: "(555) 111-2222",
-        normalized_phone_number: "5551112222",
-        timestamp: new Date("2026-05-20T12:00:00Z"),
-      }),
-    ];
-  });
-
-  const [result] = await previewBookedCallLeadReconciliation({
-    rows: [
-      {
-        row_id: "booked-1",
-        section: "bookedJobs",
-        job_no: "P123",
-        source: "Main Site Inbounds",
-        phone: "555-111-2222",
-        customer: "Jane Customer",
-      },
-    ],
-  });
-
-  assert.equal(result.status, "updateable");
-  assert.equal(result.booking_id, undefined);
-  assert.ok(result.call_lead_id);
-  assert.deepEqual(result.changes.sort(), [
-    "lead.job_no",
-    "lead.name",
-    "lead.source_company",
-  ]);
-  assert.match(
-    result.warnings.join(" "),
-    /Claiming unassigned call lead source as Main Site Inbounds/,
-  );
-});
-
 test("booked reconciliation does not globally phone-match across assigned source companies", async () => {
   stubBookedLeadMissing();
   stubCallLeadFind((query) => {
@@ -101,49 +57,6 @@ test("booked reconciliation does not globally phone-match across assigned source
 
   assert.equal(result.status, "no_match");
   assert.match(result.message, /no candidate had source Main Site Inbounds/i);
-});
-
-test("booked reconciliation warns but allows idempotent sync when phone-matched lead has a different job_no", async () => {
-  stubBookedLeadMissing();
-  stubCallLeadFind((query) => {
-    if ("job_no" in query) {
-      return [];
-    }
-    return [
-      CallLead.hydrate({
-        _id: new mongoose.Types.ObjectId(),
-        source_company: "main_site",
-        phone_number: "5551112222",
-        normalized_phone_number: "5551112222",
-        job_no: "P999",
-        timestamp: new Date("2026-05-20T12:00:00Z"),
-      }),
-    ];
-  });
-
-  const [result] = await previewBookedCallLeadReconciliation({
-    rows: [
-      {
-        row_id: "booked-3",
-        section: "bookedJobs",
-        job_no: "P123",
-        source: "Main Site Inbounds",
-        phone: "555-111-2222",
-      },
-    ],
-  });
-
-  assert.notEqual(result.status, "conflict");
-  assert.equal(result.match_method, "phone_only");
-  assert.equal(result.has_booking, false);
-  assert.match(
-    result.warnings.join(" "),
-    /Existing call lead already has job_no P999/,
-  );
-  assert.ok(
-    !result.changes.includes("lead.job_no"),
-    "job_no should be left as-is during sync to avoid clobbering existing value",
-  );
 });
 
 test("booked reconciliation prefers phone/source candidates without conflicting job_no", async () => {

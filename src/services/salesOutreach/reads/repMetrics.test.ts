@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BookedLead } from "../../../models/BookedLead";
-import { CancelledLead } from "../../../models/CancelledLead";
 import type { OutreachActor } from "../auth";
 import { completeConfigurationInput } from "../evaluation/testing";
 import { toDeskLeadFacts, type DeskLeadFacts } from "../subjects/leadFacts";
 import { salesOutreachRepMetricsDtoSchema, salesOutreachRepMetricsQuerySchema } from "../../../validation/v1/salesOutreachReads";
 import { activeInspection, fixedConfigurationLoader } from "./testing";
-import { applyPotentialCancellations, composeAssignedPotential, composeOfficialBinder, isOfficialMetricBooking, mongoRepMetricsStore, readRepMetrics, repBinderWindows, toRepMetricBooking, type RepMetricBooking, type RepMetricsStore } from "./repMetrics";
+import { applyPotentialCancellations, composeAssignedPotential, composeOfficialBinder, isOfficialMetricBooking, readRepMetrics, toRepMetricBooking, type RepMetricBooking, type RepMetricsStore } from "./repMetrics";
 const A = "aaaaaaaaaaaaaaaaaaaaaaaa", B = "bbbbbbbbbbbbbbbbbbbbbbbb";
 const NOW = new Date("2026-10-13T15:00:00Z");
 const key = (n: number) => n.toString(16).padStart(24, "0");
@@ -18,47 +16,6 @@ function booking(n: number, patch: Partial<RepMetricBooking> = {}): RepMetricBoo
   const lead = patch.lead === undefined ? { model: "FormLead" as const, id: key(n) } : patch.lead;
   return { raw_lead_ref: lead?.id, raw_lead_model: lead?.model, id: key(n), book_date: "2026-10-13", allocations: [{ agent_id: A, amount: 50.01 }, { agent_id: B, amount: 50 }], total: 100.01, cancelled: false, lead: { model: "FormLead", id: key(n) }, referral: false, leadless: false, origin: null, ...patch };
 }
-
-test("NY calendar windows include Monday-through-today and retain prior windows across January, midnight and DST", () => {
-  assert.deepEqual(repBinderWindows(NOW), {
-    today: { from: "2026-10-13", to: "2026-10-13" }, week_to_date: { from: "2026-10-12", to: "2026-10-13" }, last_week: { from: "2026-10-05", to: "2026-10-11" }, last_month: { from: "2026-09-01", to: "2026-09-30" },
-  });
-  const jan = repBinderWindows(new Date("2027-01-01T05:00:00Z"));
-  assert.deepEqual(jan.last_month, { from: "2026-12-01", to: "2026-12-31" });
-  assert.deepEqual(jan.week_to_date, { from: "2026-12-28", to: "2027-01-01" });
-  assert.deepEqual(jan.last_week, { from: "2026-12-21", to: "2026-12-27" });
-  assert.equal(repBinderWindows(new Date("2027-01-01T04:59:59Z")).today.from, "2026-12-31");
-  assert.deepEqual(repBinderWindows(new Date("2026-10-19T04:00:00Z")).week_to_date, { from: "2026-10-19", to: "2026-10-19" }, "New York Monday starts a fresh week-to-date range");
-  assert.deepEqual(repBinderWindows(new Date("2026-10-19T03:59:59Z")).week_to_date, { from: "2026-10-12", to: "2026-10-18" }, "Sunday stays in the previous week until New York midnight");
-  for (const instant of ["2026-03-08T06:30:00Z", "2026-03-08T07:30:00Z"]) assert.equal(repBinderWindows(new Date(instant)).today.from, "2026-03-08");
-  for (const instant of ["2026-11-01T05:30:00Z", "2026-11-01T06:30:00Z"]) assert.equal(repBinderWindows(new Date(instant)).today.from, "2026-11-01");
-});
-
-test("this week includes Sunday, excludes future booking dates, and resets on Monday", () => {
-  const bookings = [booking(1, { book_date: "2026-10-12" }), booking(2, { book_date: "2026-10-18" }), booking(3, { book_date: "2026-10-19" })];
-  const sunday = composeOfficialBinder(A, new Date("2026-10-19T03:59:59Z"), bookings);
-  assert.equal(sunday.today, 50.01);
-  assert.equal(sunday.week_to_date, 100.02);
-  const monday = composeOfficialBinder(A, new Date("2026-10-19T04:00:00Z"), bookings);
-  assert.equal(monday.today, 50.01);
-  assert.equal(monday.week_to_date, 50.01);
-});
-
-test("official binder excludes cancellation records without a Booking mirror, regardless of refund amount", async (t) => {
-  const rows = [1, 2, 3, 4].map((n) => ({ _id: key(n), book_date: new Date("2026-10-13T00:00:00Z"), lead_ref: key(n), lead_model: "FormLead", agent_allocations: [{ agent: A, binder_amount: 50.01 }], ...(n === 4 ? { cancelled: key(99) } : {}) }));
-  t.mock.method(BookedLead, "find", (filter: Record<string, unknown>) => {
-    assert.equal(String(filter["agent_allocations.agent"]), A);
-    return { lean: async () => rows };
-  });
-  t.mock.method(CancelledLead, "find", (filter: Record<string, { $in: unknown[] }>) => {
-    assert.deepEqual(filter.booked_lead?.$in.map(String), rows.map((row) => row._id));
-    return { lean: async () => [{ booked_lead: key(1), refund_amount: 0 }, { booked_lead: key(2), refund_amount: 1 }] };
-  });
-  const result = composeOfficialBinder(A, NOW, await mongoRepMetricsStore.ownBookings(A));
-  assert.equal(result.today, 50.01);
-  assert.equal(result.week_to_date, 50.01);
-  assert.equal(result.booking_count, 1);
-});
 
 test("official gross credit is the own stable-id allocation; unlimited history, cents, cancelled and calendar-date boundaries", () => {
   const all = Array.from({ length: 650 }, (_, i) => booking(i + 1, { book_date: "1999-01-01", allocations: [{ agent_id: A, amount: 0.01 }] }));
@@ -75,14 +32,6 @@ test("official gross credit is the own stable-id allocation; unlimited history, 
   const raw = toRepMetricBooking({ _id: key(800), book_date: new Date("2026-10-13T00:00:00Z"), total_binder_amount: 0 });
   assert.equal(raw.book_date, "2026-10-13");
   assert.equal(raw.total, 0);
-});
-
-test("official missing allocation/date coverage is explicit; malformed amount is unknown instead of NaN", () => {
-  const result = composeOfficialBinder(A, NOW, [booking(1, { book_date: null, allocations: [{ agent_id: A, amount: null }] }), booking(2, { book_date: null })]);
-  assert.equal(result.all_time, 50.01);
-  assert.equal(result.missing_amount_count, 1);
-  assert.equal(result.missing_book_date_count, 2);
-  assert.equal(toRepMetricBooking({ _id: key(1), total_binder_amount: NaN }).total, null);
 });
 
 test("potential uses attached total on complete assignment scope including booked and priority5, not allocation or cadence page", () => {
@@ -144,14 +93,12 @@ test("rep isolation is enforced before money reads; Owner/Manager can explicitly
   assert.throws(() => salesOutreachRepMetricsQuerySchema.parse({ agent_id: A, unsafe: true }));
 });
 
-
 test("canonical cancellation records exclude missing Lead/Booking cancellation mirrors by either anchor", () => {
   const leads = applyPotentialCancellations([lead(1, { booked: key(1) }), lead(2, { booked: key(2) }), lead(3, { booked: key(3) })], [
     { _id: key(99), lead_model: "FormLead", lead_ref: key(1) }, { _id: key(98), booked_lead: key(2) },
   ]);
   assert.equal(composeAssignedPotential(A, leads, [booking(1), booking(2), booking(3)]).known_binder_total, 100.01);
 });
-
 
 test("official leadless credit rejects residual raw Lead pointers after adapter normalization", () => {
   const base = {

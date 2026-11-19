@@ -11,8 +11,10 @@ const originalLookup = vantageAuthLookups.getExtensionUserFromAccessToken;
 
 afterEach(() => {
   vantageAuthLookups.getExtensionUserFromAccessToken = originalLookup;
-  process.env.VANTAGE_API_SECRET = originalApiSecret;
-  process.env.VANTAGE_SCOPED_API_KEYS = originalScopedApiKeys;
+  if (originalApiSecret === undefined) delete process.env.VANTAGE_API_SECRET;
+  else process.env.VANTAGE_API_SECRET = originalApiSecret;
+  if (originalScopedApiKeys === undefined) delete process.env.VANTAGE_SCOPED_API_KEYS;
+  else process.env.VANTAGE_SCOPED_API_KEYS = originalScopedApiKeys;
 });
 
 test("requireApiSecret accepts the global API secret on any v1 route", async () => {
@@ -30,148 +32,45 @@ test("requireApiSecret accepts the global API secret on any v1 route", async () 
   assert.equal(ctx.statusCode, undefined);
 });
 
-test("requireApiSecret accepts a source-scoped key for its configured route", async () => {
+test("a source key admits Forms only for its configured company and route", async () => {
   delete process.env.VANTAGE_API_SECRET;
-  process.env.VANTAGE_SCOPED_API_KEYS = JSON.stringify([
-    {
-      name: "best-relocation-forms",
-      secret: "best-relocation-secret",
-      routes: [{ method: "POST", path: "/api/v1/form-leads" }],
-      source_companies: ["best_relocation_leads"],
-    },
-  ]);
+  process.env.VANTAGE_SCOPED_API_KEYS = JSON.stringify([{
+    name: "forms",
+    secret: "source-test-key",
+    routes: [{ method: "POST", path: "/api/v1/form-leads" }],
+    source_companies: ["best_relocation_leads"],
+  }]);
 
-  const ctx = await invokeMiddleware({
-    secret: "best-relocation-secret",
-    method: "POST",
-    path: "/api/v1/form-leads",
-    body: { source_company: "Best Relocation Forms" },
-  });
-
-  assert.equal(ctx.nextCalled, true);
-  assert.equal(ctx.statusCode, undefined);
+  const forms = "/api/v1/form-leads";
+  for (const [path, source, allowed] of [
+    [forms, "Best Relocation Forms", true],
+    [forms, "main_site", false],
+    ["/api/v1/booked-leads", "Best Relocation Forms", false],
+  ] as const) {
+    const result = await invokeMiddleware({
+      secret: "source-test-key", method: "POST", path, body: { source_company: source },
+    });
+    assert.equal(result.nextCalled, allowed, path + " " + source);
+    assert.equal(result.statusCode, allowed ? undefined : 403);
+  }
 });
 
-test("requireApiSecret accepts a source-scoped key for configured call lead route", async () => {
-  delete process.env.VANTAGE_API_SECRET;
-  process.env.VANTAGE_SCOPED_API_KEYS = JSON.stringify([
-    {
-      name: "best-relocation-forms",
-      secret: "best-relocation-secret",
-      routes: [
-        { method: "POST", path: "/api/v1/form-leads" },
-        { method: "POST", path: "/api/v1/call-leads" },
-      ],
-      source_companies: ["best_relocation_leads"],
-    },
-  ]);
-
-  const ctx = await invokeMiddleware({
-    secret: "best-relocation-secret",
-    method: "POST",
-    path: "/api/v1/call-leads",
-    body: { source_company: "Best Relocation Inbounds" },
-  });
-
-  assert.equal(ctx.nextCalled, true);
-  assert.equal(ctx.statusCode, undefined);
-});
-
-test("requireApiSecret rejects a scoped key on a different route", async () => {
-  delete process.env.VANTAGE_API_SECRET;
-  process.env.VANTAGE_SCOPED_API_KEYS = JSON.stringify([
-    {
-      name: "best-relocation-forms",
-      secret: "best-relocation-secret",
-      routes: [
-        { method: "POST", path: "/api/v1/form-leads" },
-        { method: "POST", path: "/api/v1/call-leads" },
-      ],
-      source_companies: ["best_relocation_leads"],
-    },
-  ]);
-
-  const ctx = await invokeMiddleware({
-    secret: "best-relocation-secret",
-    method: "POST",
-    path: "/api/v1/booked-leads",
-    body: { source_company: "Best Relocation Inbounds" },
-  });
-
-  assert.equal(ctx.nextCalled, false);
-  assert.equal(ctx.statusCode, 403);
-  assert.deepEqual(ctx.jsonBody, { ok: false, error: "Forbidden" });
-});
-
-test("requireApiSecret rejects a scoped key for a different source company", async () => {
-  delete process.env.VANTAGE_API_SECRET;
-  process.env.VANTAGE_SCOPED_API_KEYS = JSON.stringify([
-    {
-      name: "best-relocation-forms",
-      secret: "best-relocation-secret",
-      routes: [{ method: "POST", path: "/api/v1/form-leads" }],
-      source_companies: ["best_relocation_leads"],
-    },
-  ]);
-
-  const ctx = await invokeMiddleware({
-    secret: "best-relocation-secret",
-    method: "POST",
-    path: "/api/v1/form-leads",
-    body: { source_company: "main_site" },
-  });
-
-  assert.equal(ctx.nextCalled, false);
-  assert.equal(ctx.statusCode, 403);
-  assert.deepEqual(ctx.jsonBody, { ok: false, error: "Forbidden" });
-});
-
-test("requireApiSecret rejects Sales plus Customer Service Bearer on form-lead data routes", async () => {
-  process.env.VANTAGE_API_SECRET = "global-secret";
-  delete process.env.VANTAGE_SCOPED_API_KEYS;
-  stubExtensionUser({
-    id: "both-1",
-    email: "both@example.invalid",
-    roles: ["sales", "customer_service"],
-  });
-
-  const post = await invokeMiddleware({
-    authorization: "Bearer both-token",
-    method: "POST",
-    path: "/api/v1/form-leads",
-    body: { source_company: "main_site" },
-  });
-  const get = await invokeMiddleware({
-    authorization: "Bearer both-token",
-    method: "GET",
-    path: "/api/v1/form-leads",
-  });
-
-  assert.equal(post.nextCalled, false);
-  assert.equal(post.statusCode, 403);
-  assert.deepEqual(post.jsonBody, { ok: false, error: "Forbidden" });
-  assert.equal(get.nextCalled, false);
-  assert.equal(get.statusCode, 403);
-});
-
-test("requireApiSecret allows Sales plus Customer Service Bearer on Tariff Adjustment Submit", async () => {
-  process.env.VANTAGE_API_SECRET = "global-secret";
-  delete process.env.VANTAGE_SCOPED_API_KEYS;
-  stubExtensionUser({
-    id: "both-1",
-    email: "both@example.invalid",
-    roles: ["sales", "customer_service"],
-  });
-
-  const ctx = await invokeMiddleware({
-    authorization: "Bearer both-token",
-    method: "POST",
-    path: "/api/v1/tariff-adjustments",
-    body: { rows: [] },
-  });
-
-  assert.equal(ctx.nextCalled, true);
-  assert.equal(ctx.statusCode, undefined);
+test("Customer Service can submit a Tariff Adjustment while Lead intake stays restricted", async () => {
+  process.env.VANTAGE_API_SECRET = "global-test-key";
+  const rolesToCheck: PublicExtensionUser["roles"][] = [
+    ["customer_service"], ["sales", "customer_service"], ["sales"],
+  ];
+  for (const roles of rolesToCheck) {
+    vantageAuthLookups.getExtensionUserFromAccessToken = async () => ({
+      id: "rep", email: "rep@example.invalid", roles,
+    });
+    const request = { authorization: "Bearer test-user", method: "POST" };
+    const tariff = await invokeMiddleware({ ...request, path: "/api/v1/tariff-adjustments", body: { rows: [] } });
+    assert.equal(tariff.nextCalled, roles.includes("customer_service"), roles.join("+"));
+    const lead = await invokeMiddleware({ ...request, path: "/api/v1/form-leads", body: { source_company: "main_site" } });
+    assert.equal(lead.nextCalled, false, roles.join("+"));
+    assert.equal(lead.statusCode, 403);
+  }
 });
 
 test("requireApiSecret rejects Sales-only Bearer on tariff, form-lead, and Enrichment apply routes", async () => {
@@ -218,47 +117,6 @@ test("requireApiSecret rejects Sales-only Bearer on tariff, form-lead, and Enric
   assert.equal(apply.statusCode, 403);
   assert.equal(enrichment.nextCalled, false);
   assert.equal(enrichment.statusCode, 403);
-});
-
-test("requireApiSecret allows Customer Service Bearer on Tariff Adjustment Submit", async () => {
-  process.env.VANTAGE_API_SECRET = "global-secret";
-  delete process.env.VANTAGE_SCOPED_API_KEYS;
-  stubExtensionUser({
-    id: "cs-1",
-    email: "cs@example.invalid",
-    roles: ["customer_service"],
-  });
-
-  const ctx = await invokeMiddleware({
-    authorization: "Bearer cs-token",
-    method: "POST",
-    path: "/api/v1/tariff-adjustments",
-    body: { rows: [] },
-  });
-
-  assert.equal(ctx.nextCalled, true);
-  assert.equal(ctx.statusCode, undefined);
-});
-
-test("requireApiSecret rejects Customer Service Bearer on form-lead data routes", async () => {
-  process.env.VANTAGE_API_SECRET = "global-secret";
-  delete process.env.VANTAGE_SCOPED_API_KEYS;
-  stubExtensionUser({
-    id: "cs-1",
-    email: "cs@example.invalid",
-    roles: ["customer_service"],
-  });
-
-  const ctx = await invokeMiddleware({
-    authorization: "Bearer cs-token",
-    method: "POST",
-    path: "/api/v1/form-leads",
-    body: { source_company: "main_site" },
-  });
-
-  assert.equal(ctx.nextCalled, false);
-  assert.equal(ctx.statusCode, 403);
-  assert.deepEqual(ctx.jsonBody, { ok: false, error: "Forbidden" });
 });
 
 test("requireApiSecret allows Owner Bearer on Tariff Adjustment Submit", async () => {

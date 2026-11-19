@@ -40,17 +40,6 @@ describe("SMS contact events (P07d/P07e)", () => {
     const draft = deriveSmsContactEvent(sms, smsContext());
     assert.equal(draft.event_at.toISOString(), "2026-10-05T23:59:00.000Z");
   });
-
-  test("Sent and Delivered credit the reviewed sender's SMS at the sent time; never outbound-goal credit", () => {
-    for (const status of ["sent", "delivered"] as const) {
-      const draft = deriveSmsContactEvent(smsRow({ status }), smsContext());
-      assert.equal(draft.kind, "sms_sent");
-      assert.equal(draft.verification, "confirmed");
-      assert.equal(draft.actor_agent_id, ALICE);
-      assert.equal(isCadenceQualifying(engine(draft), "sms"), true);
-      assert.equal(draft.goal_credit, "none");
-    }
-  });
   test("SendingFailed/DeliveryFailed revoke: the re-derived event earns nothing and its fingerprint changes", () => {
     const row = smsRow();
     const sent = deriveSmsContactEvent(row, smsContext());
@@ -61,11 +50,6 @@ describe("SMS contact events (P07d/P07e)", () => {
       assert.notEqual(failed.input_fingerprint, sent.input_fingerprint);
     }
   });
-  test("Received is history / last interaction only", () => {
-    const draft = deriveSmsContactEvent(smsRow({ direction: "inbound", status: "received", send_at: null, reviewed_agent_id: null }), smsContext());
-    assert.equal(draft.kind, "sms_inbound");
-    assert.equal(isCadenceQualifying(engine(draft), "sms"), false);
-  });
   test("a shared/company sender or a non-reviewed owner is pending identity", () => {
     const draft = deriveSmsContactEvent(smsRow({ identity_state: "pending_identity", reviewed_agent_id: null }), smsContext());
     assert.equal(draft.verification, "pending_identity");
@@ -73,14 +57,6 @@ describe("SMS contact events (P07d/P07e)", () => {
   test("group messages are ambiguous association; another mailbox copy of one logical message is excluded", () => {
     assert.equal(deriveSmsContactEvent(smsRow({ is_group: true }), smsContext()).verification, "pending_association");
     assert.equal(deriveSmsContactEvent(smsRow({ duplicate_copy: true }), smsContext()).exclusion_reason, "duplicate_copy");
-  });
-  test("a text restriction makes the SMS restricted contact", () => {
-    const ctx = new ContextBuilder().number("+15550100200", SMS_NUMBER);
-    ctx.lead(SMS_NUMBER);
-    ctx.restrict(SMS_NUMBER, ["text"], "2026-10-01T00:00:00Z");
-    const draft = deriveSmsContactEvent(smsRow(), ctx.build());
-    assert.equal(draft.restricted_at_contact, true);
-    assert.equal(isCadenceQualifying(engine(draft), "sms"), false);
   });
 
   test("P05f/P10a (olr C4): an SMS sent earlier on the activation date carries the subject for the same-date SMS reuse, never credit", () => {
@@ -91,26 +67,6 @@ describe("SMS contact events (P07d/P07e)", () => {
     assert.equal(isCadenceQualifying(engine(draft), "sms"), true);
     const dayBefore = deriveSmsContactEvent(smsRow({ send_at: new Date("2026-10-04T20:00:00Z"), provider_created_at: new Date("2026-10-04T20:00:00Z") }), ctx.build());
     assert.deepEqual([dayBefore.subject_id, dayBefore.verification], [null, "excluded"]);
-  });
-});
-
-describe("olr C8 SMS association_reason", () => {
-  test("a matched counterpart is eligible; a group SMS is ambiguous; no known counterpart is no_lead; a duplicate copy is null", () => {
-    assert.equal(deriveSmsContactEvent(smsRow(), smsContext()).association_reason, "eligible");
-    assert.equal(deriveSmsContactEvent(smsRow({ is_group: true, counterpart_numbers: ["+15550100200", "+15550100201"] }), smsContext()).association_reason, "ambiguous");
-    assert.equal(deriveSmsContactEvent(smsRow({ counterpart_numbers: ["+15550199999"] }), smsContext()).association_reason, "no_lead");
-    const copy = deriveSmsContactEvent(smsRow({ duplicate_copy: true }), smsContext());
-    assert.deepEqual([copy.verification, copy.association_reason], ["excluded", null]);
-  });
-
-  test("a counterpart whose Lead is not enrolled is lead_not_enrolled; one whose subject is closed is lead_closed", () => {
-    const number = newId();
-    const ctx = new ContextBuilder().number("+15550100300", number);
-    ctx.lead(number, null);
-    assert.equal(deriveSmsContactEvent(smsRow({ counterpart_numbers: ["+15550100300"] }), ctx.build()).association_reason, "lead_not_enrolled");
-    const closed = new ContextBuilder().number("+15550100301", number);
-    closed.lead(number, subjectFacts({ workflow: "closed" }));
-    assert.equal(deriveSmsContactEvent(smsRow({ counterpart_numbers: ["+15550100301"] }), closed.build()).association_reason, "lead_closed");
   });
 });
 

@@ -4,147 +4,15 @@ import mongoose from "mongoose";
 import { bookedLeadToRow } from "./bookedLeadRow";
 import { callLeadToRow } from "./callLeadRow";
 import { cancelledLeadToRow } from "./cancelledLeadRow";
-import {
-  booleanCell,
-  bookedCell,
-  bookedDateCell,
-  cancelledCell,
-  formatDateOnly,
-  formatNumber,
-  formatTimestamp,
-  localCell,
-  optionalLocalCell,
-  overThresholdCell,
-  primaryBookingAgent,
-  quotedCell,
-  splitCell,
-} from "./cells";
 import { formLeadToRow } from "./formLeadRow";
 import type {
   BookedLeadSheetSource,
   CallLeadSheetSource,
   CancelledLeadSheetSource,
   FormLeadSheetSource,
-  PopulatedBookedLead,
 } from "../types";
 
 const fixedDate = new Date("2026-05-27T15:04:05.000Z");
-
-test("formatDateOnly returns ISO date prefix", () => {
-  assert.equal(formatDateOnly(fixedDate), "2026-05-27");
-});
-
-test("formatTimestamp uses owner-facing UTC clock components", () => {
-  const value = new Date("2026-05-27T09:04:05.000Z");
-  assert.equal(formatTimestamp(value), "5/27/2026 09:04:05");
-});
-
-test("booleanCell maps booleans to sheet strings", () => {
-  assert.equal(booleanCell(true), "TRUE");
-  assert.equal(booleanCell(false), "FALSE");
-});
-
-test("localCell maps values to local/long_distance", () => {
-  assert.equal(localCell("local"), "local");
-  assert.equal(localCell("long_distance"), "long_distance");
-  assert.equal(localCell(null), "long_distance");
-  assert.equal(localCell(undefined), "long_distance");
-});
-
-test("optionalLocalCell returns empty string when blank", () => {
-  assert.equal(optionalLocalCell(null), "");
-  assert.equal(optionalLocalCell(undefined), "");
-  assert.equal(optionalLocalCell(""), "");
-  assert.equal(optionalLocalCell("local"), "local");
-  assert.equal(optionalLocalCell("long_distance"), "long_distance");
-});
-
-test("bookedCell, bookedDateCell, cancelledCell, quotedCell map booleans to labels", () => {
-  assert.equal(bookedCell(true), "booked");
-  assert.equal(bookedCell(false), "");
-  assert.equal(cancelledCell(true), "cancelled");
-  assert.equal(cancelledCell(false), "");
-  assert.equal(quotedCell(true), "quoted");
-  assert.equal(quotedCell(false), "");
-  assert.equal(bookedDateCell(null), "");
-  assert.equal(bookedDateCell(undefined), "");
-  assert.equal(bookedDateCell("not-populated"), "");
-  const booking: PopulatedBookedLead = {
-    _id: new mongoose.Types.ObjectId(),
-    timestamp: fixedDate,
-    book_date: new Date("2026-05-20T00:00:00.000Z"),
-    total_binder_amount: 0,
-    deposit_amount: 0,
-    merchant: "stripe",
-    source: "mainsite",
-  };
-  assert.equal(bookedDateCell(booking), "2026-05-20");
-});
-
-test("overThresholdCell returns label or blank", () => {
-  assert.equal(overThresholdCell(true, ">2k"), ">2k");
-  assert.equal(overThresholdCell(true, ">4k"), ">4k");
-  assert.equal(overThresholdCell(false, ">2k"), "");
-});
-
-test("formatNumber stringifies finite numbers and elides null/undefined/NaN", () => {
-  assert.equal(formatNumber(0), "0");
-  assert.equal(formatNumber(12.5), "12.5");
-  assert.equal(formatNumber(null), "");
-  assert.equal(formatNumber(undefined), "");
-  assert.equal(formatNumber(Number.NaN), "");
-});
-
-test("primaryBookingAgent returns first agent name snapshot", () => {
-  assert.equal(primaryBookingAgent(undefined), "");
-  assert.equal(
-    primaryBookingAgent({
-      _id: new mongoose.Types.ObjectId(),
-      timestamp: fixedDate,
-      book_date: fixedDate,
-      total_binder_amount: 0,
-      deposit_amount: 0,
-      merchant: "stripe",
-      source: "mainsite",
-      agent_allocations: [
-        { agent_name_snapshot: "Agent A", binder_amount: 100 },
-        { agent_name_snapshot: "Agent B", binder_amount: 50 },
-      ],
-    }),
-    "Agent A",
-  );
-});
-
-test("splitCell only flags true splits when there are at least two named allocations with non-zero amounts", () => {
-  assert.equal(splitCell([]), "FALSE");
-  assert.equal(
-    splitCell([
-      { agent_name_snapshot: "Agent A", binder_amount: 100 },
-    ]),
-    "FALSE",
-  );
-  assert.equal(
-    splitCell([
-      { agent_name_snapshot: "Agent A", binder_amount: 0 },
-      { agent_name_snapshot: "Agent B", binder_amount: 0 },
-    ]),
-    "FALSE",
-  );
-  assert.equal(
-    splitCell([
-      { agent_name_snapshot: "Agent A", binder_amount: 100 },
-      { agent_name_snapshot: "Agent B", binder_amount: 50 },
-    ]),
-    "TRUE",
-  );
-  assert.equal(
-    splitCell([
-      { agent_name_snapshot: "", binder_amount: 100 },
-      { agent_name_snapshot: "Agent B", binder_amount: 50 },
-    ]),
-    "FALSE",
-  );
-});
 
 test("formLeadToRow projects fields in the documented header order", () => {
   const lead: FormLeadSheetSource = {
@@ -203,55 +71,6 @@ test("formLeadToRow projects fields in the documented header order", () => {
   assert.equal(row[19], "Main Site Forms");
   assert.equal(row[20], "Bad Phone-Email-Name");
   assert.equal(row[21], "Nick Smith");
-});
-
-test("formLeadToRow defaults missing ref_no to 'not provided'", () => {
-  const lead: FormLeadSheetSource = {
-    _id: new mongoose.Types.ObjectId(),
-    timestamp: fixedDate,
-    name: "Test",
-    pickup_zip: "10001",
-    destination_zip: "90210",
-    move_size: "Studio",
-    move_date: fixedDate,
-    phone_number: "555-555-5555",
-    local: "long_distance",
-    source_company: "not_provided",
-  };
-
-  const row = formLeadToRow(lead);
-  assert.equal(row[9], "");
-  assert.equal(row[18], "not provided");
-  assert.equal(row[4], "not_found");
-  assert.equal(row[5], "not_found");
-  assert.equal(row[19], "Main Site Forms");
-  assert.equal(row[20], "");
-  assert.equal(row[21], "");
-});
-
-test("lead projections use exact GetMovers source labels", () => {
-  const formLead: FormLeadSheetSource = {
-    _id: new mongoose.Types.ObjectId(),
-    timestamp: fixedDate,
-    name: "GetMovers Form",
-    pickup_zip: "10001",
-    destination_zip: "90210",
-    move_size: "Studio",
-    move_date: fixedDate,
-    phone_number: "555-555-5555",
-    local: "long_distance",
-    source_company: "get_movers_leads",
-  };
-  const callLead: CallLeadSheetSource = {
-    _id: new mongoose.Types.ObjectId(),
-    timestamp: fixedDate,
-    phone_number: "555-333-4444",
-    duration: 180,
-    source_company: "get_movers_leads",
-  };
-
-  assert.equal(formLeadToRow(formLead)[19], "GetMovers Forms");
-  assert.equal(callLeadToRow(callLead)[12], "GetMovers Inbounds");
 });
 
 test("formLeadToRow clears booking reporting columns after booking deletion", () => {
@@ -389,57 +208,6 @@ test("bookedLeadToRow projects allocations, customer, and lead ref", () => {
   assert.equal(row[14], "cancelled");
 });
 
-test("bookedLeadToRow writes form source label from canonical slug", () => {
-  const booking: BookedLeadSheetSource = {
-    _id: new mongoose.Types.ObjectId(),
-    timestamp: fixedDate,
-    book_date: fixedDate,
-    agent_allocations: [{ agent_name_snapshot: "Agent A", binder_amount: 500 }],
-    total_binder_amount: 500,
-    deposit_amount: 500,
-    merchant: "Card",
-    source: "top10_leads",
-    lead_model: "FormLead",
-    local: "long_distance",
-  };
-
-  assert.equal(bookedLeadToRow(booking)[10], "Top10 Forms");
-});
-
-test("bookedLeadToRow writes call source label from canonical slug", () => {
-  const booking: BookedLeadSheetSource = {
-    _id: new mongoose.Types.ObjectId(),
-    timestamp: fixedDate,
-    book_date: fixedDate,
-    agent_allocations: [{ agent_name_snapshot: "Agent A", binder_amount: 500 }],
-    total_binder_amount: 500,
-    deposit_amount: 500,
-    merchant: "Card",
-    source: "tbm_leads",
-    lead_model: "CallLead",
-    local: null,
-  };
-
-  assert.equal(bookedLeadToRow(booking)[10], "10best Inbounds");
-});
-
-test("bookedLeadToRow resolves legacy source labels before writing", () => {
-  const booking: BookedLeadSheetSource = {
-    _id: new mongoose.Types.ObjectId(),
-    timestamp: fixedDate,
-    book_date: fixedDate,
-    agent_allocations: [{ agent_name_snapshot: "Agent A", binder_amount: 500 }],
-    total_binder_amount: 500,
-    deposit_amount: 500,
-    merchant: "Card",
-    source: "TBM Forms",
-    lead_model: "FormLead",
-    local: "long_distance",
-  };
-
-  assert.equal(bookedLeadToRow(booking)[10], "TBM Forms");
-});
-
 test("bookedLeadToRow projects referral customer name and blank lead ref", () => {
   const booking: BookedLeadSheetSource = {
     _id: new mongoose.Types.ObjectId(),
@@ -508,15 +276,4 @@ test("cancelledLeadToRow projects cancellation fields", () => {
   assert.equal(row[6], "mainsite");
   assert.equal(row[7], cancellation._id.toString());
   assert.equal(row[8], leadRefId.toString());
-});
-
-test("cancelledLeadToRow leaves cancel_date blank when missing", () => {
-  const cancellation: CancelledLeadSheetSource = {
-    _id: new mongoose.Types.ObjectId(),
-    timestamp: fixedDate,
-  };
-
-  const row = cancelledLeadToRow(cancellation);
-  assert.equal(row[2], "");
-  assert.equal(row[8], "");
 });

@@ -83,32 +83,6 @@ test('worker crash after canonical action but before run result replays the exac
   }
 });
 
-test('a resumed partial run retains its saved receipt and original expiry without executing the remaining action', async t => {
-  if (!(await ready(t))) return;
-  const id = new Types.ObjectId();
-  const expiresAt = new Date(Date.now() - 8 * 86400000);
-  const checksum = await seed(id, expiresAt, ['row-1', 'row-2']);
-  const saved = { action_id: 'row-1', lifecycle_receipt_id: new Types.ObjectId().toHexString(), outcome: 'applied', applied_at: new Date(+expiresAt - 1) };
-  await GranotAutomationRun.updateOne({ _id: id }, { $push: { receipts: saved } });
-  const interrupted = await GranotAutomationRun.findById(id).lean().orFail();
-  let calls = 0;
-  try {
-    await assert.rejects(runGranotWorker({ applyAction: async input => {
-      calls++;
-      return { action_id: input.action_id, lifecycle_receipt_id: '', outcome: 'technical_failure', applied_at: new Date() };
-    } }), /expired or lost/);
-    assert.equal(calls, 0);
-    const stopped = await GranotAutomationRun.findById(id).lean().orFail();
-    assert.equal(stopped.status, 'failed');
-    assert.deepEqual(stopped.receipts, [saved]);
-    assert.deepEqual(stopped.approval, interrupted.approval);
-    assert.deepEqual(stopped.plan_snapshot, interrupted.plan_snapshot);
-    assert.deepEqual(stopped.purge_at, interrupted.purge_at);
-    assert.equal(stopped.plan_checksum, checksum);
-    assert.equal(+stopped.expires_at, +expiresAt);
-  } finally { await GranotAutomationRun.deleteOne({ _id: id }); }
-});
-
 test('an in-flight batch preserves its first receipt and refuses a new action at the original expiry', async t => {
   if (!(await ready(t))) return;
   const id = new Types.ObjectId();

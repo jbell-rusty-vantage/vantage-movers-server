@@ -280,7 +280,7 @@ Helper: `src/services/domainCommands/leadChangeEmission.ts` (before/after diff o
 ## Tests
 
 - `bookingMirror.test.ts` — `claimAvailableLeadForBooking` concurrency + no CPL rewrite; `preserveExistingCpl`
-- `bookingIdentity.test.ts` — job/name normalize
+- `indexedJobLookup.replica.test.ts` checks that indexed Job Number aliases and legacy lookup return the same Bookings on MongoDB.
 - `bestRelocationImportGuard.test.ts` — source-company fence
 - `agentAllocation.service.test.ts` — inactive-agent resolve + receiver attribution
 - Domain-command adapters in `domainCommands.test.ts`

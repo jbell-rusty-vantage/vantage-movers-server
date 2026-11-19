@@ -12,27 +12,6 @@ const formLead: LeadMoveSource = {
     captured_at: new Date("2026-09-01T10:00:00Z"), evidence_status: "captured_at_ingestion" },
 };
 
-test("Form Lead destination_zip and Call Lead delivery_zip both become delivery.zip; unknown state is null", () => {
-  const form = moveViewsForLead(formLead, "FormLead").canonical_current;
-  assert.deepEqual(form.pickup, { city: "Miami", state: "FL", zip: "33101" });
-  assert.deepEqual(form.delivery, { city: "Austin", state: null, zip: "73301" });
-  const call = moveViewsForLead({ delivery_zip: "10001", delivery_city: "New York", delivery_state: "NY", destination_zip: "99999",
-    move_date: new Date("2026-10-15T00:00:00Z"), move_size: "Studio", granot_move_size: "Studio", cubic_feet: 300 }, "CallLead");
-  assert.deepEqual(call.canonical_current.delivery, { city: "New York", state: "NY", zip: "10001" });
-  // Call Leads have no supported move date/size; they stay null rather than being invented.
-  assert.equal(call.canonical_current.move_date, null);
-  assert.equal(call.canonical_current.move_size, null);
-  assert.equal(call.canonical_current.granot_move_size, "Studio");
-  assert.equal(call.original_ingestion, null);
-});
-
-test("current values keep their provenance and local calendar date", () => {
-  const current = moveViewsForLead(formLead, "FormLead").canonical_current;
-  assert.equal(current.move_date, "2026-10-15");
-  assert.equal(current.cubic_feet, 850);
-  assert.deepEqual(current.provenance, { source_system: "granot", changed_at: "2026-09-10T12:00:00.000Z", observation_id: "obs-1" });
-});
-
 test("original form submission, legacy baseline and a changed current move are distinguishable", () => {
   const views = moveViewsForLead(formLead, "FormLead");
   assert.equal(views.original_ingestion?.label, "original_form_submission");

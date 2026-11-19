@@ -185,7 +185,7 @@ async function main() {
     });
   const counts = async () => Object.fromEntries(await Promise.all(csiModels.map(async (M) => [M.collection.collectionName, await M.collection.countDocuments({})])));
   const before = await counts();
-  const report = await reportEnrollment({ selection: { mode: "backfill_scope" } });
+  const report = await reportEnrollment({ selection: { mode: "backfill_scope" } }, { now: () => at("2026-10-04T14:00:00Z") });
   assert.deepEqual(await counts(), before, "report writes nothing");
   assert.equal(report.lead_refs.length, 60);
   const body = { actor: owner, run_key: "replica-backfill", kind: report.kind, cohort_id: report.cohort_id, lead_refs: report.lead_refs, manifest_hash: report.manifest_hash };

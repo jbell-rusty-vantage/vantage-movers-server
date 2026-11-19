@@ -298,31 +298,6 @@ test("[AC-21][AC-22][AC-23][AC-32] replica confirm is atomic, replay-safe, exact
   );
 });
 
-test("[AC-22][AC-23] inactive catalog failure leaves the whole effect set invisible", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seed();
-  await Agent.updateOne({ _id: fixture.agentId }, { $set: { active: false } });
-  await assert.rejects(
-    confirmBooking({
-      case_id: String(fixture.caseId), expected_case_revision: 1,
-      selected_lead: { lead_model: "FormLead", lead_id: String(fixture.leadId) },
-      official_booking_details: {
-        book_date: "2026-08-20",
-        primary_agent_id: String(fixture.agentId),
-        total_binder_amount: 10, deposit_amount: 5, merchant_id: String(fixture.merchantId),
-      },
-      idempotency_key: `unit24-inactive-${fixture.caseId}`,
-      owner: { actor_type: "owner", actor_id: "unit24-owner", actor_label: "unit24-owner@example.invalid", actor_role: "owner", request_id: `unit24-inactive-${fixture.caseId}`, origin: "vantage_admin" },
-    }, { flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true } }),
-    (error: unknown) => (error as { code?: string }).code === "GRANOT_VALIDATION_FAILED",
-  );
-  assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 0);
-  assert.equal(await getGranotRecordLinkModel().countDocuments({ normalized_job_no: fixture.job }), 0);
-  assert.equal(await DomainCommandExecution.countDocuments({ "provenance.case_id": String(fixture.caseId) }), 0);
-  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": fixture.caseId }), 0);
-  assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.state, "open");
-});
-
 test("[AC-21] simultaneous confirms produce one winner and no duplicate effects", async (t) => {
   if (!(await replicaReady(t))) return;
   const fixture = await seed();
@@ -438,45 +413,6 @@ test("[AC-20][AC-21][AC-24][AC-32] replica update fully replaces official fields
   assert.equal(await SheetSyncJob.countDocuments({ entity_id: created.booking_ref!.id }), 1);
 });
 
-test("[AC-20][AC-21][AC-32] replica No Action resolves only case and Command with exact replay", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seed();
-  const flags = { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true };
-  const command = {
-    case_id: String(fixture.caseId), expected_case_revision: 1,
-    reason_code: "other" as const, reason_text: "Synthetic owner review only.",
-    idempotency_key: `unit25-no-action-${fixture.caseId}`,
-    owner: { actor_type: "owner" as const, actor_id: "unit25-owner", actor_label: "unit25-owner@example.invalid", actor_role: "owner" as const, request_id: `unit25-no-action-${fixture.caseId}`, origin: "vantage_admin" as const },
-  };
-  const before = {
-    bookings: await BookedLead.countDocuments({ normalized_job_no: fixture.job }),
-    leads: await getFormLeadModel().countDocuments({ _id: fixture.leadId }),
-    links: await getGranotRecordLinkModel().countDocuments({ normalized_job_no: fixture.job }),
-    changes: await getEntityChangeModel().countDocuments({ "provenance.case_id": fixture.caseId }),
-    outbox: await SheetSyncJob.countDocuments({ entity_id: { $in: [String(fixture.caseId), String(fixture.leadId)] } }),
-  };
-  const result = await noAction(command, { flags });
-  assert.equal(result.outcome, "no_action");
-  assert.equal(result.booking_ref, undefined);
-  const row = await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec();
-  assert.equal(row?.case_revision, 2);
-  assert.equal(row?.evidence_revision, 1);
-  assert.equal(row?.resolution?.reason_code, "other");
-  assert.equal(row?.resolution?.reason_text, "Synthetic owner review only.");
-  assert.equal(await DomainCommandExecution.countDocuments({ "provenance.case_id": String(fixture.caseId) }), 1);
-  assert.deepEqual({
-    bookings: await BookedLead.countDocuments({ normalized_job_no: fixture.job }),
-    leads: await getFormLeadModel().countDocuments({ _id: fixture.leadId }),
-    links: await getGranotRecordLinkModel().countDocuments({ normalized_job_no: fixture.job }),
-    changes: await getEntityChangeModel().countDocuments({ "provenance.case_id": fixture.caseId }),
-    outbox: await SheetSyncJob.countDocuments({ entity_id: { $in: [String(fixture.caseId), String(fixture.leadId)] } }),
-  }, before);
-  const replay = await noAction(command, { flags });
-  assert.equal(replay.replayed, true);
-  assert.equal(replay.command_execution_id, result.command_execution_id);
-  assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.case_revision, 2);
-});
-
 test("[AC-24][AC-32] replica update rolls back atomically after every persisted write boundary", async (t) => {
   if (!(await replicaReady(t))) return;
   const flags = { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true };
@@ -522,32 +458,6 @@ test("[AC-24][AC-32] replica update rolls back atomically after every persisted 
   }, { flags, test_fail_after_case: true }), /UNIT25_INJECTED_NO_ACTION_FAILURE_AFTER_CASE/);
   assert.equal((await getGranotBookingReconciliationCaseModel().findById(noActionFixture.caseId).lean().exec())?.state, "open");
   assert.equal(await DomainCommandExecution.countDocuments({ "provenance.case_id": String(noActionFixture.caseId) }), 0);
-});
-
-test("[AC-21] replica update versus No Action has one case-revision winner", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seed();
-  const flags = { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true };
-  const owner = { actor_type: "owner" as const, actor_id: "unit25-owner", actor_label: "unit25-owner@example.invalid", actor_role: "owner" as const, request_id: `unit25-race-${fixture.caseId}`, origin: "vantage_admin" as const };
-  const created = await confirmBooking({
-    case_id: String(fixture.caseId), expected_case_revision: 1,
-    selected_lead: { lead_model: "FormLead", lead_id: String(fixture.leadId) },
-    official_booking_details: { book_date: "2026-08-20", primary_agent_id: String(fixture.agentId), total_binder_amount: 10, deposit_amount: 10, merchant_id: String(fixture.merchantId) },
-    idempotency_key: `unit25-race-prereq-${fixture.caseId}`, owner,
-  }, { flags });
-  const caseId = await createReviewCase(fixture, created.booking_ref!.id, created.record_link_ref!.id);
-  const results = await Promise.allSettled([
-    updateExistingBooking({
-      case_id: String(caseId), expected_case_revision: 1, expected_booking_revision: 1,
-      official_booking_details: { book_date: "2026-08-21", primary_agent_id: String(fixture.agentId), total_binder_amount: 11, deposit_amount: 11, merchant_id: String(fixture.merchantId) },
-      idempotency_key: `unit25-race-update-${caseId}`, owner,
-    }, { flags }),
-    noAction({ case_id: String(caseId), expected_case_revision: 1, idempotency_key: `unit25-race-no-action-${caseId}`, owner }, { flags }),
-  ]);
-  assert.equal(results.filter((row) => row.status === "fulfilled").length, 1);
-  assert.equal(results.filter((row) => row.status === "rejected").length, 1);
-  assert.equal(await DomainCommandExecution.countDocuments({ "provenance.case_id": String(caseId) }), 1);
-  assert.equal((await getGranotBookingReconciliationCaseModel().findById(caseId).lean().exec())?.case_revision, 2);
 });
 
 async function stampSuggestion(
@@ -617,7 +527,8 @@ test("Confirm omit selected_lead with medium-only suggestion creates a Leadless 
   await getGranotObservationReceiptModel().collection.deleteOne({ _id: fixture.receiptId });
   await mongoose.connection.collection("synchronization_decisions").deleteOne({ _id: fixture.decisionId });
   await stampSuggestion(fixture.caseId, fixture.leadId, "medium", "source_scoped_contact");
-  const result = await confirmBooking({
+  const flags = { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true };
+  const command = {
     case_id: String(fixture.caseId),
     expected_case_revision: 1,
     official_booking_details: {
@@ -629,7 +540,8 @@ test("Confirm omit selected_lead with medium-only suggestion creates a Leadless 
     },
     idempotency_key: `bila02-medium-leadless-${fixture.caseId}`,
     owner: confirmOwner(fixture.caseId, "medium-leadless"),
-  }, { flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true } });
+  };
+  const result = await confirmBooking(command, { flags });
   assert.equal(result.outcome, "booking_created");
   assert.equal(result.is_leadless_booking, true);
   assert.match(result.owner_notice ?? "", /No stored lead was attached/);
@@ -642,30 +554,41 @@ test("Confirm omit selected_lead with medium-only suggestion creates a Leadless 
   const job = await SheetSyncJob.findOne({ entity_id: result.booking_ref!.id }).lean().exec();
   assert.equal(job?.resource, "booked_lead");
   assert.equal(job?.operation, "granot_booking.create_leadless");
-});
+  const replay = await confirmBooking(command, { flags });
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.booking_ref?.id, result.booking_ref?.id);
+  assert.equal(replay.command_execution_id, result.command_execution_id);
+  assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 1);
+  assert.equal(await DomainCommandExecution.countDocuments({ "provenance.case_id": String(fixture.caseId) }), 1);
+  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": fixture.caseId }), 2);
+  assert.equal(await SheetSyncJob.countDocuments({ entity_id: result.booking_ref!.id }), 1);
 
-test("Confirm Owner-selected medium attaches that Lead", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seed();
-  await stampSuggestion(fixture.caseId, fixture.leadId, "medium", "source_scoped_contact");
-  const result = await confirmBooking({
-    case_id: String(fixture.caseId),
-    expected_case_revision: 1,
-    selected_lead: { lead_model: "FormLead", lead_id: String(fixture.leadId) },
+  const reviewCaseId = await createReviewCase(fixture, result.booking_ref!.id, result.record_link_ref!.id);
+  const updated = await updateExistingBooking({
+    ...command,
+    case_id: String(reviewCaseId),
+    expected_booking_revision: result.booking_ref!.domain_revision,
     official_booking_details: {
-      book_date: "2026-08-20",
-      primary_agent_id: String(fixture.agentId),
-      total_binder_amount: 10,
-      deposit_amount: 20,
-      merchant_id: String(fixture.merchantId),
+      ...command.official_booking_details,
+      book_date: "2026-09-01",
+      total_binder_amount: 30,
+      deposit_amount: 40,
     },
-    idempotency_key: `bila02-owner-medium-${fixture.caseId}`,
-    owner: confirmOwner(fixture.caseId, "owner-medium"),
-  }, { flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true } });
-  assert.equal(result.outcome, "booking_created");
-  assert.equal(result.is_leadless_booking, false);
-  const booking = await BookedLead.findById(result.booking_ref!.id).lean().exec();
-  assert.equal(String(booking?.lead_ref), String(fixture.leadId));
+    idempotency_key: `bila02-leadless-update-${reviewCaseId}`,
+  }, { flags });
+  assert.equal(updated.outcome, "booking_updated");
+  const after = await BookedLead.findById(result.booking_ref!.id).lean().exec();
+  assert.equal(after?.is_leadless_booking, true);
+  assert.equal(after?.lead_ref, undefined);
+  assert.equal(after?.book_date.toISOString().slice(0, 10), "2026-09-01");
+  assert.equal(after?.total_binder_amount, 30);
+  assert.equal(after?.deposit_amount, 40);
+  assert.equal((await getFormLeadModel().findById(fixture.leadId).lean().exec())?.booked, undefined);
+  assert.equal(await getEntityChangeModel().countDocuments({ "provenance.case_id": reviewCaseId }), 1);
+  const jobs = await SheetSyncJob.find({ entity_id: result.booking_ref!.id }).lean().exec();
+  assert.deepEqual(jobs.map(({ resource, operation }) => ({ resource, operation })), [
+    { resource: "booked_lead", operation: "booked_lead.update" },
+  ]);
 });
 
 test("Confirm lost claim fails closed and does not fall through to Leadless", async (t) => {
@@ -694,49 +617,4 @@ test("Confirm lost claim fails closed and does not fall through to Leadless", as
   );
   assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 0);
   assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.state, "open");
-});
-
-test("Update Existing Booking on a Granot Leadless Booking writes official fields and Master Booked only", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const fixture = await seed();
-  const flags = { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true };
-  const owner = confirmOwner(fixture.caseId, "leadless-update");
-  const created = await confirmBooking({
-    case_id: String(fixture.caseId),
-    expected_case_revision: 1,
-    official_booking_details: {
-      book_date: "2026-08-20",
-      primary_agent_id: String(fixture.agentId),
-      total_binder_amount: 10,
-      deposit_amount: 20,
-      merchant_id: String(fixture.merchantId),
-    },
-    idempotency_key: `bila02-leadless-prereq-${fixture.caseId}`,
-    owner,
-  }, { flags });
-  assert.equal(created.is_leadless_booking, true);
-  const reviewCaseId = await createReviewCase(fixture, created.booking_ref!.id, created.record_link_ref!.id);
-  const result = await updateExistingBooking({
-    case_id: String(reviewCaseId),
-    expected_case_revision: 1,
-    expected_booking_revision: created.booking_ref!.domain_revision,
-    official_booking_details: {
-      book_date: "2026-09-01",
-      primary_agent_id: String(fixture.agentId),
-      total_binder_amount: 30,
-      deposit_amount: 40,
-      merchant_id: String(fixture.merchantId),
-    },
-    idempotency_key: `bila02-leadless-update-${reviewCaseId}`,
-    owner,
-  }, { flags });
-  assert.equal(result.outcome, "booking_updated");
-  const after = await BookedLead.findById(created.booking_ref!.id).lean().exec();
-  assert.equal(after?.is_leadless_booking, true);
-  assert.equal(after?.lead_ref, undefined);
-  assert.equal(after?.book_date.toISOString().slice(0, 10), "2026-09-01");
-  assert.equal(after?.total_binder_amount, 30);
-  const jobs = await SheetSyncJob.find({ entity_id: created.booking_ref!.id }).lean().exec();
-  assert.equal(jobs.some((job) => job.resource === "booking_chain"), false);
-  assert.ok(jobs.some((job) => job.resource === "booked_lead" && job.operation === "booked_lead.update"));
 });

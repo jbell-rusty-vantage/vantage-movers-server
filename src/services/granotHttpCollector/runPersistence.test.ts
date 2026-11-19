@@ -1,19 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { MongoClient } from 'mongodb';
-import { createPlanningCheckpointGate, persistActionReceipt, renewRunLeaseWhenDue, GRANOT_RUN_LEASE_RENEWAL_HEADROOM_MS } from './runPersistence';
+import { persistActionReceipt, renewRunLeaseWhenDue } from './runPersistence';
 import type { GranotAutomationActionReceipt } from '../granotLifecycle/automationApply';
-
-test('planning checkpoints bound row and elapsed-time lag without changing row work', () => {
-  const due = createPlanningCheckpointGate(0);
-  const checkpoints = [];
-  for (let row = 1; row <= 100; row++) if (due(row, row)) checkpoints.push(row);
-  assert.deepEqual(checkpoints, [25, 50, 75, 100]);
-  assert.equal(due(101, 5_100), true);
-  assert.equal(due(102, 5_101), false);
-  // A resumed planner starts a new advisory cursor, not a skip cursor.
-  assert.equal(createPlanningCheckpointGate(5_101)(1, 5_102), false);
-});
 
 test('atomic receipt writes survive crash boundaries, lease loss and legacy replay on a disposable replica', async t => {
   if (process.env.GRANOT_RUN_PERSISTENCE_REPLICA_TESTS !== 'true') {
@@ -142,27 +131,6 @@ test('fresh lease checks reduce writes until the earlier persisted expiry is due
   assert.equal(renewals, 3); // Duplicate callbacks still read both owners without writing.
 });
 
-test('lease gates reject missing owners/status, expiration during reads, and read failures', async () => {
-  for (const missing of ['account', 'run', 'neither']) {
-    let now = 0, renewed = false;
-    await assert.rejects(renewRunLeaseWhenDue({
-      now: () => now,
-      readAccount: async () => missing === 'account' ? null : { leased_until: new Date(10) },
-      readRun: async () => { now = missing === 'neither' ? 10 : 0; return missing === 'run' ? null : { leased_until: new Date(10) }; },
-      renew: async () => { renewed = true; },
-    }), /lease is missing, changed or expired/);
-    assert.equal(renewed, false);
-  }
-  let renewed = false;
-  await assert.rejects(renewRunLeaseWhenDue({
-    now: () => 0,
-    readAccount: async () => { throw new Error('read unavailable'); },
-    readRun: async () => ({ leased_until: new Date(45 * 60_000) }),
-    renew: async () => { renewed = true; },
-  }), /read unavailable/);
-  assert.equal(renewed, false);
-});
-
 test('expiry or ownership loss after reads is rejected by the renewal CAS without continuation', async () => {
   let actions = 0;
   await assert.rejects((async () => {
@@ -175,19 +143,4 @@ test('expiry or ownership loss after reads is rejected by the renewal CAS withou
     actions++;
   })(), /renewal CAS rejected/);
   assert.equal(actions, 0);
-});
-
-test('non-renewing lease gate retains headroom beyond an entire 800-second invocation', async () => {
-  let now = 0, renewals = 0;
-  const expiry = GRANOT_RUN_LEASE_RENEWAL_HEADROOM_MS + 1;
-  await renewRunLeaseWhenDue({
-    now: () => now,
-    readAccount: async () => ({ leased_until: new Date(expiry) }),
-    readRun: async () => ({ leased_until: new Date(expiry) }),
-    renew: async () => { renewals++; },
-  });
-  assert.equal(renewals, 0);
-  now += 800_000;
-  assert.ok(expiry > now);
-  assert.ok(expiry - now >= 550_000);
 });

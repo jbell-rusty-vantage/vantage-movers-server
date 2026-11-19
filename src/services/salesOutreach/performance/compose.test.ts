@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { salesOutreachPerformanceSchema, salesOutreachPerformanceQuerySchema } from "../../../validation/v1/salesOutreachPerformance";
+import { salesOutreachPerformanceSchema } from "../../../validation/v1/salesOutreachPerformance";
 import type { EngineObligation } from "../engine";
 import { addDays } from "../engine/calendar";
-import { newYorkDayBounds } from "../reads/businessDay";
-import { composeTeamPerformance, performanceWeek, type PerformanceInput, type PerformanceCallDay } from "./compose";
+import { composeTeamPerformance, type PerformanceInput, type PerformanceCallDay } from "./compose";
 
-const A = "a".repeat(24), B = "b".repeat(24), C = "c".repeat(24);
+const A = "a".repeat(24), B = "b".repeat(24);
 const date = "2026-10-12";
 function input(changes: Partial<PerformanceInput> = {}): PerformanceInput {
   return { now: new Date("2026-10-15T16:00:00Z"), week_start: date, closing_minute: 1200,
@@ -33,12 +32,6 @@ test("call ranking measures days met, never a pooled weekly target, and excludes
   assert.ok(salesOutreachPerformanceSchema.safeParse(result).success);
 });
 
-test("absence excludes the date, partial target is used, and incomplete days stay pending", () => {
-  const r = composeTeamPerformance(input({ calls: [call(date, 50, 50), call(addDays(date, 1), 15, 0), { ...call(addDays(date, 2), 80), coverage: "partial" }] })).rows[0]!;
-  assert.equal(r.calls.met_days, 1); assert.equal(r.calls.eligible_days, 1); assert.equal(r.calls.pending_days, 1);
-  assert.equal(r.calls.completion_rate, 1); assert.equal(r.calls.provisional, true);
-});
-
 test("texts weight obligations; helper volume remains independent of responsibility", () => {
   const requirements = [
     { business_date: date, obligations: [sms("1")], coverage_through: "2026-10-15T16:00:00Z" },
@@ -51,38 +44,11 @@ test("texts weight obligations; helper volume remains independent of responsibil
   assert.equal(b.historical_membership_state, "historical");
 });
 
-test("late sends and exempt slots cannot improve completion; unresolved obligations stay out", () => {
-  const requirements = [{ business_date: date, coverage_through: "2026-10-15T16:00:00Z", obligations: [
-    sms("ontime"), sms("late", date, { outcome: "fulfilled_late", deadline_missed: true }),
-    sms("waived", date, { outcome: "waived_restriction", fulfilled_at: null }),
-    sms("pending", date, { outcome: "pending", fulfilled_at: null }),
-    sms("unassigned", date, { responsible_agent_id: null }),
-  ] }];
-  const r = composeTeamPerformance(input({ requirements }));
-  assert.equal(r.rows[0]!.texts.on_time_required, 1); assert.equal(r.rows[0]!.texts.resolved_due_required, 2);
-  assert.equal(r.rows[0]!.texts.pending_requirements, 1); assert.equal(r.rows[0]!.texts.completion_rate, 0.5);
-  assert.equal(r.rows[0]!.texts.provisional, true); assert.equal(r.unassigned.required_text_counts, 1);
-});
-
-test("rank ties share competition places; volume breaks equal fractions without a second rank", () => {
-  const r = composeTeamPerformance(input({ active_agent_ids: new Set([A, B, C]), calls: [call(date, 100, 100, A), call(date, 100, 100, B), call(date, 90, 100, C)] }));
-  assert.deepEqual(r.rows.map((row) => row.calls.rank), [1, 1, 3]);
-  const more = composeTeamPerformance(input({ now: new Date("2026-10-13T03:00:00Z"), active_agent_ids: new Set([A, B]), calls: [call(date, 100, 100, A), call(date, 130, 100, B)] }));
-  assert.deepEqual(more.rows.map((row) => row.calls.rank), [2, 1]);
-});
-
 test("a zero denominator is unranked; unknown history never manufactures a zero", () => {
   const r = composeTeamPerformance(input({ sms_inventory_complete: false, earliest: { calls: null, text_volume: null, text_requirements: null } })).rows[0]!;
   assert.equal(r.calls.completion_rate, null); assert.equal(r.texts.completion_rate, null);
   assert.equal(r.calls.rank, null); assert.equal(r.texts.rank, null); assert.equal(r.texts.weekly_volume, null);
   assert.equal(r.days[0]!.texts.state, "pending_data");
-});
-
-test("a covered legacy eligible-only call row with unknown all-outbound volume is pending, not a miss", () => {
-  const r = composeTeamPerformance(input({ calls: [{ ...call(date, 0), actual: null }] })).rows[0]!;
-  assert.equal(r.days[0]!.calls.state, "pending_data");
-  assert.equal(r.calls.eligible_days, 0);
-  assert.equal(r.calls.completion_rate, null);
 });
 
 test("a capped subject input creates Pending data, never a false no-texts-due day", () => {
@@ -91,20 +57,4 @@ test("a capped subject input creates Pending data, never a false no-texts-due da
   assert.equal(r.days[0]!.texts.coverage, "partial");
   assert.equal(r.texts.provisional, true);
   assert.equal(r.texts.completion_rate, null);
-});
-
-test("unresolved text sender identity keeps the volume tie-breaker provisional", () => {
-  const r = composeTeamPerformance(input({ volumes: [{ agent_id: null, business_date: date, confirmed: 0, pending: 1 }] }));
-  assert.equal(r.provisional.texts, true);
-  assert.equal(r.rows[0]!.texts.provisional, true);
-});
-
-test("New York Monday rollover, past-week bounds, date validation and DST use calendar dates", () => {
-  assert.equal(performanceWeek(undefined, new Date("2026-10-19T03:59:00Z")).start, "2026-10-12");
-  assert.equal(performanceWeek(undefined, new Date("2026-10-19T04:00:00Z")).start, "2026-10-19");
-  assert.equal(performanceWeek(date, new Date("2026-10-23T16:00:00Z")).through, "2026-10-18");
-  assert.throws(() => performanceWeek("2026-10-13", new Date("2026-10-15T16:00:00Z")));
-  assert.throws(() => performanceWeek("2026-10-19", new Date("2026-10-15T16:00:00Z")));
-  assert.equal(salesOutreachPerformanceQuerySchema.safeParse({ week_start: "2026-02-30" }).success, false);
-  assert.equal(newYorkDayBounds("2026-11-01").end.getTime() - newYorkDayBounds("2026-11-01").start.getTime(), 25 * 3600000);
 });

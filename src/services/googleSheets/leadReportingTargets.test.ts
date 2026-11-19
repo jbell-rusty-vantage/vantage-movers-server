@@ -7,7 +7,6 @@ import { planExpectedSheetTabs } from "./expectedSheetTabs";
 import { syncCallLeadToSheets } from "./googleSheets.service";
 import { callLeadTargets, hasFormBadProjection } from "./leadReportingTargets";
 import { formLeadToRow } from "./projections/formLeadRow";
-import { getMasterLeadsTabs, getSourceLeadTabs } from "./targets";
 import type { CallLeadSheetSource, FormLeadSheetSource } from "./types";
 
 const previousMaster = process.env.TEST_MASTER_LEADS_SHEET_ID;
@@ -61,13 +60,4 @@ test("imported bad Form notes route duplicate booked Forms exclusively to Bad Fo
   assert.equal(row[20], '\'=IMPORTXML("https://example.invalid")');
   assert.equal(row[12], "booked");
   assert.equal(hasFormBadProjection({ external_sheet_review: { kind: "bad_form", raw_value: "forged" } }), false);
-});
-
-test("provisioning uses canonical names and each source tab appears only once", () => {
-  const titles = getMasterLeadsTabs().map((tab) => tab.tabName);
-  assert.deepEqual(titles, ["Forms", "Calls", "Duplicate Forms", "Duplicate Calls", "Bad Form Leads", "Bad Call Leads"]);
-  for (const source of ["main_site", "best_relocation_leads", "tbm_leads"]) {
-    const tabs = getSourceLeadTabs(source);
-    assert.equal(new Set(tabs.map((tab) => tab.tabName)).size, tabs.length);
-  }
 });

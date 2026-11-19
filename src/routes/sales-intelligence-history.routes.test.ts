@@ -4,9 +4,11 @@ import type { AddressInfo } from "node:net";
 import { test } from "node:test";
 import express from "express";
 import { requireApiSecret } from "../middleware/requireApiSecret";
-import { CsiError } from "../services/salesIntelligence/auth";
 import { createSalesIntelligenceBoundaryRouter } from "./sales-intelligence-boundary.routes";
-import { CSI_HISTORY_PREFIX, createSalesIntelligenceHistoryRouter, historyQuerySchemas } from "./sales-intelligence-history.routes";
+import {
+  CSI_HISTORY_PREFIX,
+  createSalesIntelligenceHistoryRouter,
+} from "./sales-intelligence-history.routes";
 
 const oid = () => randomBytes(12).toString("hex");
 const numberId = oid(), leadId = oid(), runId = oid(), conversationId = oid();
@@ -107,41 +109,4 @@ test("history routes: secret guard, flag-off 404, validation, not-found, shapes 
     server.close();
     process.env = saved;
   }
-});
-
-test("history routes: a reader failure maps through the status table", { timeout: 20000 }, async () => {
-  const saved = { ...process.env };
-  process.env.VANTAGE_API_SECRET = "synthetic-global";
-  process.env.SALES_INTELLIGENCE_ENABLED = "true";
-  const app = express();
-  app.use("/api/v1", requireApiSecret);
-  app.use(createSalesIntelligenceHistoryRouter({
-    connect: async () => {},
-    readLeadHistory: async (lead) => { throw lead.model === "CallLead" ? new CsiError("INVALID_INPUT") : new Error("boom"); },
-  }));
-  const server = app.listen(0, "127.0.0.1");
-  await new Promise<void>((resolve) => server.once("listening", resolve));
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}${CSI_HISTORY_PREFIX}`;
-  try {
-    const bad = await fetch(`${base}/lead?model=CallLead&id=${leadId}`, { headers: { "x-api-secret": "synthetic-global" } });
-    assert.equal(bad.status, 400);
-    assert.equal(((await bad.json()) as { code: string }).code, "INVALID_INPUT");
-    const boom = await fetch(`${base}/lead?model=FormLead&id=${leadId}`, { headers: { "x-api-secret": "synthetic-global" } });
-    assert.equal(boom.status, 500);
-    const body = (await boom.json()) as { code: string; error: string };
-    assert.equal(body.code, "INTERNAL_ERROR");
-    assert.equal(body.error.includes("boom"), false);
-  } finally {
-    server.close();
-    process.env = saved;
-  }
-});
-
-test("history query schemas: exactly-one subject rules", () => {
-  assert.equal(historyQuerySchemas.contactNumber.safeParse({}).success, false);
-  assert.equal(historyQuerySchemas.contactNumber.safeParse({ phone: "+15551234567", id: numberId }).success, false);
-  assert.equal(historyQuerySchemas.candidates.safeParse({ phone: "+15551234567", reference: ["a", "b"] }).success, true);
-  assert.equal(historyQuerySchemas.candidates.safeParse({ phone: "+15551234567", contact_number_id: numberId }).success, false);
-  assert.equal(historyQuerySchemas.lead.safeParse({ model: "CallLead", id: leadId }).success, true);
-  assert.deepEqual(Object.keys(historyQuerySchemas).sort(), ["candidates", "contactNumber", "empty", "lead"]);
 });

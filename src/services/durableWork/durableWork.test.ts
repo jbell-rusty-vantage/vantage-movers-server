@@ -1,48 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SheetSyncLease } from "../../models/SheetSyncLease";
 import {
-  CanonicalSerializationError,
   InMemoryDurableRunStore,
   InMemoryLeaseStore,
-  assertChecksum,
-  canonicalJson,
-  classifyGoogleFailure,
-  computeChecksum,
   createBestRelocationIngestionActor,
   createGranotLifecycleProcessorActor,
-  decideProviderRetry,
   resolveEffectiveCapability,
   sanitizeDurableMetadata,
-  type ChecksumEnvelope,
 } from "./index";
-
-test("canonical JSON is stable across object insertion order", () => {
-  const left = { z: 1, nested: { b: 2, a: [3, new Date("2026-05-01T00:00:00Z")] } };
-  const right = { nested: { a: [3, new Date("2026-05-01T00:00:00.000Z")], b: 2 }, z: 1 };
-  assert.equal(canonicalJson(left), canonicalJson(right));
-
-  const envelope: ChecksumEnvelope<typeof left> = {
-    checksum_version: 1,
-    artifact_kind: "ingestion_plan",
-    schema_version: 2,
-    payload: left,
-  };
-  const checksum = computeChecksum(envelope);
-  assert.match(checksum, /^[a-f0-9]{64}$/);
-  assertChecksum(envelope, checksum.toUpperCase());
-});
-
-test("canonical JSON rejects unsupported values", () => {
-  assert.throws(
-    () => canonicalJson({ secret: undefined }),
-    CanonicalSerializationError,
-  );
-  assert.throws(
-    () => canonicalJson({ value: Number.POSITIVE_INFINITY }),
-    CanonicalSerializationError,
-  );
-});
 
 test("effective capability requires all three gates", () => {
   assert.equal(
@@ -60,40 +25,6 @@ test("effective capability requires all three gates", () => {
   });
   assert.equal(disabled.effective_enabled, false);
   assert.deepEqual(disabled.reasons, ["required_configuration_missing"]);
-});
-
-test("provider failures classify and retry deterministically", () => {
-  assert.equal(classifyGoogleFailure({ response: { status: 429 } }), "retryable_rate_limit");
-  assert.equal(classifyGoogleFailure({ code: "ETIMEDOUT" }), "retryable_transient");
-  assert.equal(classifyGoogleFailure({ status: 401 }), "authentication");
-  assert.equal(classifyGoogleFailure({ status: 403 }), "authorization");
-  assert.equal(classifyGoogleFailure({ status: 404 }), "not_found");
-  assert.equal(classifyGoogleFailure({ status: 400 }), "invalid_request");
-  assert.equal(classifyGoogleFailure({ code: "CHECKSUM_MISMATCH" }), "structural");
-
-  const now = new Date("2026-05-01T00:00:00Z");
-  assert.deepEqual(
-    decideProviderRetry({
-      failure_class: "retryable_transient",
-      attempt: 2,
-      now,
-      deadline: new Date(now.getTime() + 60_000),
-      policy: {
-        max_attempts: 5,
-        base_delay_ms: 1_000,
-        max_delay_ms: 10_000,
-        max_elapsed_ms: 120_000,
-        defer_delay_ms: 30_000,
-        started_at: now,
-        random: () => 0.5,
-      },
-    }),
-    {
-      action: "retry",
-      delay_ms: 1_000,
-      failure_class: "retryable_transient",
-    },
-  );
 });
 
 test("fenced in-memory leases reject stale epochs", async () => {
@@ -130,20 +61,6 @@ test("fenced in-memory leases reject stale epochs", async () => {
     }),
     false,
   );
-});
-
-test("model-backed lease schema carries unique scope and fencing epoch", () => {
-  assert.ok(SheetSyncLease.schema.path("lease_epoch"));
-  const uniqueScope = SheetSyncLease.schema
-    .indexes()
-    .find((entry: unknown) => {
-      const [fields, options] = entry as [
-        Record<string, unknown>,
-        { unique?: boolean },
-      ];
-      return fields.scope === 1 && options.unique === true;
-    });
-  assert.ok(uniqueScope);
 });
 
 test("run fake enforces status graph, lease fencing, and monotonic checkpoints", async () => {

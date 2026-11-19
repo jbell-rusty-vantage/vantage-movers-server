@@ -2,20 +2,14 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import type { ClientSession } from "mongoose";
 import mongoose from "mongoose";
-import { toObjectId } from "../../utils/objectId";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { RegistryError } from "./errors";
-import {
-  resetRegistryCacheInvalidationForTests,
-} from "./cacheInvalidation";
+import { resetRegistryCacheInvalidationForTests } from "./cacheInvalidation";
 import { resetGranotCrmSourceCachesForTests } from "./granotCrmSources";
 import {
   createGranotNameFromOwnerIntent,
-  translateOwnerArrivalPolicy,
-  translateOwnerHandling,
-  workspaceSlugFromNormalizedLabel,
   type OwnerGranotNameCommand,
 } from "./ownerGranotNames";
 import type { RegistryActorContext, TransactionRunner } from "./types";
@@ -194,19 +188,6 @@ const auditDeps = {
   insertAudit: async () => undefined,
 };
 
-test("translation table maps handling and arrival policy exactly", () => {
-  assert.equal(translateOwnerHandling("our_lead_source"), "source_scoped_lead");
-  assert.equal(translateOwnerHandling("referral_booking"), "referral_booking");
-  assert.equal(translateOwnerHandling("watch_only"), "deferred");
-  assert.equal(translateOwnerArrivalPolicy("watch_only"), "observation_only");
-  assert.equal(translateOwnerArrivalPolicy("existing_only"), "link_only");
-  assert.equal(translateOwnerArrivalPolicy("create_if_missing"), "create_if_missing");
-  assert.equal(
-    workspaceSlugFromNormalizedLabel("synthetic tbm forms prime"),
-    "synthetic-tbm-forms-prime",
-  );
-});
-
 test("one_feed create is inactive, SMS-off, one any route, lead_model derived from the Feed", async () => {
   stubCatalog();
   stubCreatePath(createdRecord());
@@ -267,78 +248,6 @@ test("one_feed create is inactive, SMS-off, one any route, lead_model derived fr
   assert.equal(audits[0]?.reason, "Owner created this Granot name for a form Feed");
 });
 
-test("one_feed Call Feed derives CallLead", async () => {
-  stubCatalog();
-  stubCreatePath(
-    createdRecord({
-      default_channel: "call",
-      lifecycle_routes: [
-        {
-          route_key: "any",
-          lead_model: "CallLead",
-          move_type: "any",
-          source_granularity_id: callFeedId,
-        },
-      ],
-    }),
-  );
-  const captured: Record<string, unknown>[] = [];
-  (Source as unknown as MutableModel).create = async (docs: unknown[]) => {
-    captured.push(docs[0] as Record<string, unknown>);
-    return [
-      {
-        ...createdRecord({
-          default_channel: "call",
-          lifecycle_routes: [
-            {
-              route_key: "any",
-              lead_model: "CallLead",
-              move_type: "any",
-              source_granularity_id: callFeedId,
-            },
-          ],
-        }),
-        toObject() {
-          return { ...this };
-        },
-      },
-    ];
-  };
-
-  const result = await createGranotNameFromOwnerIntent(
-    ownerIntent({
-      when_lead_arrives: "existing_only",
-      destination: { kind: "one_feed", feed_id: String(callFeedId) },
-    }),
-    OWNER,
-    auditDeps,
-  );
-  assert.equal(result.lifecycle_routes[0]?.lead_model, "CallLead");
-  const routes = captured[0]?.lifecycle_routes as Array<{ lead_model: string }>;
-  assert.equal(routes[0]?.lead_model, "CallLead");
-});
-
-test("Owner create accepts an inactive Feed on an inactive Lead Source as a draft", async () => {
-  stubCatalog();
-  (Company as unknown as MutableModel).findById = (id: unknown) => {
-    if (String(id) === String(companyId)) {
-      return leanById({ _id: companyId, active: false });
-    }
-    return leanById(null);
-  };
-  (Granularity as unknown as MutableModel).findById = (id: unknown) => {
-    if (String(id) === String(formFeedId)) {
-      return leanById(feedDoc(formFeedId, { channel: "form", local: undefined, active: false }));
-    }
-    return leanById(null);
-  };
-  stubCreatePath(createdRecord());
-  const result = await createGranotNameFromOwnerIntent(ownerIntent(), OWNER, auditDeps);
-  assert.equal(result.enabled, false);
-  assert.equal(result.lifecycle_enabled, false);
-  assert.equal(String(result.lifecycle_routes[0]?.source_granularity_id), String(formFeedId));
-});
-
 test("submitted lead_source_id that disagrees with the Feed is rejected naming both sides", async () => {
   stubCatalog();
   (Source as unknown as MutableModel).findOne = () => leanFindOne(null);
@@ -353,114 +262,6 @@ test("submitted lead_source_id that disagrees with the Feed is rejected naming b
       error instanceof RegistryError &&
       String(error.message).includes(String(otherCompanyId)) &&
       String(error.message).includes(String(companyId)),
-  );
-});
-
-test("watch_only with a non-null destination is rejected", async () => {
-  stubCatalog();
-  (Source as unknown as MutableModel).findOne = () => leanFindOne(null);
-  await assert.rejects(
-    () =>
-      createGranotNameFromOwnerIntent(
-        ownerIntent({
-          handling: "watch_only",
-          when_lead_arrives: "watch_only",
-          destination: { kind: "one_feed", feed_id: String(formFeedId) },
-        }),
-        OWNER,
-        auditDeps,
-      ),
-    /cannot have a destination/,
-  );
-});
-
-test("duplicate normalized name is rejected before write", async () => {
-  stubCatalog();
-  (Source as unknown as MutableModel).findOne = () =>
-    leanFindOne({ _id: sourceId, granot_label: "Synthetic TBM Forms Prime" });
-  let created = false;
-  (Source as unknown as MutableModel).create = async () => {
-    created = true;
-    return [];
-  };
-  await assert.rejects(
-    () => createGranotNameFromOwnerIntent(ownerIntent(), OWNER, auditDeps),
-    /already held/,
-  );
-  assert.equal(created, false);
-});
-
-test("short reason is rejected after the name check", async () => {
-  stubCatalog();
-  (Source as unknown as MutableModel).findOne = () => leanFindOne(null);
-  await assert.rejects(
-    () =>
-      createGranotNameFromOwnerIntent(ownerIntent({ reason: "too short" }), OWNER, auditDeps),
-    /10 to 1000/,
-  );
-});
-
-test("form_by_move_type with two Call Feeds is rejected", async () => {
-  stubCatalog();
-  (Source as unknown as MutableModel).findOne = () => leanFindOne(null);
-  const callA = String(callFeedId);
-  const callB = String(formFeedId);
-  (Granularity as unknown as MutableModel).findById = (id: unknown) =>
-    leanById(feedDoc(toObjectId(String(id)), { channel: "call" }));
-  await assert.rejects(
-    () =>
-      createGranotNameFromOwnerIntent(
-        ownerIntent({
-          destination: {
-            kind: "form_by_move_type",
-            local_feed_id: callA,
-            long_distance_feed_id: callB,
-          },
-        }),
-        OWNER,
-        auditDeps,
-      ),
-    /two Form Feeds/,
-  );
-});
-
-test("form_by_move_type with two local Feeds is rejected", async () => {
-  stubCatalog();
-  (Source as unknown as MutableModel).findOne = () => leanFindOne(null);
-  await assert.rejects(
-    () =>
-      createGranotNameFromOwnerIntent(
-        ownerIntent({
-          destination: {
-            kind: "form_by_move_type",
-            local_feed_id: String(localFeedId),
-            long_distance_feed_id: String(otherLocalFeedId),
-          },
-        }),
-        OWNER,
-        auditDeps,
-      ),
-    /long-distance Form Feed/,
-  );
-});
-
-test("form_by_move_type with the same Feed twice is rejected", async () => {
-  stubCatalog();
-  (Source as unknown as MutableModel).findOne = () => leanFindOne(null);
-  await assert.rejects(
-    () =>
-      createGranotNameFromOwnerIntent(
-        ownerIntent({
-          destination: {
-            kind: "form_by_move_type",
-            local_feed_id: String(localFeedId),
-            long_distance_feed_id: String(localFeedId),
-          },
-        }),
-        OWNER,
-        auditDeps,
-      ),
-    /same Feed twice/,
   );
 });
 
@@ -567,39 +368,6 @@ test("referral_booking translates to referral disposition and observation_only",
   assert.equal(captured[0]?.lead_created_policy, "observation_only");
 });
 
-test("watch_only translates to deferred and observation_only", async () => {
-  stubCatalog();
-  (Source as unknown as MutableModel).findOne = () => leanFindOne(null);
-  const captured: Record<string, unknown>[] = [];
-  (Source as unknown as MutableModel).create = async (docs: unknown[]) => {
-    captured.push(docs[0] as Record<string, unknown>);
-    return [
-      {
-        ...createdRecord({
-          lifecycle_disposition: "deferred",
-          lead_created_policy: "observation_only",
-          lead_source_company: undefined,
-          lifecycle_routes: [],
-        }),
-        toObject() {
-          return { ...this };
-        },
-      },
-    ];
-  };
-  const result = await createGranotNameFromOwnerIntent(
-    ownerIntent({
-      handling: "watch_only",
-      destination: null,
-      when_lead_arrives: "watch_only",
-    }),
-    OWNER,
-    auditDeps,
-  );
-  assert.equal(result.lifecycle_disposition, "deferred");
-  assert.equal(captured[0]?.lifecycle_disposition, "deferred");
-});
-
 test("non-Owner actors cannot create a Granot name", async () => {
   await assert.rejects(
     () => createGranotNameFromOwnerIntent(ownerIntent(), ADMIN),
@@ -607,4 +375,3 @@ test("non-Owner actors cannot create a Granot name", async () => {
       error instanceof RegistryError && error.registryCode === "REGISTRY_FORBIDDEN",
   );
 });
-

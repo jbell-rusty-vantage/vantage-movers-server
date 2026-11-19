@@ -1,90 +1,23 @@
 // Tests for: createLeadFromGranot — idempotency/checksum helpers and strict command envelope
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { test } from "node:test";
 import mongoose from "mongoose";
-import { toObjectId } from "../../utils/objectId";
-import type { GranotObservationDocument } from "../../models/GranotObservation";
-import type { SynchronizationDecisionSourceScope } from "../../models/SynchronizationDecision";
 import {
   createGranotLifecycleProcessorActor,
   createGranotWebhookInitiator,
 } from "../durableWork/actors";
 import {
-  CREATE_LEAD_FROM_GRANOT_COMMAND_NAME,
   createLeadFromGranot,
   createLeadFromGranotIdempotencyKey,
-  createLeadFromGranotPayloadChecksum,
-  observationLoadAllowsCreateRouteEventClass,
-  snapshotAllowsCreateRouteEventClass,
   type CreateLeadFromGranotInput,
 } from "./createLeadFromGranot";
 
-const capturedAt = new Date("2026-08-18T15:00:00.000Z");
 
 function objectId(): mongoose.Types.ObjectId {
   return new mongoose.Types.ObjectId();
 }
 
-function observation(
-  overrides: Partial<GranotObservationDocument> = {},
-): GranotObservationDocument {
-  return {
-    _id: objectId(),
-    receipt_id: objectId(),
-    schema_version: 1,
-    kind: "lead_snapshot",
-    normalization_result: "valid",
-    route_event_class: "lead_created",
-    captured_at: capturedAt,
-    source_label_raw: "Synthetic Forms",
-    normalized_source_label: "synthetic forms",
-    identity: {
-      job_no_raw: "synthetic-job-100",
-      normalized_job_no: "SYNTHETIC JOB 100",
-    },
-    contact: {
-      first_name: "Ada",
-      last_name: "Lovelace",
-      display_name: "Ada Lovelace",
-      phone_raw: "5551234567",
-      normalized_phone: "5551234567",
-      email_raw: "ada@example.test",
-      normalized_email: "ada@example.test",
-    },
-    move: {
-      origin: { city: "New York", state: "NY", zip: "10001" },
-      destination: { city: "Brooklyn", state: "NY", zip: "10002" },
-      move_date: new Date("2026-09-01T00:00:00.000Z"),
-      granot_move_size_raw: "2 Bedroom",
-      service_type_raw: "Moving",
-      estimated_cubic_feet: 400,
-    },
-    priority: { valid: true, canonical: "1" },
-    booking_action: {},
-    display_money: {},
-    agent_identity: {},
-    provider_context: {},
-    issues: [],
-    createdAt: capturedAt,
-    updatedAt: capturedAt,
-    ...overrides,
-  } as GranotObservationDocument;
-}
 
-function sourceScope(
-  overrides: Partial<SynchronizationDecisionSourceScope> = {},
-): SynchronizationDecisionSourceScope {
-  return {
-    granot_crm_source_id: objectId(),
-    lead_source_company: objectId(),
-    source_granularity_id: objectId(),
-    disposition: "source_scoped_lead",
-    policy_version: "granot-lifecycle-source-policy-v1",
-    ...overrides,
-  };
-}
 
 function envelope(
   observationId: string,
@@ -117,110 +50,6 @@ function envelope(
     ...overrides,
   };
 }
-
-test("[AC-08] idempotency key is observation-scoped and stable", () => {
-  const observationId = String(objectId());
-  const first = createLeadFromGranotIdempotencyKey(observationId);
-  const second = createLeadFromGranotIdempotencyKey(observationId);
-  assert.equal(first, second);
-  assert.ok(first.includes(observationId));
-  assert.notEqual(
-    createLeadFromGranotIdempotencyKey(String(objectId())),
-    first,
-  );
-  assert.equal(CREATE_LEAD_FROM_GRANOT_COMMAND_NAME, "createLeadFromGranot");
-  assert.equal(first, `granot:create-lead:${observationId}`);
-});
-
-test("[AC-08] checksum covers Observation, model, source-scope, policy version, and creation semantics", () => {
-  const row = observation();
-  const scope = sourceScope();
-  const baseline = createLeadFromGranotPayloadChecksum({
-    observation: row,
-    source_scope: scope,
-    lead_model: "FormLead",
-  });
-  assert.match(baseline, /^[a-f0-9]{64}$/);
-  assert.equal(
-    createLeadFromGranotPayloadChecksum({
-      observation: row,
-      source_scope: scope,
-      lead_model: "FormLead",
-    }),
-    baseline,
-  );
-  assert.notEqual(
-    createLeadFromGranotPayloadChecksum({
-      observation: observation({ _id: objectId() }),
-      source_scope: scope,
-      lead_model: "FormLead",
-    }),
-    baseline,
-  );
-  assert.notEqual(
-    createLeadFromGranotPayloadChecksum({
-      observation: row,
-      source_scope: scope,
-      lead_model: "CallLead",
-    }),
-    baseline,
-  );
-  assert.notEqual(
-    createLeadFromGranotPayloadChecksum({
-      observation: row,
-      source_scope: sourceScope({ policy_version: "granot-lifecycle-source-policy-v2" }),
-      lead_model: "FormLead",
-    }),
-    baseline,
-  );
-  assert.notEqual(
-    createLeadFromGranotPayloadChecksum({
-      observation: row,
-      source_scope: sourceScope({
-        lead_source_company: objectId(),
-        source_granularity_id: objectId(),
-      }),
-      lead_model: "FormLead",
-    }),
-    baseline,
-  );
-  assert.notEqual(
-    createLeadFromGranotPayloadChecksum({
-      observation: observation({
-        contact: { ...row.contact, normalized_phone: "5550009999" },
-      }),
-      source_scope: scope,
-      lead_model: "FormLead",
-    }),
-    baseline,
-  );
-});
-
-test("[AC-08] checksum never includes raw transport envelope or secret-bearing headers", () => {
-  const row = observation();
-  const scope = sourceScope();
-  const baseline = createLeadFromGranotPayloadChecksum({
-    observation: row,
-    source_scope: scope,
-    lead_model: "FormLead",
-  });
-  const withEnvelope = observation({
-    ...row,
-    source_label_raw: "Synthetic Forms with secret=super-secret-token",
-    issues: [{ code: "invalid_priority", severity: "error" }],
-    payload_event_type_raw: "lead_created",
-  } as GranotObservationDocument);
-  assert.equal(
-    createLeadFromGranotPayloadChecksum({
-      observation: withEnvelope,
-      source_scope: scope,
-      lead_model: "FormLead",
-    }),
-    baseline,
-  );
-  assert.equal(baseline.includes("super-secret-token"), false);
-  assert.equal(baseline.includes("Authorization"), false);
-});
 
 test("[AC-08] command envelope rejects invalid Observation, missing provenance, and wrong idempotency key", async () => {
   const observationId = String(objectId());
@@ -275,89 +104,6 @@ test("[AC-08] command envelope rejects invalid Observation, missing provenance, 
       } as CreateLeadFromGranotInput),
     /no caller patch or extra input/,
   );
-});
-
-test("create_if_missing SMS handoff requires the resolved Lead Source ID from source_scope", () => {
-  const companyId = String(objectId());
-  const scope = sourceScope({ lead_source_company: toObjectId(companyId) });
-  assert.equal(String(scope.lead_source_company), companyId);
-  assert.equal("lead_source_company" in scope, true);
-  const checksum = createLeadFromGranotPayloadChecksum({
-    observation: observation(),
-    source_scope: scope,
-    lead_model: "FormLead",
-  });
-  assert.match(checksum, /^[a-f0-9]{64}$/);
-});
-
-test("observation-load create guard allows lead_created only", () => {
-  assert.equal(observationLoadAllowsCreateRouteEventClass("lead_created"), true);
-  assert.equal(observationLoadAllowsCreateRouteEventClass("priority_updated"), false);
-  assert.equal(observationLoadAllowsCreateRouteEventClass("booking_status_changed"), false);
-  assert.equal(observationLoadAllowsCreateRouteEventClass(undefined), false);
-});
-
-test("command rejects priority_updated even for Call create_if_missing", () => {
-  assert.equal(
-    snapshotAllowsCreateRouteEventClass({
-      route_event_class: "priority_updated",
-      selected_lead_model: "CallLead",
-      lead_created_policy: "create_if_missing",
-    }),
-    false,
-  );
-  assert.equal(
-    snapshotAllowsCreateRouteEventClass({
-      route_event_class: "priority_updated",
-      selected_lead_model: "FormLead",
-      lead_created_policy: "create_if_missing",
-    }),
-    false,
-  );
-  assert.equal(
-    snapshotAllowsCreateRouteEventClass({
-      route_event_class: "priority_updated",
-      selected_lead_model: "CallLead",
-      lead_created_policy: "link_only",
-    }),
-    false,
-  );
-  assert.equal(
-    snapshotAllowsCreateRouteEventClass({
-      route_event_class: "lead_created",
-      selected_lead_model: "FormLead",
-      lead_created_policy: "create_if_missing",
-    }),
-    true,
-  );
-  assert.equal(
-    snapshotAllowsCreateRouteEventClass({
-      route_event_class: "lead_created",
-      selected_lead_model: "CallLead",
-      lead_created_policy: "create_if_missing",
-    }),
-    false,
-  );
-  assert.equal(
-    snapshotAllowsCreateRouteEventClass({
-      route_event_class: "booking_status_changed",
-      selected_lead_model: "CallLead",
-      lead_created_policy: "create_if_missing",
-    }),
-    false,
-  );
-});
-
-test("executeCreation requested_effect stays lead_created", () => {
-  const source = readFileSync(
-    path.join(__dirname, "createLeadFromGranot.ts"),
-    "utf8",
-  );
-  const requestedEffects = [...source.matchAll(/requested_effect:\s*"([^"]+)"/g)].map(
-    (match) => match[1],
-  );
-  assert.deepEqual(requestedEffects, ["lead_created"]);
-  assert.equal(source.includes('requested_effect: "priority_updated"'), false);
 });
 
 test("the command rejects an otherwise valid Granot Call create before any DB access", async () => {

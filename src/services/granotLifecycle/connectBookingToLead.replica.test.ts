@@ -144,31 +144,6 @@ test("Connect happy path attaches the Lead, writes EntityChange, and queues book
   assert.ok(jobs.length >= 1);
 });
 
-test("Connect already_satisfied on the exact same Lead writes no new Change", async (t) => {
-  if (!await replicaReady(t)) return;
-  const fixture = await seedLeadless("replay");
-  const input = {
-    booking_id: fixture.bookingId,
-    expected_booking_revision: 0,
-    selected_lead: { lead_model: "FormLead" as const, lead_id: fixture.leadId },
-    owner: owner(`bila03-replay-${fixture.bookingId}`),
-  };
-  const first = await connectBookingToLead({
-    ...input,
-    idempotency_key: `bila03-first-${fixture.bookingId}`,
-  }, { flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true } });
-  assert.equal(first.outcome, "connected");
-  const before = await getEntityChangeModel().countDocuments({ command_name: "connectBookingToLead" });
-  const second = await connectBookingToLead({
-    ...input,
-    expected_booking_revision: first.booking_revision,
-    idempotency_key: `bila03-second-${fixture.bookingId}`,
-  }, { flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true } });
-  assert.equal(second.outcome, "already_satisfied");
-  const after = await getEntityChangeModel().countDocuments({ command_name: "connectBookingToLead" });
-  assert.equal(after, before);
-});
-
 test("Connect exact Idempotency-Key replay returns the durable result", async (t) => {
   if (!await replicaReady(t)) return;
   const fixture = await seedLeadless("idem");

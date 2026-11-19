@@ -4,6 +4,8 @@ Use the primary `vantage-main-server` checkout on `main`. The Sheet Sync drainer
 
 **Capacity handback, November 18.** Before consolidation, main, the production alias and the worker agreed on `b978f400`. The 13-slot historical mix projects 90,909 receipt chains/day. The fixed M10 three-year budget was 2.67 MB/day at 17:39 New York. Gate A is measured for Booking and Cancellation. The highest-value next comparison is verified unique Granot chain removal versus intake through the overnight and 08:00 discovery windows. A separate run-verifier candidate preserved all 4,074 historical replay results from 17 held runs in a read-only experiment. [Post-release flow, archive proof and Booking costs](DAYLIGHT-CAPACITY-AND-BOOKING-2026-11-18.md) · [13-slot runway and scenarios](C:/Users/Pinda/Proyectos/vantage/storage-capacity-analysis-2026-11-17/DAYLIGHT-RUNWAY-2026-11-18.md)
 
+**Server tests, November 19.** The two-pass regression review is complete. The updated assertions cover the RingCentral qualification boundary, Form Fill and Desk replay, official Booking and Cancellation writes, and recovery of uncertain Sheet Sync writes. The [roadmap entry](SERVICE-OPTIMIZATION-ROADMAP.md) records the suite counts and local qualification.
+
 ## Implementation and testing after consolidation
 
 - **Implementation and immediate tests.** The next candidate is the scheduled-run archive verifier. Check out the current production source, implement the comparison for the observed omitted versus null effect reference, and run focused positive and refusal cases. Preserve the exact stored replay response. The read-only experiment covers 17 held runs and 4,074 responses. [Candidate and evidence](DAYLIGHT-CAPACITY-AND-BOOKING-2026-11-18.md)

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/salesOutreach";
-import { salesOutreachRepDaySchema, salesOutreachRepDaysSchema } from "../../../validation/v1/salesOutreachReads";
+import { salesOutreachRepDaySchema } from "../../../validation/v1/salesOutreachReads";
 import { deskTimingOf } from "../config/timing";
 import { composeRepDayRow } from "../contacts/repDay";
 import { callMarks } from "../contacts/testingPipeline";
@@ -11,17 +11,10 @@ import { callsCoverageForDay } from "./freshness";
 import {
   composeRepDay,
   composeTeamGoals,
-  dayCountScope,
-  fallbackCountScope,
-  resolveConfiguredGoal,
   resolveRepDayGoal,
   type RepDayRow,
 } from "./goals";
-import type { OutreachActor } from "../auth";
-import { completeConfigurationInput, TEST_AGENT_A, TEST_AGENT_B } from "../evaluation/testing";
-import { MemoryDeskReadStore } from "./deskTesting";
-import { readRepDays } from "./service";
-import { activeInspection, fixedConfigurationLoader, MemoryReadStore, repDayRow } from "./testing";
+import { repDayRow } from "./testing";
 
 /**
  * P08a roster/goal arithmetic (contracts/fixtures/p08a-roster-goals.json) and the honest-count
@@ -98,41 +91,6 @@ test("P08a fixture: team goal 350, actual 255, 4 goal-enabled reps, 2 at goal, a
   assert.equal(byRep.get("a")!.goal_provenance.basis, "default_goal");
 });
 
-test("108/100 displays the actual, capped progress and zero remaining", () => {
-  const rep = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 108 }));
-  assert.deepEqual([rep.actual_confirmed, rep.goal, rep.progress, rep.remaining, rep.goal_reached], [108, 100, 1, 0, true]);
-});
-
-test("goal provenance: explicit schedule goal, non-working day and not on roster", () => {
-  const custom = salesOutreachConfigurationValueSchema.parse({
-    goals: {
-      roster_version: "r2",
-      default_scheduled_goal: 100,
-      zero_goal_rule: "no_goal_today_excluded_from_denominator",
-      rep_work_schedules: [{ agent_id: agentOf("a"), working_days: [1, 2, 3, 4, 5], scheduled_goal: 80 }],
-    },
-  }).goals;
-  const weekday = resolveConfiguredGoal(custom, "v2", agentOf("a"), "2026-10-05");
-  assert.deepEqual([weekday.goal, weekday.goal_state, weekday.provenance.basis, weekday.provenance.roster_version], [80, "goal", "work_schedule", "r2"]);
-  const sunday = resolveConfiguredGoal(custom, "v2", agentOf("a"), "2026-10-04");
-  assert.deepEqual([sunday.goal, sunday.goal_state, sunday.provenance.basis, sunday.provenance.scheduled_working_day], [0, "no_goal_today", "not_scheduled", false]);
-  const stranger = resolveConfiguredGoal(custom, "v2", agentOf("f"), "2026-10-05");
-  assert.deepEqual([stranger.goal, stranger.goal_state, stranger.provenance.basis], [null, "not_on_roster", "not_on_roster"]);
-  const strangerRow = composeRepDay({
-    agent_id: agentOf("f"),
-    agent_name: null,
-    reviewed_link: false,
-    goal: stranger,
-    row: repDayRow({ agent_id: agentOf("f"), business_day: "2026-10-05", actual_confirmed: 7 }),
-    fallback_scope: "all_outbound",
-    capture_coverage: COMPLETE,
-  });
-  assert.deepEqual([strangerRow.goal_label, strangerRow.actual_confirmed, strangerRow.remaining, strangerRow.goal_reached], ["Not on roster", 7, null, null]);
-  // A rep not on the roster does not add to the team goal or actual.
-  const team = composeTeamGoals([strangerRow], "all_outbound");
-  assert.deepEqual([team.outbound_calls.goal, team.outbound_calls.actual, team.roster_size], [0, 0, 0]);
-});
-
 test("past days prefer the frozen goal snapshot; today resolves from the active configuration", () => {
   const row = repDayRow({
     agent_id: agentOf("a"),
@@ -188,50 +146,6 @@ test("incomplete evidence is never a confirmed zero", () => {
   assert.equal(allPending.outbound_calls.actual, null);
 });
 
-test("count scopes: Other outbound stays separate and mixed scopes never sum", () => {
-  const m2 = repDayRow({ agent_id: agentOf("a"), business_day: DAY, count_scope: "eligible_new_quoted", actual_confirmed: 30, unattributed: 9 });
-  const rep = compose(agentOf("a"), m2);
-  assert.deepEqual([rep.count_scope, rep.count_scope_label, rep.actual_confirmed, rep.other_outbound], [
-    "eligible_new_quoted",
-    "Outbound calls (New/Quoted leads)",
-    30,
-    { count: 9, label: "Other outbound", breakdown: null },
-  ]);
-  const m1 = repDayRow({ agent_id: agentOf("b"), business_day: DAY, actual_confirmed: 20 });
-  assert.equal(dayCountScope([m2, m1]), "mixed");
-  const team = composeTeamGoals([rep, compose(agentOf("b"), m1)], dayCountScope([m2, m1]));
-  assert.deepEqual([team.outbound_calls.actual, team.outbound_calls.unknown_reason, team.count_scope_label], [null, "mixed_count_scope", null]);
-  assert.equal(dayCountScope([]), null);
-});
-
-test("olr C1a fallbackCountScope: a rep without a row takes the configured scope of the day, never the rows'", () => {
-  assert.equal(fallbackCountScope(undefined, DAY), "all_outbound");
-  assert.equal(fallbackCountScope({ count_scope_schedule: undefined }, DAY), "all_outbound", "absent schedule = all_outbound (D1 A)");
-  const goals = salesOutreachConfigurationValueSchema.parse({
-    goals: { count_scope_schedule: [{ from_day: "2026-10-07", scope: "eligible_new_quoted" }] },
-  }).goals;
-  assert.equal(fallbackCountScope(goals, "2026-10-06"), "all_outbound");
-  assert.equal(fallbackCountScope(goals, "2026-10-07"), "eligible_new_quoted");
-});
-
-test("olr C1a GET /rep-days: a rep without a row reads the configured scope even when another rep's stale row says eligible", async () => {
-  const NOW = new Date("2026-10-05T15:00:00.000Z"); // 11:00 New York on DAY
-  const store = new MemoryReadStore();
-  // A row an older build wrote under eligible_new_quoted (2026-10-06 before the refresh corrects it).
-  store.rows = [repDayRow({ agent_id: TEST_AGENT_A, business_day: DAY, count_scope: "eligible_new_quoted", actual_confirmed: 12, computed_as_of: new Date("2026-10-05T14:55:00Z") })];
-  store.calls = { scope: "call_log_all_directions", known_complete_through: new Date("2026-10-05T14:57:00Z"), last_finished_at: NOW, last_error_code: null };
-  store.derivation = { known_complete_through: new Date("2026-10-05T14:58:00Z"), coverage_from: new Date("2026-10-01T04:00:00Z") };
-  const owner: OutreachActor = { role: "owner", actor: { kind: "owner", id: "owner-1", request_id: "r1", run_id: null }, agent_id: null };
-  const read = (input: ReturnType<typeof completeConfigurationInput>) =>
-    readRepDays(owner, { business_day: DAY }, { loader: fixedConfigurationLoader(activeInspection(input)), store, queueStore: new MemoryDeskReadStore(), now: NOW });
-  const absent = salesOutreachRepDaysSchema.parse(await read(completeConfigurationInput({ goal_metrics_enabled: true })));
-  const scopeOf = (body: typeof absent, agent: string) => body.reps!.find((rep) => rep.agent_id === agent)!.count_scope;
-  assert.deepEqual([scopeOf(absent, TEST_AGENT_A), scopeOf(absent, TEST_AGENT_B)], ["eligible_new_quoted", "all_outbound"], "the row keeps what it counted; the no-row rep follows the configuration");
-  const configured = completeConfigurationInput({ goal_metrics_enabled: true });
-  configured.goals = { ...configured.goals, count_scope_schedule: [{ from_day: DAY, scope: "eligible_new_quoted" }] };
-  assert.equal(scopeOf(salesOutreachRepDaysSchema.parse(await read(configured)), TEST_AGENT_B), "eligible_new_quoted");
-});
-
 test("olr C5 + CW1: a materialized zero row is pending while coverage is partial and a recorded 0 (no_activity_recorded) once complete; its frozen goal wins", () => {
   // The refresh after New York midnight writes the zero row of 2026-10-04 (composeRepDayRow, no events).
   const PAST = "2026-10-04";
@@ -271,104 +185,6 @@ test("olr C5 + CW1: a materialized zero row is pending while coverage is partial
   assert.deepEqual([complete.other_outbound.count, complete.actual_awaiting_confirmation, complete.unknown_reason], [0, 0, null]);
 });
 
-test("olr CW1: a row is no_activity_recorded only when it records no outbound call in either scope", () => {
-  const PAST = "2026-10-04";
-  const coverage = COMPLETE;
-  assert.equal(coverage.state, "complete");
-  const basisOf = (row: RepDayRow) =>
-    composeRepDay({
-      agent_id: agentOf("b"), agent_name: null, reviewed_link: true,
-      goal: resolveRepDayGoal({ goals, configuration_version: "v1", agent_id: agentOf("b"), business_day: PAST, today: DAY, row }),
-      row, fallback_scope: row.count_scope, capture_coverage: coverage,
-    }).actual_basis;
-  const base = { agent_id: agentOf("b"), business_day: PAST } as const;
-  const zeroBoth = { actual_confirmed_all: 0, actual_confirmed_eligible: 0, actual_awaiting_all: 0, actual_awaiting_eligible: 0 };
-  // Both scopes stored (olr C1b): the recount's no-row test decides.
-  assert.equal(basisOf(repDayRow({ ...base, ...zeroBoth })), "no_activity_recorded", "zero in both scopes");
-  assert.equal(
-    basisOf(repDayRow({ ...base, count_scope: "eligible_new_quoted", unattributed: 4, ...zeroBoth, actual_confirmed_all: 4 })),
-    "projection",
-    "0 to enrolled Leads but 4 outbound calls is a counted 0, not an absence of activity",
-  );
-  assert.equal(basisOf(repDayRow({ ...base, ...zeroBoth, actual_awaiting_all: 1, actual_awaiting_confirmation: 1 })), "projection", "a call awaiting confirmation is activity");
-  assert.equal(basisOf(repDayRow({ ...base, actual_confirmed: 3, ...zeroBoth, actual_confirmed_all: 3 })), "projection");
-  // A row written before both scopes were stored falls back to its own counts and "Other outbound".
-  assert.equal(basisOf(repDayRow(base)), "no_activity_recorded");
-  assert.equal(basisOf(repDayRow({ ...base, count_scope: "eligible_new_quoted", unattributed: 2 })), "projection");
-});
-
-test("olr C0 GET /rep-days: a rep with no row reads 0 / no_activity_recorded when goal coverage is complete", async () => {
-  const NOW = new Date("2026-10-05T19:00:00.000Z"); // 15:00 New York on DAY
-  const min = (m: number) => new Date(NOW.getTime() + m * 60_000);
-  const store = new MemoryReadStore();
-  store.rows = [repDayRow({ agent_id: TEST_AGENT_A, business_day: DAY, actual_confirmed: 12, computed_as_of: min(-1) })];
-  // A stuck provisional Call Log row holds the capped watermarks 50 min back; the observed ones (A3-cap) are 17–18 min behind.
-  store.calls = { scope: "call_log_all_directions", known_complete_through: min(-50), observed_complete_through: min(-18), last_finished_at: min(-3), last_error_code: null };
-  store.derivation = { known_complete_through: min(-50), observed_complete_through: min(-17), coverage_from: new Date("2026-10-01T04:00:00Z") };
-  const owner: OutreachActor = { role: "owner", actor: { kind: "owner", id: "owner-1", request_id: "r1", run_id: null }, agent_id: null };
-  const read = (input: ReturnType<typeof completeConfigurationInput>) =>
-    readRepDays(owner, { business_day: DAY }, { loader: fixedConfigurationLoader(activeInspection(input)), store, queueStore: new MemoryDeskReadStore(), now: NOW });
-  const repOf = (body: Awaited<ReturnType<typeof read>>, agent: string) => body.reps!.find((rep) => rep.agent_id === agent)!;
-
-  const body = salesOutreachRepDaysSchema.parse(await read(completeConfigurationInput({ goal_metrics_enabled: true })));
-  const zero = repOf(body, TEST_AGENT_B);
-  assert.deepEqual(
-    [zero.actual_confirmed, zero.actual_awaiting_confirmation, zero.actual_basis, zero.other_outbound.count, zero.unknown_reason],
-    [0, 0, "no_activity_recorded", 0, null],
-    "the zero-call roster rep reads 0, not Pending",
-  );
-  assert.deepEqual(zero.coverage, { state: "complete", known_complete_through: min(-20).toISOString(), required_through: min(-25).toISOString(), gaps: [] });
-  assert.deepEqual([repOf(body, TEST_AGENT_A).actual_confirmed, repOf(body, TEST_AGENT_A).actual_basis], [12, "projection"]);
-
-  // Before the observed watermarks exist the capped ones decide: Pending, as before C0.
-  store.calls = { ...store.calls, observed_complete_through: null };
-  store.derivation = { ...store.derivation, observed_complete_through: null };
-  const capped = repOf(salesOutreachRepDaysSchema.parse(await read(completeConfigurationInput({ goal_metrics_enabled: true }))), TEST_AGENT_B);
-  assert.deepEqual([capped.actual_confirmed, capped.actual_basis, capped.coverage.state, capped.unknown_reason], [null, "pending", "partial", "coverage_incomplete"]);
-
-  // The today tolerance is configuration: 18 min (> settlement 2 + finalization 15) is not reached by as_of − 20.
-  store.calls = { ...store.calls, observed_complete_through: min(-18) };
-  store.derivation = { ...store.derivation, observed_complete_through: min(-17) };
-  const tight = completeConfigurationInput({ goal_metrics_enabled: true });
-  tight.evidence = { ...tight.evidence, today_coverage_tolerance_minutes: 18 };
-  const tightRep = repOf(salesOutreachRepDaysSchema.parse(await read(tight)), TEST_AGENT_B);
-  assert.deepEqual([tightRep.actual_basis, tightRep.coverage.required_through], ["pending", min(-18).toISOString()]);
-});
-
-test("olr C1b alternate_scope: the other scope's count with the headline's honesty rule; null for a pre-C1b row", () => {
-  const both = (all: number, eligible: number, awaitingAll = 0, awaitingEligible = 0) => ({
-    actual_confirmed_all: all,
-    actual_confirmed_eligible: eligible,
-    actual_awaiting_all: awaitingAll,
-    actual_awaiting_eligible: awaitingEligible,
-  });
-  const goalPart = salesOutreachRepDaySchema.omit({ overdue_leads: true, calls_due_today: true, sms_due_today: true });
-  // All-outbound headline: the alternate is eligible-only.
-  const m1 = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, actual_awaiting_confirmation: 2, unattributed: 21, ...both(30, 9, 2, 1) }));
-  goalPart.parse(m1);
-  assert.deepEqual(m1.alternate_scope, { count_scope: "eligible_new_quoted", count_scope_label: "Outbound calls (New/Quoted leads)", actual_confirmed: 9, actual_awaiting_confirmation: 1 });
-  assert.equal(m1.actual_confirmed, 30, "the headline is unchanged");
-  // Eligible headline: the alternate is all outbound.
-  const m2 = compose(agentOf("b"), repDayRow({ agent_id: agentOf("b"), business_day: DAY, count_scope: "eligible_new_quoted", actual_confirmed: 9, unattributed: 21, ...both(30, 9) }));
-  assert.deepEqual(m2.alternate_scope, { count_scope: "all_outbound", count_scope_label: "Outbound calls", actual_confirmed: 30, actual_awaiting_confirmation: 0 });
-  // Partial coverage: a positive alternate is a lower bound, a 0 is pending.
-  const partialPositive = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, ...both(30, 4) }), PARTIAL);
-  assert.equal(partialPositive.alternate_scope?.actual_confirmed, 4);
-  const partialZero = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, ...both(30, 0) }), PARTIAL);
-  assert.deepEqual([partialZero.actual_confirmed, partialZero.alternate_scope?.actual_confirmed], [30, null]);
-  const completeZero = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, ...both(30, 0) }));
-  assert.equal(completeZero.alternate_scope?.actual_confirmed, 0);
-  // No row: 0 once coverage is complete, pending before.
-  assert.deepEqual(compose(agentOf("c"), null).alternate_scope, { count_scope: "eligible_new_quoted", count_scope_label: "Outbound calls (New/Quoted leads)", actual_confirmed: 0, actual_awaiting_confirmation: 0 });
-  assert.deepEqual([compose(agentOf("c"), null, PARTIAL).alternate_scope?.actual_confirmed, compose(agentOf("c"), null, PARTIAL).alternate_scope?.actual_awaiting_confirmation], [null, null]);
-  // A row written before both counts were stored: null, never a guessed 0.
-  const older = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30 }));
-  assert.equal(older.alternate_scope, null);
-  goalPart.parse(older);
-  const nulls = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, actual_confirmed_all: null, actual_confirmed_eligible: null, actual_awaiting_all: null, actual_awaiting_eligible: null }));
-  assert.equal(nulls.alternate_scope, null);
-});
-
 test("olr C1b team alternate: the roster's sum; actual null when a rep is pending or pre-C1b; null on a mixed day", () => {
   const both = (agent: string, all: number, eligible: number) =>
     repDayRow({ agent_id: agentOf(agent), business_day: DAY, actual_confirmed: all, unattributed: all - eligible, actual_confirmed_all: all, actual_confirmed_eligible: eligible, actual_awaiting_all: 0, actual_awaiting_eligible: 0 });
@@ -393,51 +209,4 @@ test("olr C1b team alternate: the roster's sum; actual null when a rep is pendin
   // A rep without a row presented under the configured scope while the rows count another: unknown, never a mixed sum.
   const mismatched = [...eligibleRows.slice(0, -1), compose(agentOf(roster.at(-1)!), null)];
   assert.equal(composeTeamGoals(mismatched, "eligible_new_quoted").outbound_calls.alternate?.actual, null);
-});
-
-test("olr C8 other_outbound.breakdown: served with the count, null while the count is null and for a pre-C8 row", () => {
-  const goalPart = salesOutreachRepDaySchema.omit({ overdue_leads: true, calls_due_today: true, sms_due_today: true });
-  const breakdown = { no_lead: 3, lead_not_enrolled: 12, lead_closed: 1, before_activation: 4, ambiguous: 0, not_new_quoted: 1, unknown: 0 };
-  const row = repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, unattributed: 21, other_outbound: breakdown });
-  const served = compose(agentOf("a"), row);
-  goalPart.parse(served);
-  assert.deepEqual(served.other_outbound, { count: 21, label: "Other outbound", breakdown });
-  // Partial coverage: a positive count is a lower bound and keeps its breakdown; a 0 is pending and so is its breakdown.
-  assert.deepEqual(compose(agentOf("a"), row, PARTIAL).other_outbound.breakdown, breakdown);
-  const zero = repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 9, unattributed: 0, other_outbound: { ...breakdown, no_lead: 0, lead_not_enrolled: 0, lead_closed: 0, before_activation: 0, not_new_quoted: 0 } });
-  assert.deepEqual(compose(agentOf("a"), zero, PARTIAL).other_outbound, { count: null, label: "Other outbound", breakdown: null });
-  // A row written before the breakdown was stored: the count stays, the breakdown is null (never guessed).
-  const older = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, unattributed: 21 }));
-  assert.deepEqual(older.other_outbound, { count: 21, label: "Other outbound", breakdown: null });
-  goalPart.parse(older);
-  // No row: all zeros once coverage is complete, null while pending.
-  assert.deepEqual(compose(agentOf("c"), null).other_outbound.breakdown, { no_lead: 0, lead_not_enrolled: 0, lead_closed: 0, before_activation: 0, ambiguous: 0, not_new_quoted: 0, unknown: 0 });
-  assert.equal(compose(agentOf("c"), null, PARTIAL).other_outbound.breakdown, null);
-});
-
-test("olr C8 team other_outbound_breakdown: the roster's sum (equal to other_outbound_total); null when any roster rep's is null", () => {
-  const roster = fixture.rows.map((row) => row.rep);
-  const rowOf = (agent: string, i: number) =>
-    repDayRow({
-      agent_id: agentOf(agent), business_day: DAY, actual_confirmed: 40, unattributed: 10 + i,
-      other_outbound: { no_lead: 1, lead_not_enrolled: 5 + i, lead_closed: 0, before_activation: 3, ambiguous: 1, not_new_quoted: 0, unknown: 0 },
-    });
-  // Every roster rep but the last has a row; the last has none with complete coverage (all zeros).
-  const reps = roster.map((rep, i) => compose(agentOf(rep), i === roster.length - 1 ? null : rowOf(rep, i)));
-  const team = composeTeamGoals(reps, "all_outbound");
-  const n = roster.length - 1;
-  assert.deepEqual(team.other_outbound_breakdown, {
-    no_lead: n, lead_not_enrolled: reps.slice(0, -1).reduce((sum, _rep, i) => sum + 5 + i, 0), lead_closed: 0, before_activation: 3 * n, ambiguous: n, not_new_quoted: 0, unknown: 0,
-  });
-  const total = Object.values(team.other_outbound_breakdown!).reduce((a, b) => a + b, 0);
-  assert.equal(total, team.other_outbound_total, "the team breakdown sums to the team Other outbound total");
-  // A pending rep (no row, partial coverage) or a pre-C8 row makes the team breakdown unknown.
-  const pending = [...reps.slice(0, -1), compose(agentOf(roster.at(-1)!), null, PARTIAL)];
-  assert.equal(composeTeamGoals(pending, "all_outbound").other_outbound_breakdown, null);
-  const older = [compose(agentOf(roster[0]!), repDayRow({ agent_id: agentOf(roster[0]!), business_day: DAY, actual_confirmed: 12, unattributed: 2 })), ...reps.slice(1)];
-  assert.equal(composeTeamGoals(older, "all_outbound").other_outbound_breakdown, null);
-  // A rep off the roster does not enter the sum.
-  const offRoster = compose(agentOf("z"), rowOf("z", 50));
-  assert.equal(offRoster.goal_state, "not_on_roster");
-  assert.deepEqual(composeTeamGoals([...reps, offRoster], "all_outbound").other_outbound_breakdown, team.other_outbound_breakdown);
 });

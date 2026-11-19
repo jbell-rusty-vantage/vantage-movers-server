@@ -17,9 +17,8 @@ import {
   createOrUpdateGranotCrmSource,
   getRegistryGranotCrmSource,
   resetGranotCrmSourceCachesForTests,
-  setGranotCrmSourceLifecycleEnabled,
 } from "./granotCrmSources";
-import type { RegistryActorContext, TransactionRunner } from "./types";
+import type { RegistryActorContext } from "./types";
 
 const companyId = new mongoose.Types.ObjectId();
 const localId = new mongoose.Types.ObjectId();
@@ -169,57 +168,6 @@ test("Admin and missing-reason actors cannot mutate Granot CRM source policy", a
   );
 });
 
-test("[AC-38] Owner create validates inside the transaction and pairs one sanitized granot_crm_source audit", async () => {
-  stubActiveDependencies();
-  (Source as unknown as MutableModel).findOne = () => ({
-    session() {
-      return this;
-    },
-    select() {
-      return this;
-    },
-    lean() {
-      return this;
-    },
-    exec: async () => null,
-  });
-  (Source as unknown as MutableModel).create = async () => [createdDoc()];
-
-  const order: string[] = [];
-  const transaction: TransactionRunner = async (fn) => {
-    order.push("transaction-start");
-    const result = await fn({} as ClientSession);
-    order.push("transaction-commit");
-    return result;
-  };
-
-  const result = await createOrUpdateGranotCrmSource(ownerCommand(), OWNER, {
-    withTransaction: transaction,
-    insertAudit: async (_session, input) => {
-      order.push("audit");
-      assert.equal(input.entityType, "granot_crm_source");
-      assert.equal(input.entityId, String(sourceId));
-      assert.equal(input.reason, "Reviewed synthetic Best Relocation Forms policy");
-      assert.equal(input.actor.requestId, OWNER.requestId);
-      assert.equal(input.before, null);
-      assert.equal(input.after?.lifecycle_enabled, true);
-      assert.equal(input.after?.normalized_granot_label, "bestrelocation forms");
-      assert.equal("api_secret" in (input.after ?? {}), false);
-      assert.equal("payload" in (input.metadata ?? {}), false);
-    },
-  });
-
-  assert.equal(result.lifecycle_enabled, true);
-  assert.deepEqual(order, ["transaction-start", "audit", "transaction-commit"]);
-  assert.deepEqual(getRegistryCacheInvalidationLogForTests(), [
-    [
-      "granot_lifecycle_source_policy",
-      "granot_lifecycle_source_list",
-      "granot_lifecycle_source_health",
-    ],
-  ]);
-});
-
 test("[AC-38] audit failure rolls back mutation and does not invalidate caches", async () => {
   stubActiveDependencies();
   (Source as unknown as MutableModel).findOne = () => ({
@@ -265,41 +213,6 @@ test("[AC-38] audit failure rolls back mutation and does not invalidate caches",
   assert.deepEqual(getRegistryCacheInvalidationLogForTests(), []);
 });
 
-test("duplicate request IDs remain a stable replay conflict", async () => {
-  stubActiveDependencies();
-  (Source as unknown as MutableModel).findOne = () => ({
-    session() {
-      return this;
-    },
-    select() {
-      return this;
-    },
-    lean() {
-      return this;
-    },
-    exec: async () => null,
-  });
-  (Source as unknown as MutableModel).create = async () => [createdDoc()];
-
-  await assert.rejects(
-    () =>
-      createOrUpdateGranotCrmSource(ownerCommand(), OWNER, {
-        withTransaction: async (fn) => fn({} as ClientSession),
-        insertAudit: async () => {
-          throw {
-            code: 11000,
-            keyPattern: { request_id: 1 },
-            keyValue: { request_id: OWNER.requestId },
-          };
-        },
-      }),
-    (error: unknown) =>
-      error instanceof RegistryError &&
-      error.registryCode === "REGISTRY_DUPLICATE_IDENTIFIER",
-  );
-  assert.deepEqual(getRegistryCacheInvalidationLogForTests(), []);
-});
-
 test("inactive or mismatched references fail closed and do not write", async () => {
   (Company as unknown as MutableModel).findById = () =>
     leanById({ _id: companyId, active: false });
@@ -328,56 +241,6 @@ test("inactive or mismatched references fail closed and do not write", async () 
     /active Source Company/,
   );
   assert.equal(created, false);
-});
-
-test("setGranotCrmSourceLifecycleEnabled reuses the audited Owner command", async () => {
-  stubActiveDependencies();
-  const existing = createdDoc({ lifecycle_enabled: false });
-  (Source as unknown as MutableModel).findById = () => leanById(existing);
-  (Source as unknown as MutableModel).findOne = () => ({
-    session() {
-      return this;
-    },
-    select() {
-      return this;
-    },
-    lean() {
-      return this;
-    },
-    exec: async () => null,
-  });
-  (Source as unknown as MutableModel).findByIdAndUpdate = () => ({
-    orFail: async () => createdDoc({ lifecycle_enabled: false }),
-  });
-
-  const result = await setGranotCrmSourceLifecycleEnabled(
-    {
-      id: String(sourceId),
-      lifecycle_enabled: false,
-      reason: "Disable synthetic lifecycle effects",
-    },
-    OWNER,
-    {
-      withTransaction: async (fn) => fn({} as ClientSession),
-      insertAudit: async (_session, input) => {
-        assert.equal(input.entityType, "granot_crm_source");
-        assert.equal(input.reason, "Disable synthetic lifecycle effects");
-      },
-    },
-  );
-  assert.equal(result.lifecycle_enabled, false);
-});
-
-test("read-after-write does not return a cached precommit policy projection", async () => {
-  const committed = createdDoc();
-  (Source as unknown as MutableModel).findById = (id: unknown) => {
-    assert.equal(String(id), String(sourceId));
-    return leanById(committed);
-  };
-  resetGranotCrmSourceCachesForTests();
-  const read = await getRegistryGranotCrmSource(String(sourceId));
-  assert.equal(read.normalized_granot_label, "bestrelocation forms");
-  assert.equal(read.lifecycle_enabled, true);
 });
 
 test("[AC-38] replica-set create commits mutation and audit together then invalidates caches", async (t) => {

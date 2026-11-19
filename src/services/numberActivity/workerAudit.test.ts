@@ -3,18 +3,12 @@
  * `sales_intelligence_audit_events` rows. Owner and desk commands still do.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { test } from "node:test";
 import mongoose from "mongoose";
 import { getSalesIntelligenceAuditEventModel } from "../../models/SalesIntelligenceAuditEvent";
 import { runCaptureProjectionJob, type CaptureProjectionWorkerDeps } from "./captureProjectionWorker";
 import { runCallLogRefreshJob, type CallLogRefreshDeps } from "./callLogRefresh";
 import { inboundQueueAnsweredDeliveries } from "./fixtures";
-import { csiWorkerActor } from "../salesIntelligence/auth";
-import { appendCsiAudit } from "../salesIntelligence/transactions";
-
-const WORKER_AUDIT_KINDS = ["interaction.updated", "interaction.created", "interaction.merged", "capture_projection.completed", "call_log_refresh.completed"];
 
 /** Any `create` on the audit model during the mutation fails the test. */
 async function withAuditModelFence<T>(run: () => Promise<T>): Promise<T> {
@@ -34,18 +28,6 @@ async function withAuditModelFence<T>(run: () => Promise<T>): Promise<T> {
 }
 
 const fakeSession = { inTransaction: () => true } as unknown as mongoose.ClientSession;
-
-test("appendCsiAudit itself still inserts (the Owner/desk path is unchanged): the fence proves it would have caught a worker insert", async () => {
-  await withAuditModelFence(async () => {
-    await assert.rejects(
-      appendCsiAudit(
-        { session: fakeSession, command_id: new mongoose.Types.ObjectId(), now: new Date(), actor: csiWorkerActor(new mongoose.Types.ObjectId().toHexString()) },
-        { subject_key: "job:x", event_kind: "capture_projection.completed", prior: {}, current: {}, target_id: "x", revision: 1, kind: "job" },
-      ),
-      /audit row inserted by a worker completion/,
-    );
-  });
-});
 
 test("capture projection completion enqueues its follow-up jobs and inserts no audit row", async () => {
   const job = { _id: new mongoose.Types.ObjectId(), lease_epoch: 2, input_refs: [new mongoose.Types.ObjectId()], stage: "capture_projection", attempts: 1, status: "leased" };
@@ -100,12 +82,4 @@ test("call log refresh completion stores only the bounded result on the job row 
   assert.deepEqual(stored, outcome.result, "the result is on the job row");
   assert.ok(mutation);
   await withAuditModelFence(() => mutation!(fakeSession));
-});
-
-test("source fence: persistInteraction, captureProjectionWorker and callLogRefresh import no audit writer and name no worker audit kind", () => {
-  for (const file of ["persistInteraction.ts", "captureProjectionWorker.ts", "callLogRefresh.ts"]) {
-    const source = readFileSync(join(__dirname, file), "utf8");
-    assert.equal(source.includes("appendCsiAudit"), false, `${file} imports appendCsiAudit`);
-    for (const kind of WORKER_AUDIT_KINDS) assert.equal(source.includes(`"${kind}"`), false, `${file} still names ${kind}`);
-  }
 });

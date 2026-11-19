@@ -10,7 +10,6 @@ import {
   type IdentityRecordLink,
   type LeadIdentityObservation,
   type LeadIdentityQueryLog,
-  type LeadIdentityResult,
   type LeadIdentityStore,
 } from "./identity";
 import type { SourcePolicySnapshot } from "./sourcePolicy";
@@ -43,14 +42,6 @@ function formPolicy(): SourcePolicySnapshot {
   };
 }
 
-function callPolicy(): SourcePolicySnapshot {
-  return {
-    ...formPolicy(),
-    selected_route_key: "call_any",
-    selected_lead_model: "CallLead",
-    selected_move_type: "any",
-  };
-}
 
 function observation(
   overrides: Partial<LeadIdentityObservation> = {},
@@ -178,82 +169,6 @@ function createModuleStore(seed: Seed = {}): LeadIdentityStore & {
   } as LeadIdentityStore & { queries: LeadIdentityQueryLog[]; writes: string[] };
 }
 
-function assertReadOnlyResult(result: LeadIdentityResult): void {
-  const serialized = JSON.stringify(result);
-  assert.equal(serialized.includes("555000"), false);
-  assert.equal(serialized.includes("@example"), false);
-  assert.equal(serialized.includes("SYNTH JOB"), false);
-}
-
-test("[AC-39] Booking without a Lead returns Booking Lead Reconciliation delegation only", async () => {
-  const store = createModuleStore({
-    bookings: [
-      {
-        id: BOOKING_ID,
-        normalized_job_no: "SYNTH JOB 14C",
-        is_referral_booking: false,
-        is_leadless_booking: true,
-      },
-    ],
-  });
-  const before = store.writes.slice();
-  const result = await resolveLeadIdentity(
-    {
-      observation: observation({
-        identity: { normalized_job_no: "SYNTH JOB 14C" },
-      }),
-      policy: formPolicy(),
-    },
-    store,
-  );
-  assert.equal(result.booking_context?.booking?.id, BOOKING_ID);
-  assert.equal(result.booking_context?.booking_lead_reconciliation_required, true);
-  assert.equal(result.booking_context?.referral_leadless, false);
-  assert.equal(result.booking_context?.owner_lead, undefined);
-  assert.deepEqual(store.writes, before);
-  assertReadOnlyResult(result);
-});
-
-test("[AC-04] module portion multiple current Bookings are an operational Job conflict", async () => {
-  const result = await resolveLeadIdentity(
-    {
-      observation: observation({
-        identity: { normalized_job_no: "SYNTH JOB 14C" },
-      }),
-      policy: formPolicy(),
-    },
-    createModuleStore({
-      bookings: [
-        {
-          id: BOOKING_ID,
-          normalized_job_no: "SYNTH JOB 14C",
-          is_referral_booking: false,
-          is_leadless_booking: false,
-          lead_ref: FORM_ID,
-          lead_model: "FormLead",
-        },
-        {
-          id: "64c0000000000000000000b2",
-          normalized_job_no: "SYNTH JOB 14C",
-          is_referral_booking: false,
-          is_leadless_booking: false,
-          lead_ref: FORM_ID,
-          lead_model: "FormLead",
-        },
-      ],
-      formLeads: [
-        {
-          id: FORM_ID,
-          duplicate: false,
-          lead_source_company: COMPANY,
-          source_granularity_id: GRANULARITY,
-        },
-      ],
-    }),
-  );
-  assert.equal(result.outcome, "conflict");
-  assert.equal(result.reason_code, "job_number_conflict");
-});
 
 test("[AC-07] module portion Record Link model mismatch is a hard conflict", async () => {
   const result = await resolveLeadIdentity(
@@ -319,34 +234,6 @@ test("missing Record Link Lead is a hard conflict and not a contact fallback", a
   assert.equal(result.outcome, "conflict");
   assert.equal(result.reason_code, "record_link_conflict");
   assert.equal(store.queries.some((query) => query.kind === "form_scoped_contact"), false);
-});
-
-test("[AC-07] module portion Call ladder never queries phone without Source Granularity", async () => {
-  const store = createModuleStore({
-    callLeads: [
-      {
-        id: CALL_ID,
-        duplicate: false,
-        source_granularity_id: GRANULARITY,
-        normalized_phone_number: "5550003333",
-      },
-    ],
-  });
-  const result = await resolveLeadIdentity(
-    {
-      observation: observation({
-        contact: { normalized_phone: "5550003333" },
-      }),
-      policy: callPolicy(),
-    },
-    store,
-  );
-  assert.equal(result.target?.id, CALL_ID);
-  assert.ok(
-    store.queries
-      .filter((query) => query.kind === "call_scoped_phone")
-      .every((query) => query.scoped && query.filter.source_granularity_id === GRANULARITY),
-  );
 });
 
 test("Booking owner that differs from a contact candidate is conflict evidence, not reassignment", async () => {

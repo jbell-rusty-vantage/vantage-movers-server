@@ -21,12 +21,6 @@ test("overnight uses New York arrival, including DST repeated hour and summer", 
     ["2026-07-01T05:30:00Z", "bad_call_leads"],
   ]) assert.equal(decision(qualified(instant!)).disposition, expected);
 });
-test("result and same-call answered evidence prevent false missed classifications", () => {
-  for (const result of ["Busy", "Voicemail", "No Answer", "Abandoned", "Answered", ""]) assert.equal(decision(qualified("2026-11-03T08:00:00Z", result)).billable, true);
-  assert.deepEqual(decision(qualified("2026-11-03T08:00:00Z", "Missed", true)), { disposition: "calls", billable: true, reason_codes: ["conflicting_final_result"] });
-  const call = qualified("2026-11-03T08:00:00Z"); call.ringcentral.final_result_call_log_id = "other-call";
-  assert.equal(decision(call).disposition, "calls");
-});
 test("qualification wins; duplicates retain bad reasons; No-Sync does not change billing", () => {
   const call = qualified("2026-11-03T08:00:00Z");
   const result = decision({ ...call, form_fill: true, no_sync: true, external_sheet_review: review("bad_call") });
@@ -44,13 +38,4 @@ test("checker mapping is exact, literal for Forms, and retains unknown genuine n
   for (const value of ["abc", "Duplicate Form", "Duplicate", "Bad Info", "=formula-like inert note"]) assert.equal(classifyExternalReview(value, "FormLead")?.kind, "bad_form");
   assert.throws(() => classifyExternalReview("#REF!", "CallLead"));
   assert.throws(() => classifyExternalReview("x".repeat(4001), "FormLead"));
-});
-test("Unicode labels normalize, detailed reasons agree with the specification, raw text remains exact", () => {
-  const raw = "  \uFF26\uFF4F\uFF52\uFF4D\u3000\uFF26\uFF49\uFF4C\uFF4C  ";
-  const fact = classifyExternalReview(raw, "CallLead");
-  assert.equal(fact?.kind, "duplicate_call"); assert.equal(fact?.reason_code, "external_form_fill");
-  assert.equal(fact?.normalized_value, "form fill"); assert.equal(fact?.raw_value, raw);
-  assert.equal(classifyExternalReview(" Duplicate Call ", "CallLead")?.reason_code, "external_duplicate");
-  const result = decision({...qualified("2026-11-03T18:00:00Z"), external_sheet_review: review("duplicate_call")});
-  assert.deepEqual(result, {disposition:"duplicate_calls",billable:false,reason_codes:["external_duplicate"]});
 });

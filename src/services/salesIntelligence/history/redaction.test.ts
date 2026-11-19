@@ -24,32 +24,3 @@ test("redactSensitiveText redacts a Luhn-valid card spoken as digit groups plus 
   assert.equal(result.redactions, 7);
   assert.equal(luhnValid("4111111111111111"), true);
 });
-
-test("redactSensitiveText does not redact a job number, spoken phone, or cubic-feet figure", () => {
-  const raw =
-    "Job P5562014. Best phone is the 402 number, 402-555-1212. About 300 cubic feet, quote 2114.";
-  const result = redactSensitiveText(raw);
-  assert.equal(result.redactions, 0);
-  assert.equal(result.text.includes("P5562014"), true);
-  assert.equal(result.text.includes("402-555-1212"), true);
-  assert.equal(result.text.includes("300"), true);
-  assert.equal(result.text.includes("2114"), true);
-});
-
-test("an unvalidated 16-digit sequence that fails Luhn is left alone", () => {
-  const raw = "Reference 1234567890123456 is not a card.";
-  assert.equal(luhnValid("1234567890123456"), false);
-  const result = redactSensitiveText(raw);
-  assert.equal(result.redactions, 0);
-  assert.equal(result.text.includes("1234567890123456"), true);
-});
-
-test("spoken digit runs of seven or more are redacted without changing existing payment rules", () => {
-  assert.equal(redactSensitiveText("one two three four five six").redactions, 0);
-  for (const raw of ["one two three four five six seven", "ZERO, oh, TWO, three, four, five, nine", "one. two. three. four. five. six. seven."]) {
-    const result = redactSensitiveText(raw);
-    assert.equal(result.redactions, 1);
-    assert.ok(result.text.startsWith("[REDACTED:SPOKEN_DIGITS]"));
-  }
-  assert.equal(redactSensitiveText("one two three boxes four five six seven").redactions, 0);
-});

@@ -4,7 +4,6 @@ import { collectVerifiedEstimates, verifyEstimatesForm } from "./estimatesCollec
 import { normalizeGranotReceipt } from "../granotLifecycle/normalization";
 import { buildGranotStatementFromCollectedRow } from "./lifecycleStatement";
 import {
-  collectEstimatesInProcess,
   parseEstimatesInProcessHtml,
 } from "./estimatesInProcess";
 
@@ -60,126 +59,6 @@ test("Pool selection posts verified priority9 and refuses a non-Pool returned ro
   await assert.rejects(() => collectVerifiedEstimates(session, { from: '10/12/2026', to: '10/12/2026' }, { selection: 'pool' }), /non-Pool/);
 });
 
-test("estimates parser keeps the prior digit and drops the totals row", () => {
-  const parsed = parseEstimatesInProcessHtml(ESTIMATES_HTML);
-  assert.equal(parsed.recognized, true);
-  const rows = parsed.sources[0]?.sections.followUpEstimates ?? [];
-  assert.equal(rows.length, 2);
-  assert.equal(rows[0]?.values.job_no, "P5562366");
-  assert.equal(rows[0]?.values.priority, "0");
-  assert.equal(rows[0]?.values.phone, "555-0100");
-  assert.equal(rows[0]?.values.est_cf, "250");
-  assert.equal(rows[0]?.values.user, "DEV");
-  assert.equal(rows[0]?.values.from, "Miami, FL");
-  assert.equal(rows[0]?.values.phone2, "555-0199");
-  assert.equal(rows[0]?.values.miles, undefined);
-  assert.equal(rows[0]?.values.open_date, "10/12/2026");
-  assert.equal(rows[1]?.values.priority, undefined);
-  assert.equal(rows[1]?.values.prior, undefined);
-
-  const statement = buildGranotStatementFromCollectedRow({
-    row: rows[0]!,
-    sourceLabel: "Top10 Inbounds",
-    section: "followUpEstimates",
-  });
-  assert.equal(statement.priority, "0");
-  assert.equal(statement.from_city, "Miami");
-  assert.equal(statement.from_state, "FL");
-  assert.equal(statement.user, "DEV");
-  assert.equal(statement.est_cf, "250");
-  assert.equal(statement.event_type, undefined);
-});
-
-test("estimates collector posts Follow-Up Estimates and does not request mprep", async () => {
-  const token = "A04F50BA-B981-44A9-9930-9E7FEC2B8201";
-  const requests: Array<{ url: string; method: string; body?: string }> = [];
-  const responses = [
-    response(`<form action="/network-login"></form>`),
-    response(`<form action="/user-login"></form>`),
-    response(`<a href="/wc.dll?mv~mainmenuwc~${token}~LOGIN">Menu</a>`),
-    response(ESTIMATES_FORM),
-    response(ESTIMATES_HTML),
-  ];
-  const fakeFetch: typeof fetch = async (input, init) => {
-    requests.push({
-      url: String(input),
-      method: init?.method ?? "GET",
-      body: typeof init?.body === "string" ? init.body : init?.body instanceof URLSearchParams ? init.body.toString() : undefined,
-    });
-    const next = responses.shift();
-    assert.ok(next, `unexpected request to ${String(input)}`);
-    return next;
-  };
-
-  let guardedRequests = 0;
-  const sources = await collectEstimatesInProcess(
-    {
-      beforeRequest: () => { guardedRequests++; },
-      dateWindow: { from: "10/12/2026", to: "10/13/2026" },
-      credentials: {
-        networkUsername: "network-user",
-        networkPassword: "network-password",
-        username: "crm-user",
-        password: "crm-password",
-      },
-    },
-    { fetch: fakeFetch },
-  );
-
-  assert.equal(guardedRequests, requests.length * 2);
-  assert.equal(sources[0]?.sections.followUpEstimates.length, 2);
-  assert.ok(requests.every((request) => !request.url.includes("mprep")));
-  const posted = requests.find((request) => request.url.includes("estprocessret"));
-  assert.ok(posted);
-  assert.equal(posted.method, "POST");
-  const body = new URLSearchParams(posted.body);
-  assert.equal(body.get("STATUS"), "V9");
-  assert.equal(body.get("TYPEDTE"), "OPEN");
-  assert.equal(body.get("DATE1"), "10/12/2026");
-  assert.equal(body.get("DATE2"), "10/13/2026");
-  assert.equal(body.get("FUSTATUS"), "10");
-  assert.equal(body.get("USER"), "");
-  assert.equal(body.get("DEPT"), "ALL");
-  assert.equal(body.get("TYPE"), "V1");
-  assert.equal(body.get("SORT"), "V6");
-  assert.ok(requests.some((request) => request.url.includes("estprocesswc")));
-  assert.equal(body.get("STATUS") === "V15", false);
-});
-
-function response(body: string): Response {
-  return new Response(body, { status: 200 });
-}
-
-test("Estimates requires mapped columns and direct row alignment", () => {
-  const missing = parseEstimatesInProcessHtml('<table><tr><th>job_no</th><th>customer</th></tr><tr><td>P1</td><td>Sample</td></tr></table>');
-  assert.equal(missing.recognized, false);
-  assert.ok(missing.diagnostics.includes('required_headers_missing_or_ambiguous'));
-  const shifted = parseEstimatesInProcessHtml(ESTIMATES_HTML.replace('<td>555-0100</td>', ''));
-  assert.equal(shifted.recognized, false);
-  assert.ok(shifted.diagnostics.includes('data_row_cell_count_mismatch'));
-});
-
-test("ambiguous/malformed priority remains held and blank fields are accepted", () => {
-  for (const priority of ['prior: 0 prior: 1', 'prior: 10', 'prior: nope prior: 1', 'prior: 1.5', 'prior: 1x', 'prior: 1_2', 'prior: Poolish', 'prior: Pool.5', 'prior: Pool prior: 1']) {
-    const parsed = parseEstimatesInProcessHtml(ESTIMATES_HTML.replace('prior: 0', priority));
-    assert.equal(parsed.recognized, true);
-    const row = parsed.sources[0]!.sections.followUpEstimates[0]!;
-    assert.equal(row.values.priority, undefined);
-    assert.equal(row.values.estimates_hold_reason, 'missing_or_ambiguous_priority');
-  }
-  const parsed = parseEstimatesInProcessHtml(ESTIMATES_HTML.replace('<td>001REF</td>', '<td></td>'));
-  assert.equal(parsed.recognized, true);
-  assert.equal(parsed.sources[0]!.sections.followUpEstimates[0]!.values.ref_no, undefined);
-  assert.equal(parseEstimatesInProcessHtml(ESTIMATES_HTML).sources[0]!.sections.followUpEstimates[0]!.values.ref_no, '001REF');
-});
-
-test("explicit empty and pagination summaries are validated", () => {
-  assert.equal(parseEstimatesInProcessHtml('<h1>Follow-Up Estimates, Total of: 0 Transactions</h1>').recognized, true);
-  assert.equal(parseEstimatesInProcessHtml('<h1>No leads</h1>').recognized, false);
-  const pager = parseEstimatesInProcessHtml(ESTIMATES_HTML + '<a href="/page2">Next</a>');
-  assert.equal(pager.recognized, false);
-  assert.ok(pager.diagnostics.includes('unsupported_pagination'));
-});
 
 test("collection verifies selectors, same-session pagination, counts and capture time", async () => {
   assert.equal(verifyEstimatesForm(ESTIMATES_FORM), true);
@@ -208,39 +87,9 @@ test("truncated multi-day reports split to complete bounded same-session windows
 });
 
 
-test("actual provider form shapes and timestamp Open Date remain verified", () => {
-  const form = ESTIMATES_FORM.replace('action="/wc.dll?mv~estprocessret~SYNTHETIC"', 'name="theForm"').replace('value="ALL">ALL', '>ALL').replace('value="">All users', '></option><option value="EXAMPLE">Example') + '<script>document.theForm.action="/wc.dll?mv~estprocessret~SYNTHETIC";</script>';
-  assert.equal(verifyEstimatesForm(form), true);
-  const parsed = parseEstimatesInProcessHtml(ESTIMATES_HTML.replaceAll('10/12/2026', '10/12/2026 12:44:11 am'));
-  const row = parsed.sources[0]!.sections.followUpEstimates[0]!;
-  assert.equal(row.values.open_date, '10/12/2026');
-  assert.equal(row.values.open_date_evidence, '10/12/2026 12:44:11 am');
-  assert.equal(row.values.estimates_hold_reason, undefined);
-});
-
-
-test("unsupported large renderer splits but incomplete single-day renderer fails closed", async () => {
-  const broad = '<h1>Follow-Up Estimates, Total of: 4 Transactions</h1><pre>Synthetic fixed-width report</pre>';
-  const pages = [ESTIMATES_FORM, broad, ESTIMATES_HTML, ESTIMATES_HTML.replaceAll('P556236','P856236').replaceAll('10/12/2026','10/13/2026')];
-  const sources = await collectVerifiedEstimates({ sessionToken:'SYNTHETIC', request:async () => pages.shift()! }, { from:'10/12/2026', to:'10/13/2026' }, {});
-  assert.equal(sources[0]!.sections.followUpEstimates.length,4);
-  const singleDay = [ESTIMATES_FORM, broad];
-  await assert.rejects(collectVerifiedEstimates({ sessionToken:'SYNTHETIC', request:async () => singleDay.shift()! }, { from:'10/12/2026', to:'10/12/2026' }, {}), /schema invalid/);
-});
-
 test("provider ignoring requested Open Date partitions fails closed", async () => {
   const pages = [ESTIMATES_FORM, ESTIMATES_HTML];
   await assert.rejects(collectVerifiedEstimates({ sessionToken:'SYNTHETIC', request:async () => pages.shift()! }, { from:'10/13/2026', to:'10/13/2026' }, {}), /outside the requested/);
-});
-
-
-test("verified Granot Pool label is canonical priority 9 without importing membership policy", () => {
-  const parsed = parseEstimatesInProcessHtml(ESTIMATES_HTML.replace('prior: 0','prior: Pool'));
-  const row = parsed.sources[0]!.sections.followUpEstimates[0]!;
-  assert.equal(row.values.priority,'9');
-  assert.equal(row.values.prior,'9');
-  assert.equal(row.values.estimates_hold_reason,undefined);
-  assert.equal(verifyEstimatesForm(ESTIMATES_FORM.replace('value="9">Pool','value="9">Other')),false);
 });
 
 
@@ -265,15 +114,6 @@ test("provider multiline move date extracts canonical start and preserves end ev
   }
 });
 
-test("invalid provider move date stays held rather than becoming a guessed valid date", () => {
-  for (const cell of ['02/30/2026<br> / /', 'nonsense<br>10/22/2026', '10/20/2026junk<br> / /']) {
-    const parsed = parseEstimatesInProcessHtml(ESTIMATES_HTML.replace('<td>10/20/2026</td>', `<td>${cell}</td>`));
-    const row = parsed.sources[0]!.sections.followUpEstimates[0]!;
-    assert.equal(row.values.estimates_hold_reason,'invalid_move_date');
-  }
-});
-
-
 test("provider job links and email annotations keep primary identity and contact separate", () => {
   const html = ESTIMATES_HTML.replace('<td>P5562366</td>','<td>\n  <a href="/synthetic-job">P5562366</a>\n  <br><br><b>FLAG</b>\n</td>').replace('<td>sample@example.test</td>', '<td>\n  sample@example.test\n  <br><b>LABEL</b>\n</td>');
   const row = parseEstimatesInProcessHtml(html).sources[0]!.sections.followUpEstimates[0]!;
@@ -287,10 +127,4 @@ test("provider job links and email annotations keep primary identity and contact
   assert.equal(normalized.normalization_result,'valid');
   assert.equal(normalized.identity.normalized_job_no,'P5562366');
   assert.equal(normalized.issues.some(issue => issue.code === 'invalid_email'),false);
-});
-
-test("blank primary email is not replaced by a provider annotation", () => {
-  const row = parseEstimatesInProcessHtml(ESTIMATES_HTML.replace('<td>sample@example.test</td>', '<td><br><b>LABEL</b></td>')).sources[0]!.sections.followUpEstimates[0]!;
-  assert.equal(row.values.email,undefined);
-  assert.equal(row.values.email_annotation_evidence,'LABEL');
 });

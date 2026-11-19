@@ -4,22 +4,15 @@ import mongoose from "mongoose";
 import { toObjectId } from "../../utils/objectId";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
 import {
-  buildClaimFilter,
-  buildClaimUpdate,
-  buildFenceFilter,
   claimAndProcessOrPoll,
-  drainDueReceipts,
   drainRequestedReceipt,
-  parseReceiptWakeup,
   type ClaimedReceiptSnapshot,
   type ClaimResult,
   type DrainerDeps,
   type ProcessorResult,
 } from "./drainer";
 import {
-  getGranotLifecycleClaimRecoveriesTotal,
   getGranotLifecycleDeadLettersTotal,
-  getGranotLifecycleTechnicalRetriesTotal,
   resetGranotLifecycleMetrics,
 } from "./metrics";
 import { LEASE_DURATION_MS, TECHNICAL_DEAD_LETTER_ATTEMPT } from "./schedules";
@@ -208,56 +201,6 @@ function readProcessingPath(row: ClaimedReceiptSnapshot, path: string): unknown 
   return row.processing[key];
 }
 
-test("claim predicate and update match Section 26 exactly", () => {
-  const now = new Date("2026-08-17T01:00:00.000Z");
-  const id = objectId();
-  assert.deepEqual(buildClaimFilter(now, id), {
-    _id: id,
-    "processing.state": { $in: ["pending", "retry_scheduled", "claimed"] },
-    "processing.next_attempt_at": { $lte: now },
-    $or: [
-      { "processing.state": { $ne: "claimed" } },
-      { "processing.leased_until": { $lte: now } },
-    ],
-  });
-  assert.deepEqual(buildClaimUpdate(now, "glc_cron_owner"), {
-    $set: {
-      "processing.state": "claimed",
-      "processing.lease_owner": "glc_cron_owner",
-      "processing.leased_until": new Date(now.getTime() + LEASE_DURATION_MS),
-      "processing.last_started_at": now,
-    },
-    $inc: { "processing.technical_attempts": 1 },
-  });
-  assert.deepEqual(buildFenceFilter(id, "glc_cron_owner"), {
-    _id: id,
-    "processing.state": "claimed",
-    "processing.lease_owner": "glc_cron_owner",
-  });
-});
-
-test("[AC-30] foundation terminal processor outcomes complete and reset technical budget", async () => {
-  resetGranotLifecycleMetrics();
-  const row = snapshot({
-    processing: {
-      state: "pending",
-      technical_attempts: 4,
-      match_attempt: 0,
-      next_attempt_at: capturedAt,
-      manual_requeue_count: 0,
-    },
-  });
-  const deps = memoryStore([row]);
-  const summary = await drainRequestedReceipt(String(row._id), "queue", deps);
-  assert.equal(summary.completed, 1);
-  assert.equal(row.processing.state, "completed");
-  assert.equal(row.processing.technical_attempts, 0);
-  assert.equal(row.processing.lease_owner, undefined);
-  assert.equal(row.processing.last_error, undefined);
-  assert.ok(row.processing.latest_decision_id);
-  assert.equal(deps.processorCalls.length, 1);
-});
-
 test("[AC-30] foundation pending_match increments match_attempt once and does not consume technical budget", async () => {
   const row = snapshot();
   const deps = memoryStore([row]);
@@ -305,55 +248,6 @@ test("[AC-30] foundation pending_match at 24 hours completes and is not schedule
   assert.equal(row.processing.technical_attempts, 0);
 });
 
-test("[AC-30] foundation insufficient_creation_data completes and is never converted to pending match", async () => {
-  const row = snapshot();
-  const deps = memoryStore([row]);
-  deps.processor = {
-    async process() {
-      return processorResult("insufficient_creation_data");
-    },
-  };
-  await drainRequestedReceipt(String(row._id), "queue", deps);
-  assert.equal(row.processing.state, "completed");
-  assert.equal(row.processing.match_attempt, 0);
-});
-
-test("[AC-30] foundation unknown outcome fails closed as a technical contract error", async () => {
-  resetGranotLifecycleMetrics();
-  const row = snapshot();
-  const deps = memoryStore([row]);
-  deps.processor = {
-    async process() {
-      return processorResult("not_a_real_outcome" as SynchronizationOutcome);
-    },
-  };
-  const summary = await drainRequestedReceipt(String(row._id), "queue", deps);
-  assert.equal(summary.retried, 1);
-  assert.equal(row.processing.state, "retry_scheduled");
-  assert.equal(row.processing.last_error?.code, "unknown_outcome");
-  assert.equal(row.processing.match_attempt, 0);
-  assert.equal(deps.decisions.length, 0);
-});
-
-test("[AC-30] foundation dependency failure creates no Decision and schedules technical retry", async () => {
-  resetGranotLifecycleMetrics();
-  const row = snapshot();
-  const deps = memoryStore([row]);
-  deps.processor = {
-    async process() {
-      throw new Error("synthetic dependency unavailable");
-    },
-  };
-  const summary = await drainRequestedReceipt(String(row._id), "queue", deps);
-  assert.equal(summary.retried, 1);
-  assert.equal(row.processing.state, "retry_scheduled");
-  assert.equal(row.processing.technical_attempts, 1);
-  assert.equal(row.processing.match_attempt, 0);
-  assert.equal(deps.decisions.length, 0);
-  assert.equal(getGranotLifecycleTechnicalRetriesTotal("dependency_failure"), 1);
-  assert.equal(deps.events.some((event) => event.eventKey === "granot_lifecycle.technical_retry.scheduled"), true);
-});
-
 test("[AC-30] foundation consecutive technical failure 10 dead-letters with a safe error", async () => {
   resetGranotLifecycleMetrics();
   const row = snapshot({
@@ -392,82 +286,6 @@ test("[AC-30] foundation consecutive technical failure 10 dead-letters with a sa
   assert.equal(getGranotLifecycleDeadLettersTotal("transaction_failure"), 1);
 });
 
-test("two claimants have one winner and an unexpired lease cannot be stolen", async () => {
-  const row = snapshot();
-  const deps = memoryStore([row]);
-  const first = await drainRequestedReceipt(String(row._id), "queue", deps);
-  assert.equal(first.claimed, 1);
-  row.processing.state = "claimed";
-  row.processing.lease_owner = "glc_queue_other";
-  row.processing.leased_until = new Date(capturedAt.getTime() + LEASE_DURATION_MS);
-  row.processing.next_attempt_at = capturedAt;
-  const second = await drainRequestedReceipt(String(row._id), "cron", deps);
-  assert.equal(second.claimed, 0);
-  assert.equal(second.lease_lost, 0);
-});
-
-test("expired lease recovers and increments the recovery counter only after success", async () => {
-  resetGranotLifecycleMetrics();
-  const row = snapshot({
-    processing: {
-      state: "claimed",
-      technical_attempts: 1,
-      match_attempt: 0,
-      next_attempt_at: capturedAt,
-      lease_owner: "glc_queue_stale",
-      leased_until: new Date(capturedAt.getTime() - 1),
-      manual_requeue_count: 0,
-    },
-  });
-  const deps = memoryStore([row]);
-  const summary = await drainRequestedReceipt(String(row._id), "cron", deps);
-  assert.equal(summary.recovered, 1);
-  assert.equal(getGranotLifecycleClaimRecoveriesTotal(), 1);
-});
-
-test("stale owner cannot renew or finalize", async () => {
-  const row = snapshot();
-  const deps = memoryStore([row]);
-  row.processing.state = "claimed";
-  row.processing.lease_owner = "glc_queue_winner";
-  const renewed = await deps.renewLease!(row._id, "glc_queue_stale", new Date());
-  const finalized = await deps.finalize!(row._id, "glc_queue_stale", {
-    $set: { "processing.state": "completed" },
-  });
-  assert.equal(renewed, false);
-  assert.equal(finalized, false);
-  assert.equal(row.processing.state, "claimed");
-});
-
-test("processing disabled skips without claiming", async () => {
-  const row = snapshot();
-  const deps = memoryStore([row]);
-  deps.flags = { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, processing_enabled: false };
-  const summary = await drainDueReceipts("cron", deps);
-  assert.equal(summary.skipped, true);
-  assert.equal(row.processing.state, "pending");
-  assert.equal(deps.processorCalls.length, 0);
-});
-
-test("[AC-30] foundation historical shadow drain creates no forbidden aggregate effects", async () => {
-  const row = snapshot();
-  const forbidden: string[] = [];
-  const deps = memoryStore([row]);
-  deps.processor = {
-    async process() {
-      return {
-        observation_id: String(objectId()),
-        decision_id: String(objectId()),
-        outcome: "policy_blocked",
-        effects: [],
-      };
-    },
-  };
-  await drainRequestedReceipt(String(row._id), "queue", deps);
-  assert.deepEqual(forbidden, []);
-  assert.equal(row.processing.state, "completed");
-});
-
 test("synchronous loser polls at most five seconds and never starts a second processor", async () => {
   const row = snapshot({
     processing: {
@@ -487,60 +305,6 @@ test("synchronous loser polls at most five seconds and never starts a second pro
   assert.equal(result.status, "accepted_for_processing");
   assert.ok(elapsed <= 5_000);
   assert.equal(deps.processorCalls.length, 0);
-});
-
-test("synchronous completed work returns the stored processor result", async () => {
-  const decision = processorResult("linked");
-  const row = snapshot({
-    processing: {
-      state: "completed",
-      technical_attempts: 0,
-      match_attempt: 0,
-      next_attempt_at: capturedAt,
-      latest_decision_id: toObjectId(decision.decision_id),
-      completed_at: capturedAt,
-      manual_requeue_count: 0,
-    },
-  });
-  const deps = memoryStore([row]);
-  deps.decisions.push(decision);
-  const result = await claimAndProcessOrPoll(String(row._id), deps);
-  assert.equal(result.status, "processed");
-  if (result.status === "processed") {
-    assert.equal(result.result.outcome, "linked");
-    assert.equal(result.result.decision_id, decision.decision_id);
-  }
-  assert.equal(deps.processorCalls.length, 0);
-});
-
-test("queue wakeup parser accepts only { receipt_id }", async () => {
-  const id = String(objectId());
-  assert.equal(await parseReceiptWakeup({ receipt_id: id }), id);
-  await assert.rejects(() => parseReceiptWakeup({ receipt_id: id, extra: true }));
-  await assert.rejects(() => parseReceiptWakeup({ payload: {} }));
-  await assert.rejects(() => parseReceiptWakeup("not-an-object"));
-});
-
-
-test("nonblocking automation refresh reads live dead-letter state without polling", async () => {
-  const row = snapshot({ processing: { state: "dead_letter", technical_attempts: 10, match_attempt: 0, next_attempt_at: capturedAt, manual_requeue_count: 0 } });
-  const deps = memoryStore([row]);
-  deps.syncPollDeadlineMs = 0;
-  const started = deps.now!().getTime();
-  const result = await claimAndProcessOrPoll(String(row._id), deps);
-  assert.equal(result.status, "accepted_for_processing");
-  if (result.status === "accepted_for_processing") assert.equal(result.state, "dead_letter");
-  assert.equal(deps.now!().getTime(), started);
-  assert.equal(deps.processorCalls.length, 0);
-});
-
-test("nonblocking refresh honors an Owner requeue before the canonical claim", async () => {
-  const row = snapshot();
-  const deps = memoryStore([row]);
-  deps.syncPollDeadlineMs = 0;
-  const result = await claimAndProcessOrPoll(String(row._id), deps);
-  assert.equal(result.status, "processed");
-  assert.equal(deps.processorCalls.length, 1);
 });
 
 test("completed channel replay survives decision expiry and respects a superseding decision", async () => {

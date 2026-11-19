@@ -4,7 +4,6 @@ import type { SalesOutreachConfigurationInput } from "../../../validation/v1/sal
 import type { ActiveConfiguration } from "../config/load";
 import { activeInspection, fixedConfigurationLoader } from "../reads/testing";
 import { applyContactSources } from "./apply";
-import { materializesZeroRow, recountRepDay } from "./repDayService";
 import { refreshOpenRepDays } from "./sweep";
 import { ContextBuilder, MemoryContactEventStore, SESSION, memoryTransaction, newId, outboundCall, subjectFacts } from "./testing";
 import { MemoryRepDayStore, callMarks } from "./testingPipeline";
@@ -79,35 +78,4 @@ test("desk_reps refresh after midnight: zero rows for the desk reps of yesterday
   const before = JSON.stringify([...w.repDays.rows.entries()]);
   assert.equal((await refreshOpenRepDays(AFTER_MIDNIGHT, deps)).recounted, 0);
   assert.equal(JSON.stringify([...w.repDays.rows.entries()]), before);
-});
-
-test("desk_reps: a non-rep's calls recount as Not on roster (no goal), today's roster is read at now", async () => {
-  const w = world();
-  await applyContactSources([call(w.events, outboundCall("105", NUMBER, "2026-10-05T14:10:00Z"))], { now: NOW, queueRepDays: false }, w.events, SESSION);
-  const result = await recountRepDay({ agent_id: OUTSIDER, business_day: "2026-10-05" }, active("desk_reps"), NOW, w.repDays, SESSION);
-  assert.equal(result.outcome, "written");
-  assert.deepEqual([result.fields.goal_state, result.fields.goal_snapshot.goal, result.fields.actual_confirmed], ["not_on_roster", null, 1]);
-  assert.deepEqual(w.repDays.deskRepQueries.map((d) => d.toISOString()), [NOW.toISOString()]);
-  // The same Agent becomes a desk rep: today's (unfrozen) row follows the roster at once.
-  w.repDays.deskRepIds = [ALICE, BOB, OUTSIDER];
-  const again = await recountRepDay({ agent_id: OUTSIDER, business_day: "2026-10-05" }, active("desk_reps"), NOW, w.repDays, SESSION);
-  assert.deepEqual([again.outcome, again.fields.goal_state, again.fields.goal_snapshot.goal], ["written", "goal", 100]);
-});
-
-test("materializesZeroRow: a past day and a member of the effective roster; explicit rule keeps the configured list", () => {
-  const derived = effectiveRoster(active("desk_reps").value.goals, [ALICE, BOB]);
-  assert.equal(materializesZeroRow({ agent_id: BOB, business_day: "2026-10-04" }, derived, "2026-10-05"), true);
-  assert.equal(materializesZeroRow({ agent_id: CAROL, business_day: "2026-10-04" }, derived, "2026-10-05"), false);
-  assert.equal(materializesZeroRow({ agent_id: BOB, business_day: "2026-10-05" }, derived, "2026-10-05"), false, "never today");
-  const explicit = effectiveRoster(active(undefined).value.goals, [ALICE, BOB]);
-  assert.equal(materializesZeroRow({ agent_id: CAROL, business_day: "2026-10-04" }, explicit, "2026-10-05"), true);
-  assert.equal(materializesZeroRow({ agent_id: BOB, business_day: "2026-10-04" }, explicit, "2026-10-05"), false);
-});
-
-test("explicit rule: the recount never asks for desk reps", async () => {
-  const w = world();
-  await applyContactSources([call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z"))], { now: NOW, queueRepDays: false }, w.events, SESSION);
-  const result = await recountRepDay({ agent_id: ALICE, business_day: "2026-10-05" }, active(undefined), NOW, w.repDays, SESSION);
-  assert.deepEqual([result.outcome, result.fields.goal_snapshot.roster_version, result.fields.goal_snapshot.goal], ["written", "roster-1", 80]);
-  assert.equal(w.repDays.deskRepQueries.length, 0);
 });

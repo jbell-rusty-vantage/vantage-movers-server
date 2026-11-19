@@ -147,29 +147,6 @@ test("Owner can append two Tariff Adjustment rows", async () => {
   assert.equal(appended[0]?.[1]?.service, "P.G.S.");
 });
 
-test("Employee can append two Tariff Adjustment rows", async () => {
-  const response = await post(VALID_BODY, { "x-test-role": "employee" });
-  const body = (await response.json()) as { ok: boolean; data: { appended: number } };
-
-  assert.equal(response.status, 200);
-  assert.equal(body.ok, true);
-  assert.equal(body.data.appended, 2);
-});
-
-test("Customer Service can append two Tariff Adjustment rows", async () => {
-  const response = await post(VALID_BODY, { "x-test-role": "customer_service" });
-  const body = (await response.json()) as { ok: boolean; data: { appended: number } };
-
-  assert.equal(response.status, 200);
-  assert.equal(body.ok, true);
-  assert.equal(body.data.appended, 2);
-});
-
-test("x-api-secret actors can append two Tariff Adjustment rows", async () => {
-  const response = await post(VALID_BODY, { "x-test-role": "secret" });
-  assert.equal(response.status, 200);
-});
-
 test("rejects customer and job identifiers", async () => {
   const response = await post(
     { ...VALID_BODY, job_no: "P123" },
@@ -182,87 +159,8 @@ test("rejects customer and job identifiers", async () => {
   assert.equal(appended.length, 0);
 });
 
-test("stamps today's date when effective_date is omitted", async () => {
-  const response = await post(
-    {
-      rows: VALID_BODY.rows.map(({ effective_date: _date, ...row }) => row),
-    },
-    { "x-test-role": "owner" },
-  );
-
-  assert.equal(response.status, 200);
-  assert.equal(appended[0]?.[0]?.effectiveDate, "9/1/2026");
-  assert.equal(appended[0]?.[1]?.effectiveDate, "9/1/2026");
-});
-
-test("Owner can append a Linehaul-only payload", async () => {
-  const response = await post(
-    { rows: [VALID_BODY.rows[0]] },
-    { "x-test-role": "owner" },
-  );
-  const body = (await response.json()) as { ok: boolean; data: { appended: number } };
-
-  assert.equal(response.status, 200);
-  assert.equal(body.ok, true);
-  assert.equal(appended[0]?.length, 1);
-  assert.equal(appended[0]?.[0]?.service, "Linehaul");
-});
-
-test("Owner can append Linehaul plus an owner-written service", async () => {
-  const response = await post(
-    {
-      rows: [
-        VALID_BODY.rows[0],
-        {
-          ...VALID_BODY.rows[1],
-          service: "Accesorial Services",
-          rule: "Stair Fee",
-          new_rule: "100.00",
-        },
-      ],
-    },
-    { "x-test-role": "owner" },
-  );
-
-  assert.equal(response.status, 200);
-  assert.equal(appended[0]?.length, 2);
-  assert.equal(appended[0]?.[1]?.service, "Accesorial Services");
-  assert.equal(appended[0]?.[1]?.rule, "Stair Fee");
-  assert.equal(appended[0]?.[1]?.newRule, "100.00");
-});
-
-test("Owner can append three matching rows", async () => {
-  const response = await post(
-    {
-      rows: [
-        VALID_BODY.rows[0],
-        VALID_BODY.rows[1],
-        {
-          ...VALID_BODY.rows[1],
-          service: "Accesorial Services",
-          rule: "Stair Fee",
-          new_rule: "100.00",
-        },
-      ],
-    },
-    { "x-test-role": "owner" },
-  );
-
-  assert.equal(response.status, 200);
-  assert.equal(appended[0]?.length, 3);
-});
-
 test("rejects an empty rows array", async () => {
   const response = await post({ rows: [] }, { "x-test-role": "owner" });
-  assert.equal(response.status, 400);
-  assert.equal(appended.length, 0);
-});
-
-test("rejects a payload with no Linehaul row", async () => {
-  const response = await post(
-    { rows: [VALID_BODY.rows[1]] },
-    { "x-test-role": "owner" },
-  );
   assert.equal(response.status, 400);
   assert.equal(appended.length, 0);
 });

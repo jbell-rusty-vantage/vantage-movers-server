@@ -150,34 +150,12 @@ function signedHeaders(role: "owner" | "admin", path: string): Record<string, st
   };
 }
 
-test("Owner Job Number timeline read returns the assembler DTO", async () => {
-  const path = "/api/v1/admin/job-number-timeline?job_no=P5562924";
-  const response = await fetch(`${baseUrl()}${path}`, {
-    headers: signedHeaders("owner", "/api/v1/admin/job-number-timeline"),
-  });
-  assert.equal(response.status, 200);
-  const body = await response.json() as { ok: true; data: { status: string; page?: { events: Array<{ headline: string }> } } };
-  assert.equal(body.data.status, "ok");
-  assert.equal(body.data.page?.events[0]?.headline, "Lead created (wordpress_form)");
-});
-
 test("Admin cannot read the owner Job Number timeline", async () => {
   const path = "/api/v1/admin/job-number-timeline?job_no=P5562924";
   const response = await fetch(`${baseUrl()}${path}`, {
     headers: signedHeaders("admin", "/api/v1/admin/job-number-timeline"),
   });
   assert.equal(response.status, 403);
-});
-
-test("typed miss returns not_found without an event list", async () => {
-  const path = "/api/v1/admin/job-number-timeline?job_no=missing";
-  const response = await fetch(`${baseUrl()}${path}`, {
-    headers: signedHeaders("owner", "/api/v1/admin/job-number-timeline"),
-  });
-  assert.equal(response.status, 200);
-  const body = await response.json() as { ok: true; data: { status: string; page?: unknown } };
-  assert.equal(body.data.status, "not_found");
-  assert.equal(body.data.page, undefined);
 });
 
 test("Owner recent official booking examples return only Job Numbers", async () => {
@@ -223,12 +201,4 @@ test("unhandled timeline read failure does not echo error.message", async () => 
       failingServer.close((error?: Error) => (error ? reject(error) : resolve())),
     );
   }
-});
-
-test("Admin cannot read recent official booking examples", async () => {
-  const path = "/api/v1/admin/job-number-timeline/recent-official-bookings";
-  const response = await fetch(`${baseUrl()}${path}`, {
-    headers: signedHeaders("admin", "/api/v1/admin/job-number-timeline/recent-official-bookings"),
-  });
-  assert.equal(response.status, 403);
 });

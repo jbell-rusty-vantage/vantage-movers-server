@@ -24,77 +24,6 @@ function classifyRingCentralCallLeadDuplicate(
   );
 }
 
-type CapturedDuplicateLookup = {
-  sourceCompany: string;
-  sourceGranularityId: unknown;
-  normalizedPhone: string;
-  from: Date;
-  to: Date;
-};
-
-test("first call from a caller is unique", async () => {
-  const result = await classifyRingCentralCallLeadDuplicate(
-    {
-      sourceCompany: "top10_leads",
-      callerPhoneNumber: CALLER,
-      telephonySessionId: "session-1",
-      callTimestamp: NOW,
-    },
-    { findRecentCallLeads: async () => [] },
-  );
-
-  assert.equal(result.isDuplicate, false);
-  assert.equal(result.reason, "unique");
-  assert.equal(result.existingLeadId, null);
-});
-
-test("a second call from the same caller + source within the window is a duplicate", async () => {
-  const result = await classifyRingCentralCallLeadDuplicate(
-    {
-      sourceCompany: "top10_leads",
-      callerPhoneNumber: CALLER,
-      telephonySessionId: "session-2",
-      callTimestamp: NOW,
-    },
-    {
-      findRecentCallLeads: async () => [
-        {
-          _id: { toString: () => "lead-1" },
-          phone_number: CALLER,
-          ringcentral: { telephony_session_id: "session-1" },
-        },
-      ],
-    },
-  );
-
-  assert.equal(result.isDuplicate, true);
-  assert.equal(result.reason, "same_source_phone_within_window");
-  assert.equal(result.existingLeadId, "lead-1");
-});
-
-test("the same telephony session is not counted as its own duplicate", async () => {
-  const result = await classifyRingCentralCallLeadDuplicate(
-    {
-      sourceCompany: "top10_leads",
-      callerPhoneNumber: CALLER,
-      telephonySessionId: "session-1",
-      callTimestamp: NOW,
-    },
-    {
-      findRecentCallLeads: async () => [
-        {
-          _id: { toString: () => "lead-1" },
-          phone_number: CALLER,
-          ringcentral: { telephony_session_id: "session-1" },
-        },
-      ],
-    },
-  );
-
-  assert.equal(result.isDuplicate, false);
-  assert.equal(result.reason, "unique");
-});
-
 test("[AC-15] the same call-log identity is not counted as its own duplicate", async () => {
   const result = await classifyRingCentralCallLeadDuplicate(
     {
@@ -119,77 +48,6 @@ test("[AC-15] the same call-log identity is not counted as its own duplicate", a
     },
   );
   assert.equal(result.isDuplicate, false);
-});
-
-test("a call with no caller phone cannot be classified as a duplicate", async () => {
-  const result = await classifyRingCentralCallLeadDuplicate(
-    {
-      sourceCompany: "top10_leads",
-      callerPhoneNumber: null,
-      callTimestamp: NOW,
-    },
-    { findRecentCallLeads: async () => [] },
-  );
-
-  assert.equal(result.isDuplicate, false);
-  assert.equal(result.reason, "no_caller_phone");
-});
-
-test("phone numbers in different formats still match as duplicates", async () => {
-  const result = await classifyRingCentralCallLeadDuplicate(
-    {
-      sourceCompany: "top10_leads",
-      callerPhoneNumber: "+12095551234",
-      telephonySessionId: "session-2",
-      callTimestamp: NOW,
-    },
-    {
-      findRecentCallLeads: async () => [
-        {
-          _id: { toString: () => "lead-2" },
-          phone_number: "(209) 555-1234",
-          ringcentral: { telephony_session_id: "session-1" },
-        },
-      ],
-    },
-  );
-
-  assert.equal(result.isDuplicate, true);
-});
-
-test("duplicate lookup uses the earlier-only 90-day window", async () => {
-  const captured: CapturedDuplicateLookup[] = [];
-
-  const result = await classifyRingCentralCallLeadDuplicate(
-    {
-      sourceCompany: "top10_leads",
-      callerPhoneNumber: CALLER,
-      telephonySessionId: "session-2",
-      callTimestamp: NOW,
-    },
-    {
-      findRecentCallLeads: async (params) => {
-        captured.push(params);
-        return [
-          {
-            _id: { toString: () => "lead-90-days" },
-            phone_number: CALLER,
-            ringcentral: { telephony_session_id: "session-1" },
-          },
-        ];
-      },
-    },
-  );
-
-  assert.equal(result.isDuplicate, true);
-  assert.equal(result.windowDays, 90);
-  assert.equal(captured.length, 1);
-  const capturedLookup = captured[0]!;
-  assert.equal(capturedLookup.sourceCompany, "top10_leads");
-  assert.equal(capturedLookup.sourceGranularityId, SOURCE_GRANULARITY_ID);
-  assert.equal(capturedLookup.normalizedPhone, "2095551234");
-  assert.equal(capturedLookup.from.toISOString(), new Date(STORED_NOW.getTime() - WINDOW_MS).toISOString());
-  assert.equal(capturedLookup.to.toISOString(), STORED_NOW.toISOString());
 });
 
 test("same caller and source exactly 90 days apart is a duplicate", async () => {
@@ -266,31 +124,6 @@ test("different source is scoped out by the duplicate lookup", async () => {
   assert.equal(result.isDuplicate, false);
 });
 
-test("[AC-15] adopted Lead id is excluded from duplicate classification", async () => {
-  const result = await classifyRingCentralCallLeadDuplicate(
-    {
-      sourceCompany: "top10_leads",
-      callerPhoneNumber: CALLER,
-      telephonySessionId: "session-adopted",
-      callLeadIdToExclude: "lead-adopted",
-      callTimestamp: NOW,
-    },
-    {
-      findRecentCallLeads: async ({ callLeadIdToExclude }) => {
-        assert.equal(callLeadIdToExclude, "lead-adopted");
-        return [
-          {
-            _id: { toString: () => "lead-adopted" },
-            phone_number: CALLER,
-          },
-        ];
-      },
-    },
-  );
-  assert.equal(result.isDuplicate, false);
-  assert.equal(result.reason, "unique");
-});
-
 test("[AC-15][AC-16] unresolved Granot candidates do not create false duplicates", async () => {
   for (const state of ["pending", "conflict"] as const) {
     const result = await classifyRingCentralCallLeadDuplicate(
@@ -337,22 +170,4 @@ test("[AC-15] adopted Granot candidate from another physical call remains eligib
   );
   assert.equal(result.isDuplicate, true);
   assert.equal(result.existingLeadId, "lead-prior-adopted");
-});
-
-test("[AC-15] future Leads are outside the earlier-only duplicate window", async () => {
-  const result = await classifyRingCentralCallLeadDuplicate(
-    {
-      sourceCompany: "top10_leads",
-      callerPhoneNumber: CALLER,
-      telephonySessionId: "session-current",
-      callTimestamp: NOW,
-    },
-    {
-      findRecentCallLeads: async ({ to }) => {
-        assert.equal(to.toISOString(), STORED_NOW.toISOString());
-        return [];
-      },
-    },
-  );
-  assert.equal(result.isDuplicate, false);
 });

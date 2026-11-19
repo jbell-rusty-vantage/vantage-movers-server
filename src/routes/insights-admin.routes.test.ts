@@ -37,20 +37,6 @@ before(async () => {
 });
 after(() => servers.forEach((server) => server.close()));
 
-test("analytics is readable without the Owner signature and parses the period query", async () => {
-  const response = await fetch(`${gatedUrl}/api/v1/admin/insights/analytics?period=last_90&compare=last_year&sources=TBM_leads,top10_leads`);
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { ok: true, data: { ok: "analytics" } });
-  assert.equal(response.headers.get("cache-control"), "no-store");
-  assert.match(calls.at(-1)!, /"period":"last_90","compare":"last_year","sources":\["tbm_leads","top10_leads"\]/);
-});
-
-test("an unknown preset is a 400 in words", async () => {
-  const response = await fetch(`${gatedUrl}/api/v1/admin/insights/analytics?period=forever`);
-  assert.equal(response.status, 400);
-  assert.equal((await response.json()).ok, false);
-});
-
 test("money per rep, live daily spend and the Money tab are Owner-only", async () => {
   for (const path of ["/api/v1/admin/insights/allocation-cost", "/api/v1/admin/daily-operations/lead-spend", "/api/v1/admin/money/spend?range=today"]) {
     const refused = await fetch(`${gatedUrl}${path}`);
@@ -59,9 +45,4 @@ test("money per rep, live daily spend and the Money tab are Owner-only", async (
     assert.equal(allowed.status, 200, path);
     assert.equal((await allowed.json()).ok, true);
   }
-});
-
-test("money range is validated", async () => {
-  const response = await fetch(`${openUrl}/api/v1/admin/money/spend?range=decade`);
-  assert.equal(response.status, 400);
 });

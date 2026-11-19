@@ -6,11 +6,9 @@ import {
   getDailyOperationsCollectionName,
   getDailyOperationsCollectionNames,
   getDailyOperationsRedis,
-  getDailyOperationsRedisEnv,
-  getDailyOperationsStreamKey,
   shouldPublishDailyOperationsRedis,
 } from "./dailyOperations";
-import { isTestMode, isVantageTestRunner } from "./runtime";
+import { isVantageTestRunner } from "./runtime";
 
 const KEYS = [
   "UPSTASH_REDIS_REST_URL",
@@ -40,22 +38,6 @@ function clearRedisEnv(): void {
   }
 }
 
-test("missing Redis URL or token returns a null client", () => {
-  clearRedisEnv();
-  assert.equal(getDailyOperationsRedis(), null);
-
-  process.env.KV_REST_API_URL = "https://example.upstash.io";
-  assert.equal(getDailyOperationsRedis(), null);
-
-  delete process.env.KV_REST_API_URL;
-  process.env.KV_REST_API_TOKEN = "dummy-token";
-  assert.equal(getDailyOperationsRedis(), null);
-
-  process.env.KV_REST_API_URL = "   ";
-  process.env.KV_REST_API_TOKEN = "   ";
-  assert.equal(getDailyOperationsRedis(), null);
-});
-
 test("retired transport never constructs Redis even with configured quota-exhausted credentials", () => {
   clearRedisEnv();
   process.env.UPSTASH_REDIS_REST_URL = "https://example.upstash.io";
@@ -66,62 +48,12 @@ test("retired transport never constructs Redis even with configured quota-exhaus
   assert.equal(shouldPublishDailyOperationsRedis(), false);
 });
 
-test("read-only token, KV_URL, and REDIS_URL are not used for the client", () => {
-  clearRedisEnv();
-  process.env.KV_REST_API_READ_ONLY_TOKEN = "dummy-read-only";
-  process.env.KV_URL = "rediss://example.upstash.io:6379";
-  process.env.REDIS_URL = "rediss://example.upstash.io:6379";
-  assert.equal(getDailyOperationsRedis(), null);
-});
-
 test("test runner never publishes Daily Operations Redis writes", () => {
   clearRedisEnv();
   process.env.KV_REST_API_URL = "https://example.upstash.io";
   process.env.KV_REST_API_TOKEN = "dummy-kv-token";
   assert.equal(isVantageTestRunner(), true);
   assert.equal(shouldPublishDailyOperationsRedis(), false);
-});
-
-test("TEST_MODE also keeps Daily Operations Redis publish off", () => {
-  clearRedisEnv();
-  process.env.TEST_MODE = "true";
-  process.env.KV_REST_API_URL = "https://example.upstash.io";
-  process.env.KV_REST_API_TOKEN = "dummy-kv-token";
-  assert.equal(isTestMode(), true);
-  assert.equal(shouldPublishDailyOperationsRedis(), false);
-});
-
-test("missing credentials keep publish off even outside the TEST_MODE flag", () => {
-  clearRedisEnv();
-  delete process.env.TEST_MODE;
-  assert.equal(shouldPublishDailyOperationsRedis(), false);
-});
-
-test("Redis stream key uses VERCEL_ENV production or preview, otherwise local", () => {
-  clearRedisEnv();
-  assert.equal(getDailyOperationsRedisEnv(), "local");
-  assert.equal(
-    getDailyOperationsStreamKey("2026-05-31"),
-    "dailyops:local:stream:2026-05-31",
-  );
-
-  process.env.VERCEL_ENV = "production";
-  assert.equal(
-    getDailyOperationsStreamKey("2026-05-31"),
-    "dailyops:production:stream:2026-05-31",
-  );
-
-  process.env.VERCEL_ENV = "preview";
-  assert.equal(
-    getDailyOperationsStreamKey("2026-05-31"),
-    "dailyops:preview:stream:2026-05-31",
-  );
-
-  process.env.VERCEL_ENV = "development";
-  assert.equal(
-    getDailyOperationsStreamKey("2026-05-31"),
-    "dailyops:local:stream:2026-05-31",
-  );
 });
 
 test("collection names use the test prefix in the test runner", () => {

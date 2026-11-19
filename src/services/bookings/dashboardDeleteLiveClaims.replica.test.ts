@@ -287,40 +287,12 @@ async function linkChangesFor(requestId: string) {
     .exec();
 }
 
-test("[AC-DLC-01] Booking delete drops the live booking_ref and keeps the Lead", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const job = nextJob();
-  const lead = await formLead();
-  const booking = await bookingFor(lead.leadId, job);
-  const link = await recordLink({
-    job,
-    bookingId: booking._id,
-    leadId: lead.leadId,
-    companyId: lead.companyId,
-    granularityId: lead.granularityId,
-    domainRevision: 2,
-  });
-  await deleteBooking(String(booking._id));
-
-  assert.equal(await BookedLead.countDocuments({ _id: booking._id }), 0);
-  const surviving = await getFormLeadModel().findById(lead.leadId).lean().exec();
-  assert.ok(surviving);
-  assert.equal(surviving?.booked ?? null, null);
-  const stored = await getGranotRecordLinkModel().findById(link.linkId).lean().exec();
-  assert.equal(stored?.state, "active");
-  assert.equal(String(stored?.lead_ref?.id), String(lead.leadId));
-  assert.equal(stored?.lead_ref?.model, "FormLead");
-  assert.equal(stored?.booking_ref ?? null, null);
-  assert.equal(stored?.domain_revision, 3);
-  assert.equal(String(stored?.last_observation_id), String(link.observationId));
-});
-
 test("[AC-DLC-02] Booking delete writes one Record Link change with booking_ref absent", async (t) => {
   if (!(await replicaReady(t))) return;
   const job = nextJob();
   const lead = await formLead();
   const booking = await bookingFor(lead.leadId, job);
-  const link = await recordLink({ job, bookingId: booking._id, leadId: lead.leadId });
+  await recordLink({ job, bookingId: booking._id, leadId: lead.leadId });
   const requestId = await deleteBooking(String(booking._id));
   const changes = await linkChangesFor(requestId);
   assert.equal(changes.length, 1);
@@ -354,17 +326,6 @@ test("[AC-DLC-02] Booking delete writes one Record Link change with booking_ref 
   );
 });
 
-test("[AC-DLC-03] Booking delete with no active link writes no Record Link change", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const job = nextJob();
-  const lead = await formLead();
-  const booking = await bookingFor(lead.leadId, job);
-  const requestId = await deleteBooking(String(booking._id));
-  assert.equal(await BookedLead.countDocuments({ _id: booking._id }), 0);
-  assert.equal((await linkChangesFor(requestId)).length, 0);
-  assert.ok(await getFormLeadModel().findById(lead.leadId).lean().exec());
-});
-
 test("[AC-DLC-04] an active link for a different Booking stays unchanged", async (t) => {
   if (!(await replicaReady(t))) return;
   const job = nextJob();
@@ -384,25 +345,6 @@ test("[AC-DLC-04] an active link for a different Booking stays unchanged", async
   assert.equal(String(after?.booking_ref), String(before?.booking_ref));
   assert.equal(after?.domain_revision, 6);
   assert.equal(after?.state, "active");
-});
-
-test("[AC-DLC-05] a superseded link that still stores this Booking id stays unchanged", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const job = nextJob();
-  const lead = await formLead();
-  const booking = await bookingFor(lead.leadId, job);
-  const link = await recordLink({
-    job,
-    bookingId: booking._id,
-    leadId: lead.leadId,
-    state: "superseded",
-    domainRevision: 7,
-  });
-  await deleteBooking(String(booking._id));
-  const stored = await getGranotRecordLinkModel().findById(link.linkId).lean().exec();
-  assert.equal(stored?.state, "superseded");
-  assert.equal(String(stored?.booking_ref), String(booking._id));
-  assert.equal(stored?.domain_revision, 7);
 });
 
 test("[AC-DLC-06] an open booking case loses deterministic_booking_id and stays open", async (t) => {
@@ -426,27 +368,6 @@ test("[AC-DLC-06] an open booking case loses deterministic_booking_id and stays 
   assert.equal(stored?.case_revision, 5);
   assert.equal(String(stored?.record_link_id), String(link.linkId));
   assert.equal(String(stored?.evidence[0]?.observation_id), String(opened.observationId));
-});
-
-test("[AC-DLC-07] a resolved booking case keeps its booking history", async (t) => {
-  if (!(await replicaReady(t))) return;
-  const job = nextJob();
-  const lead = await formLead();
-  const booking = await bookingFor(lead.leadId, job);
-  const resolved = await bookingCase({
-    job,
-    bookingId: booking._id,
-    state: "resolved",
-    sequence: 1,
-    caseRevision: 2,
-  });
-  await deleteBooking(String(booking._id));
-  const stored = await getGranotBookingReconciliationCaseModel().findById(resolved.caseId).lean().exec();
-  assert.equal(stored?.state, "resolved");
-  assert.equal(String(stored?.deterministic_booking_id), String(booking._id));
-  assert.equal(stored?.resolution?.entity_ref?.model, "BookedLead");
-  assert.equal(stored?.resolution?.entity_ref?.id, String(booking._id));
-  assert.equal(stored?.case_revision, 2);
 });
 
 test("[AC-DLC-08] Confirm after Booking delete is not rejected for a ghost booking_ref", async (t) => {

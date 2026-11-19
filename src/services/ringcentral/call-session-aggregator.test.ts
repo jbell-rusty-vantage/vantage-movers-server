@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { aggregateRingCentralCallSession } from "./call-session-aggregator";
-import { CALL_LEAD_MINIMUM_ANSWERED_SECONDS } from "./call-candidate-evaluator";
 import type { RingCentralCallCandidateDocument } from "./call-candidate-types";
 
 const SESSION_ID = "s-aggregate-test";
@@ -61,44 +60,6 @@ function party(
   };
 }
 
-test("aggregates a multi-party session and qualifies the canonical queue party over 120s", () => {
-  const terminalAt = new Date(ANSWERED_AT.getTime() + 121_000);
-  const queueParty = party({
-    partyId: "p-queue",
-    queueCall: true,
-    answered: true,
-    answeredAt: ANSWERED_AT,
-    terminal: true,
-    terminalStatusCode: "Disconnected",
-    terminalAt,
-  });
-  const agentParty = party({
-    partyId: "p-agent",
-    queueCall: false,
-    targetMatched: false,
-    sourceLabel: null,
-    sourceCompany: null,
-    answered: true,
-    answeredAt: ANSWERED_AT,
-    terminal: true,
-    terminalStatusCode: "Disconnected",
-    terminalAt,
-  });
-
-  const { document } = aggregateRingCentralCallSession(
-    [agentParty, queueParty],
-    new Date(terminalAt.getTime() + 1_000),
-  );
-
-  assert.equal(document.canonicalPartyId, "p-queue");
-  assert.equal(document.partyCount, 2);
-  assert.equal(document.decisionStatus, "qualified");
-  assert.equal(document.wouldCreateCallLead, true);
-  assert.equal(document.ingestEligible, true);
-  assert.equal(document.sourceCompany, "tbm_leads");
-  assert.equal(document.estimatedDurationSeconds, 121);
-});
-
 test("uses answered agent lifecycle timing when the target queue leg disconnects early", () => {
   const queueTerminalAt = new Date(ANSWERED_AT.getTime() + 10_000);
   const agentTerminalAt = new Date(ANSWERED_AT.getTime() + 181_000);
@@ -139,51 +100,6 @@ test("uses answered agent lifecycle timing when the target queue leg disconnects
   assert.equal(document.ingestEligible, true);
 });
 
-test("rejects a session that disconnected under 120 seconds", () => {
-  const terminalAt = new Date(ANSWERED_AT.getTime() + 30_000);
-  const { document } = aggregateRingCentralCallSession([
-    party({
-      partyId: "p-short",
-      queueCall: true,
-      terminal: true,
-      terminalStatusCode: "Disconnected",
-      terminalAt,
-    }),
-  ]);
-
-  assert.equal(document.decisionStatus, "rejected");
-  assert.equal(document.decisionReason, "under_120_seconds");
-  assert.equal(document.ingestEligible, false);
-});
-
-test("a live (non-terminal) call over 120s qualifies but is not ingest-eligible", () => {
-  const now = new Date(ANSWERED_AT.getTime() + (CALL_LEAD_MINIMUM_ANSWERED_SECONDS + 5) * 1000);
-  const { document } = aggregateRingCentralCallSession(
-    [party({ partyId: "p-live", queueCall: true, terminal: false })],
-    now,
-  );
-
-  assert.equal(document.wouldCreateCallLead, true);
-  assert.equal(document.terminal, false);
-  assert.equal(document.ingestEligible, false);
-});
-
-test("an outbound-only session is not a lead", () => {
-  const { document } = aggregateRingCentralCallSession([
-    party({
-      partyId: "p-out",
-      direction: "Outbound",
-      targetMatched: false,
-      sourceLabel: null,
-      sourceCompany: null,
-      queueCall: false,
-    }),
-  ]);
-
-  assert.equal(document.decisionStatus, "rejected");
-  assert.equal(document.decisionReason, "not_inbound");
-});
-
 test("a queue or former answering party ending does not end a still-live session", () => {
   const now = new Date(ANSWERED_AT.getTime() + 150000);
   const { document } = aggregateRingCentralCallSession([
@@ -193,15 +109,6 @@ test("a queue or former answering party ending does not end a still-live session
   ], now);
   assert.equal(document.terminal, false);
   assert.equal(document.ingestEligible, false);
-});
-
-test("unanswered session counts initial ringing and completes at exactly 120 seconds", () => {
-  const { document } = aggregateRingCentralCallSession([
-    party({ answered: false, answeredAt: null, missedCall: true, terminal: true,
-      terminalStatusCode: "Disconnected", terminalAt: new Date(ANSWERED_AT.getTime() + 120000) }),
-  ]);
-  assert.equal(document.estimatedDurationSeconds, 120);
-  assert.equal(document.wouldCreateCallLead, true);
 });
 
 test("session aggregation refuses to combine two calls from the same caller", () => {

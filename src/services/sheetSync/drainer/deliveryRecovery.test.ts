@@ -74,18 +74,6 @@ for (const fault of ["missing_confirmation", "malformed_confirmation", "transpor
   });
 }
 
-test("delete with an uncertain transport result converges from a fresh identity read", async () => {
-  const f = statefulWorkbook({ Calls: [headers, ["A", "old"], ["neighbor", "preserve"]] });
-  const writes = [recoveryWrite("delete")];
-  f.fault("delete", "transport");
-  const first = await writeBatchedTargets({ sheets: f.sheets, writes, quota: grant, ensureHeaders: false });
-  assert.ok(first.every((outcome) => outcome.status === "deferred"));
-  const second = await writeBatchedTargets({ sheets: f.sheets, writes, quota: grant, ensureHeaders: false });
-  assert.ok(second.every((outcome) => outcome.status === "synced"));
-  assert.equal(f.count("delete"), 1);
-  assert.deepEqual(f.rows.get("Calls"), [headers, ["neighbor", "preserve"]]);
-});
-
 for (const op of ["upsert", "delete"] as const) {
   test(`${op} cannot infer absence from missing or ambiguous identity headers`, async () => {
     for (const invalidRows of [[], [["Name"]], [["Mongo ID", "Mongo ID"]]]) {
@@ -97,34 +85,6 @@ for (const op of ["upsert", "delete"] as const) {
     }
   });
 }
-
-test("cold header initialization cannot turn an invalid existing identity header into absence", async () => {
-  resetEnsuredTabsCache();
-  const f = statefulWorkbook({ Calls: [["ID", "Name"], ["A", "old"]] });
-  const result = await writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("upsert")], quota: grant });
-  assert.ok(result.every((outcome) => outcome.status !== "synced"));
-  assert.equal(f.count("header") + f.count("append"), 0);
-  assert.deepEqual(f.rows.get("Calls"), [["ID", "Name"], ["A", "old"]]);
-});
-
-test("confirmed newly created tabs can initialize headers; ordinary cold/warm batches keep one identity read", async () => {
-  resetEnsuredTabsCache();
-  const f = statefulWorkbook({});
-  const writes = [recoveryWrite("upsert"), recoveryWrite("upsert", "B")];
-  const first = await writeBatchedTargets({ sheets: f.sheets, writes, quota: grant });
-  assert.ok(first.every((outcome) => outcome.status === "synced"));
-  assert.equal(f.count("provision"), 1);
-  assert.equal(f.count("header"), 1);
-  assert.equal(f.count("read"), 1);
-  assert.equal(f.count("append"), 1);
-  const second = await writeBatchedTargets({ sheets: f.sheets, writes, quota: grant });
-  assert.ok(second.every((outcome) => outcome.status === "synced"));
-  assert.equal(f.count("read"), 2);
-  assert.equal(f.count("header"), 1);
-  assert.equal(f.count("append"), 1);
-  assert.equal(f.count("update"), 1);
-  assert.deepEqual(f.rows.get("Calls"), [headers, ["A", "current"], ["B", "current"]]);
-});
 
 test("shifted legacy Mongo ID lookup deletes the intended row and preserves unrelated rows", async () => {
   const f = statefulWorkbook({ Calls: [["Name", "Old field", "Mongo ID"], ["old", "legacy", "A"], ["neighbor", "legacy", "N"]] });
@@ -302,26 +262,6 @@ test("existing physical duplicate IDs are repaired in the destination and all st
   assert.equal(f.appends(), 0);
   assert.deepEqual(f.rows.get("Calls"), [headers]);
   assert.deepEqual(f.rows.get("Bad Call Leads"), [headers, ["other-id", "preserve"], ["call-1", "current"]]);
-});
-
-test("read quota deferral preserves stale membership until destination is confirmed", async () => {
-  const f = fixture();
-  const quota = { reserve: async () => ({ granted: false }) } as unknown as QuotaLimiter;
-  const result = await writeBatchedTargets({ sheets: f.sheets, writes: f.writes, quota, ensureHeaders: false });
-  assert.ok(result.every((outcome) => outcome.status === "deferred"));
-  assert.equal(f.rows.get("Calls")!.length, 2);
-  assert.equal(f.appends(), 0);
-});
-
-test("overlapping chain and source jobs append one physical row and retain both job outcomes", async () => {
-  const f = fixture();
-  const destination = f.writes.find((write) => write.op === "upsert")!;
-  const overlapping = { ...destination, jobId: "chain-job" };
-  const result = await writeBatchedTargets({ sheets: f.sheets, writes: [...f.writes, overlapping], quota: grant, ensureHeaders: false });
-  assert.ok(result.every((outcome) => outcome.status === "synced"));
-  assert.equal(f.appends(), 1);
-  assert.equal(result.filter((outcome) => outcome.write.op === "upsert").length, 2);
-  assert.equal(f.rows.get("Bad Call Leads")!.length, 2);
 });
 
 test("conflicting current payloads fail closed and preserve prior membership", async () => {

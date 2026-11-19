@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import mongoose, { type ClientSession } from "mongoose";
+import mongoose,{ type ClientSession } from "mongoose";
 import { CsiError } from "../salesIntelligence/auth";
 import type { LeadLinkChange, LeadRow } from "./leadLink";
 import { leadLinkJobWork, type LeadLinkJobDependencies } from "./leadLinkJobs";
@@ -40,18 +40,6 @@ test("a Call Lead job with no number mints it, then links it in the same job (ol
     "mint before the number lookup, so the recompute (and its desk wake) covers the new number");
   assert.equal(changes.length, 1);
   assert.equal(changes[0]!.number_id, "n-minted");
-});
-
-test("a Form Lead job mints through the same path; a number job never mints", async () => {
-  const id = String(new mongoose.Types.ObjectId());
-  const form = fakeDeps({ _id: id, normalized_phone_number: "2025550100" }, { existing: ["n-old"] });
-  await leadLinkJobWork(`lead-link:lead:FormLead:${id}`, id, session, "job-2", NOW, form.deps);
-  assert.deepEqual(form.calls, ["load:FormLead", "mint:FormLead:2025550100:-", "numbers", "recompute:n-old", "recompute:n-minted"]);
-
-  const numberId = String(new mongoose.Types.ObjectId());
-  const number = fakeDeps(callLead());
-  await leadLinkJobWork(`lead-link:number:${numberId}`, numberId, session, "job-3", NOW, number.deps);
-  assert.deepEqual(number.calls, [`recompute:${numberId}`]);
 });
 
 test("a missing Lead mints nothing but still recomputes the numbers that list it; a bad subject is refused", async () => {

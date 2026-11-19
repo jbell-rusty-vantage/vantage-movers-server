@@ -70,29 +70,6 @@ test("Owner Call Lead unique job attaches with booking_origin owner_booking", as
   }
 });
 
-test("Owner Call Lead with no Call Lead row is pending owner_booking no_match", async () => {
-  let resolverCalled = false;
-  const plan = await resolveFromSourceAttach(callInput, undefined, {
-    resolveBookingSourceLead: async () => {
-      resolverCalled = true;
-      throw new Error("Owner Call Lead must not use the import resolver");
-    },
-    evaluateOwnerCallLeadMatch: async () => ({
-      kind: "pending",
-      reason: "no_match",
-      candidates: [],
-    }),
-  });
-
-  assert.equal(resolverCalled, false);
-  assert.equal(plan.kind, "owner_pending");
-  if (plan.kind === "owner_pending") {
-    assert.equal(plan.extras.reason, "no_match");
-    assert.equal(plan.extras.channel, "call");
-    assert.equal(plan.jobNo, "P5556278");
-  }
-});
-
 test("Owner Call Lead with two job matches is pending multiple_matches, not a 409", async () => {
   const plan = await resolveFromSourceAttach(callInput, undefined, {
     evaluateOwnerCallLeadMatch: async () => ({

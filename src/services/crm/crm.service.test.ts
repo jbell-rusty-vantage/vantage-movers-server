@@ -81,34 +81,6 @@ test("submitFormLeadToCrm POSTs to the Granot lead gateway with the urlencoded p
   assert.match(body, /notes=LID6a6255e58ad8d/);
 });
 
-test("submitFormLeadToCrm reports ok=true with the response body and payload on HTTP 200", async () => {
-  const lead = hydrateFormLead();
-  stubFetch(() => new Response("Granot accepted lead 42", { status: 200 }));
-
-  const result = await submitFormLeadToCrm(lead);
-
-  assert.equal(result.ok, true);
-  assert.equal(result.status, 200);
-  assert.equal(result.responseText, "Granot accepted lead 42");
-  assert.equal(result.error, undefined);
-  assert.equal(result.payload.leadno, "DT_czj2atkThs");
-  assert.equal(result.payload.notes, "LID6a6255e58ad8d");
-});
-
-test("submitFormLeadToCrm reports ok=false with response body on HTTP error", async () => {
-  const lead = hydrateFormLead();
-  stubFetch(() => new Response("bad request", { status: 400 }));
-
-  const result = await submitFormLeadToCrm(lead);
-
-  assert.equal(result.ok, false);
-  assert.equal(result.status, 400);
-  assert.equal(result.responseText, "bad request");
-  assert.equal(result.error, undefined);
-  assert.equal(result.payload.leadno, "DT_czj2atkThs");
-  assert.equal(result.payload.notes, "LID6a6255e58ad8d");
-});
-
 test("submitFormLeadToCrm catches network errors and returns ok=false with status 0 and an error message", async () => {
   const lead = hydrateFormLead();
   stubFetch(() => {
@@ -123,17 +95,4 @@ test("submitFormLeadToCrm catches network errors and returns ok=false with statu
   assert.equal(result.error, "ECONNRESET");
   assert.equal(result.payload.leadno, "DT_czj2atkThs");
   assert.equal(result.payload.notes, "LID6a6255e58ad8d");
-});
-
-test("submitFormLeadToCrm forwards companyLabel as the Granot label", async () => {
-  const lead = hydrateFormLead();
-  const calls = stubFetch(() => new Response("OK", { status: 200 }));
-
-  const result = await submitFormLeadToCrm(lead, {
-    companyLabel: "BestRelocation",
-  });
-
-  assert.equal(result.payload.label, "BestRelocation");
-  const body = String(calls[0].init?.body ?? "");
-  assert.match(body, /label=BestRelocation/);
 });

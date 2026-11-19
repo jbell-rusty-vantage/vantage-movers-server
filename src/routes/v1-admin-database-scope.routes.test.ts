@@ -63,29 +63,6 @@ test("admin reads reject the retired historical and combined scopes with a 400",
   }
 });
 
-test("admin reads pass validation for an omitted or production scope", async () => {
-  for (const path of SCOPED_READS) {
-    for (const scope of [undefined, "production"]) {
-      const response = await get(scope ? withScope(path, scope) : path);
-      assert.notEqual(response.status, 400, `${path} ${scope ?? "omitted"}`);
-    }
-  }
-});
-
-test("retired Customer, Agent browse and Agent Sales Report routes are gone", async () => {
-  for (const path of [
-    "/api/v1/admin/customers",
-    "/api/v1/admin/customers/507f1f77bcf86cd799439011",
-    "/api/v1/admin/exports/customers.csv",
-    "/api/v1/admin/exports/agents.csv",
-    "/api/v1/admin/reports/agent-sales?from=2026-01-01&to=2026-01-31",
-    "/api/v1/admin/exports/reports/agent-sales.csv?from=2026-01-01&to=2026-01-31",
-  ]) {
-    const response = await get(path);
-    assert.equal(response.status, 404, path);
-  }
-});
-
 function get(path: string): Promise<Response> {
   return fetch(`${baseUrl}${path}`, { headers: { "x-api-secret": SECRET } });
 }

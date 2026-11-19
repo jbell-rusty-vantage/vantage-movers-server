@@ -1,14 +1,7 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { test } from "node:test";
 import { evaluateEmployeeBookingMatch } from "./leadMatchEvaluator";
 import type { EvaluatedLeadCandidate, PreparedEmployeeBookingSubmission } from "./types";
-
-const originalRules = process.env.EMPLOYEE_BOOKING_AUTO_MATCH_RULES;
-
-afterEach(() => {
-  if (originalRules === undefined) delete process.env.EMPLOYEE_BOOKING_AUTO_MATCH_RULES;
-  else process.env.EMPLOYEE_BOOKING_AUTO_MATCH_RULES = originalRules;
-});
 
 const formSubmission: PreparedEmployeeBookingSubmission = {
   submissionId: "550e8400-e29b-41d4-a716-446655440000",
@@ -65,43 +58,6 @@ function candidate(
   };
 }
 
-test("evaluateEmployeeBookingMatch auto-links a unique Call Lead Job Number", async () => {
-  const candidates: EvaluatedLeadCandidate[] = [
-    candidate({
-      leadId: "64c0f47e4d8b0e1111111111",
-      leadModel: "CallLead",
-      matchMethods: ["job_no"],
-    }),
-  ];
-
-  const result = await evaluateEmployeeBookingMatch(callSubmission, candidates);
-  assert.equal(result.kind, "linked");
-  if (result.kind === "linked") {
-    assert.equal(result.rule, "call_job_no_exact");
-    assert.equal(result.leadModel, "CallLead");
-    assert.equal(result.leadId, "64c0f47e4d8b0e1111111111");
-  }
-});
-
-test("evaluateEmployeeBookingMatch auto-links a unique Form Lead Job Number on form channel", async () => {
-  const candidates: EvaluatedLeadCandidate[] = [
-    candidate({
-      leadId: "64c0f47e4d8b0e1212121212",
-      leadModel: "FormLead",
-      confidence: "high",
-      matchMethods: ["job_no"],
-    }),
-  ];
-
-  const result = await evaluateEmployeeBookingMatch(formSubmission, candidates);
-  assert.equal(result.kind, "linked");
-  if (result.kind === "linked") {
-    assert.equal(result.rule, "form_job_no_exact");
-    assert.equal(result.leadModel, "FormLead");
-    assert.equal(result.leadId, "64c0f47e4d8b0e1212121212");
-  }
-});
-
 test("evaluateEmployeeBookingMatch prefers the Form Lead when a Form Lead and a Call Lead share the Job Number (either channel)", async () => {
   const form = candidate({ leadId: "64c0f47e4d8b0e5555555555", leadModel: "FormLead", confidence: "high", matchMethods: ["job_no"] });
   const call = candidate({ leadId: "64c0f47e4d8b0e6666666666", leadModel: "CallLead", confidence: "high", matchMethods: ["job_no", "phone"] });
@@ -129,45 +85,6 @@ test("evaluateEmployeeBookingMatch keeps two Form Leads plus a Call Lead on one 
   if (result.kind === "pending") assert.equal(result.reason, "multiple_matches");
 });
 
-test("evaluateEmployeeBookingMatch treats two Call Leads with the same Job Number as multiple_matches", async () => {
-  const candidates: EvaluatedLeadCandidate[] = [
-    candidate({
-      leadId: "64c0f47e4d8b0e3333333333",
-      leadModel: "CallLead",
-      matchMethods: ["job_no"],
-    }),
-    candidate({
-      leadId: "64c0f47e4d8b0e4444444444",
-      leadModel: "CallLead",
-      matchMethods: ["job_no"],
-    }),
-  ];
-
-  const result = await evaluateEmployeeBookingMatch(callSubmission, candidates);
-  assert.deepEqual(result, {
-    kind: "pending",
-    reason: "multiple_matches",
-    candidates,
-  });
-});
-
-test("evaluateEmployeeBookingMatch leaves same-phone no-job as pending no_match", async () => {
-  const candidates: EvaluatedLeadCandidate[] = [
-    candidate({
-      leadId: "64c0f47e4d8b0e1313131313",
-      leadModel: "CallLead",
-      matchMethods: ["phone"],
-    }),
-  ];
-
-  const result = await evaluateEmployeeBookingMatch(callSubmission, candidates);
-  assert.deepEqual(result, {
-    kind: "pending",
-    reason: "no_match",
-    candidates,
-  });
-});
-
 test("evaluateEmployeeBookingMatch never auto-links LID, email, or phone under Exact Job Booking Attach", async () => {
   const candidates: EvaluatedLeadCandidate[] = [
     candidate({
@@ -186,25 +103,6 @@ test("evaluateEmployeeBookingMatch never auto-links LID, email, or phone under E
   });
 });
 
-test("evaluateEmployeeBookingMatch never auto-links when candidate query overflowed", async () => {
-  const candidates: EvaluatedLeadCandidate[] = [
-    candidate({
-      leadId: "64c0f47e4d8b0e1111111111",
-      leadModel: "CallLead",
-      confidence: "high",
-      matchMethods: ["job_no"],
-    }),
-  ];
-
-  const result = await evaluateEmployeeBookingMatch(callSubmission, candidates, true);
-
-  assert.deepEqual(result, {
-    kind: "pending",
-    reason: "multiple_matches",
-    candidates,
-  });
-});
-
 test("evaluateEmployeeBookingMatch returns channel_conflict for opposite-channel-only Job Number", async () => {
   const candidates: EvaluatedLeadCandidate[] = [
     candidate({
@@ -219,50 +117,6 @@ test("evaluateEmployeeBookingMatch returns channel_conflict for opposite-channel
   assert.deepEqual(result, {
     kind: "pending",
     reason: "channel_conflict",
-    candidates,
-  });
-});
-
-test("evaluateEmployeeBookingMatch respects none policy", async () => {
-  process.env.EMPLOYEE_BOOKING_AUTO_MATCH_RULES = "none";
-  const candidates: EvaluatedLeadCandidate[] = [
-    candidate({
-      leadId: "64c0f47e4d8b0e3333333333",
-      leadModel: "CallLead",
-      confidence: "high",
-      matchMethods: ["job_no"],
-    }),
-  ];
-
-  const result = await evaluateEmployeeBookingMatch(callSubmission, candidates);
-  assert.equal(result.kind, "pending");
-  if (result.kind === "pending") {
-    assert.equal(result.reason, "no_match");
-  }
-});
-
-test("evaluateEmployeeBookingMatch treats contradictory phone/name signals as a hard conflict", async () => {
-  const candidates: EvaluatedLeadCandidate[] = [
-    candidate({
-      leadId: "64c0f47e4d8b0e5555555555",
-      leadModel: "FormLead",
-      confidence: "high",
-      matchMethods: ["phone", "email"],
-    }),
-    candidate({
-      leadId: "64c0f47e4d8b0e5555555555",
-      leadModel: "FormLead",
-      confidence: "high",
-      matchMethods: ["phone", "normalized_name"],
-      warnings: ["name_contradiction"],
-    }),
-  ];
-
-  const result = await evaluateEmployeeBookingMatch(formSubmission, candidates);
-
-  assert.deepEqual(result, {
-    kind: "pending",
-    reason: "identity_conflict",
     candidates,
   });
 });

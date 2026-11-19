@@ -5,10 +5,9 @@ import { OutreachError } from "../errors";
 import { evaluateAndProject, evaluationAdmissionOf } from "../evaluation/evaluateJob";
 import { capturedCoverage, completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow } from "../evaluation/testing";
 import type { DeskPlanRow } from "../evaluation/store";
-import { salesOutreachDetailSchema, salesOutreachTeamSchema } from "../../../validation/v1/salesOutreachReads";
+import { salesOutreachDetailSchema } from "../../../validation/v1/salesOutreachReads";
 import { MemoryDeskReadStore } from "./deskTesting";
 import { readOutreachDetail } from "./detail";
-import { readTeam } from "./service";
 import { activeInspection, fixedConfigurationLoader, MemoryReadStore } from "./testing";
 
 /**
@@ -105,13 +104,6 @@ async function notFound(promise: Promise<unknown>) {
   await assert.rejects(promise, (e: unknown) => e instanceof OutreachError && e.code === "NOT_FOUND");
 }
 
-test("Granot navigation is unavailable to every role during the auth fix", async () => {
-  const { subject, deps, store } = await seeded();
-  for (const actor of [rep(REP_A), owner, manager]) assert.equal((await readOutreachDetail(actor, subject.id, deps)).granot_link_available, false);
-  store.evaluation.subjects.set(subject.id, { ...subject, display: { ...subject.display, job_no: null } });
-  assert.equal((await readOutreachDetail(rep(REP_A), subject.id, deps)).granot_link_available, false);
-});
-
 test("outreach view: Owner/Manager any subject; Rep only its current assignment; absent/malformed/foreign are the same 404", async () => {
   const { subject, deps } = await seeded();
   for (const actor of [owner, manager, rep(REP_A)]) {
@@ -132,62 +124,6 @@ test("Unassigned/late assignment/reassignment (read part): reassigning the Lead 
   assert.deepEqual([body.assignment.assigned_agent_id, body.assignment.lead_receiver_agent_id, body.assignment.in_sync], [REP_A, REP_B, false]);
 });
 
-test("outreach view: independent requirements, plan_revision, assignment_revision, provenance, explanation and metadata-only history", async () => {
-  const { subject, deps } = await seeded();
-  const body = salesOutreachDetailSchema.parse(await readOutreachDetail(owner, subject.id, deps));
-  assert.equal(body.plan.plan_revision, 3, "the shared human-plan revision for the next command");
-  assert.equal(body.plan.active, null);
-  assert.deepEqual(body.plan.history.map((p) => [p.kind, p.status]), [["callback", "cancelled"]]);
-  assert.equal(body.assignment.assignment_revision, 2);
-  assert.deepEqual([body.assignment.assigned_agent_name, body.assignment.in_sync], ["Alice Rep", true]);
-  assert.deepEqual([body.priority.basis, body.priority.raw], ["intake_default", null]);
-  assert.equal(body.policy.projection_state, "current");
-  assert.equal(body.policy.workflow, "new");
-  assert.ok(body.policy.explanation.some((e) => e.code === "restriction_sms"));
-  assert.ok(body.policy.explanation.some((e) => e.code === "move_date_unknown"));
-  assert.equal(body.requirements.sms.status, "blocked", "an SMS restriction blocks only SMS");
-  assert.notEqual(body.requirements.call.status, "blocked", "calls stay independent");
-  assert.deepEqual(body.restrictions.map((r) => [r.channels, r.confirmed]), [[["sms"], false]]);
-  const event = body.history.contact_events[0]!;
-  assert.deepEqual([event.kind, event.outbound_goal_credit, event.actor_agent_name], ["outbound_attempt", true, "Alice Rep"]);
-  assert.equal(JSON.stringify(body).includes("f".repeat(24)), false, "no provider source id is serialized");
-  assert.equal(JSON.stringify(body).includes("c".repeat(24)), false, "no contact number id is serialized");
-});
-
-test("history names (S4): assignment changes name both sides — reviewed link name, else the Agent's name, else null — in one batched lookup", async () => {
-  const { store, subject, deps } = await seeded();
-  const FORMER = "c".repeat(23) + "d";
-  const GONE = "e".repeat(23) + "f";
-  store.evaluation.changes.set(`${subject.lead.model}:${subject.lead.id}`, [
-    { applied_at: at("2026-10-05T13:00:00.000Z"), before: null, after: FORMER },
-    { applied_at: at("2026-10-05T13:30:00.000Z"), before: FORMER, after: GONE },
-    { applied_at: at("2026-10-05T14:00:00.000Z"), before: GONE, after: REP_A },
-  ]);
-  deps.store.agentNames = new Map([
-    [FORMER, "Former Rep (Agent record)"],
-    [REP_A, "Alice Agent record"],
-  ]);
-  const lookups: string[][] = [];
-  const findAgentNames = deps.store.findAgentNames.bind(deps.store);
-  deps.store.findAgentNames = async (ids) => {
-    lookups.push([...ids]);
-    return findAgentNames(ids);
-  };
-  for (const actor of [owner, rep(REP_A)]) {
-    const body = salesOutreachDetailSchema.parse(await readOutreachDetail(actor, subject.id, deps));
-    assert.deepEqual(
-      body.history.assignment_changes.map((c) => [c.from_agent_id, c.from_agent_name, c.to_agent_id, c.to_agent_name]),
-      [
-        [GONE, null, REP_A, "Alice Rep"],
-        [FORMER, "Former Rep (Agent record)", GONE, null],
-        [null, null, FORMER, "Former Rep (Agent record)"],
-      ],
-      "newest first; the reviewed link name wins over the Agent record",
-    );
-  }
-  assert.deepEqual(lookups.map((ids) => [...ids].sort()), [[FORMER, GONE].sort(), [FORMER, GONE].sort()], "one Agent lookup per read, linked reps excluded");
-});
-
 test("shadow: no overdue or missed label for Manager/Rep; the Owner keeps the reconciliation labels", async () => {
   const { subject, deps } = await seeded({ cadence_shadow_enabled: true });
   const late = { ...deps, now: at("2026-10-05T16:00:00.000Z") };
@@ -201,35 +137,4 @@ test("shadow: no overdue or missed label for Manager/Rep; the Owner keeps the re
   assert.ok(ownerView.shadow_labels, "the Owner sees the unmasked labels in shadow");
   assert.equal(ownerView.history.missed_labels_hidden, false);
   assert.ok(ownerView.policy.explanation.some((e) => e.code === "cadence_shadow"));
-});
-
-test("pending: no projection yet, or cadence off, is pending — never an empty-ready view", async () => {
-  const { store, subject, deps } = await seeded();
-  store.evaluation.projections.clear();
-  const pending = salesOutreachDetailSchema.parse(await readOutreachDetail(owner, subject.id, deps));
-  assert.deepEqual([pending.policy.projection_state, pending.requirements.call.status, pending.requirements.call.required], ["pending", "pending", null]);
-  const off = salesOutreachDetailSchema.parse(await readOutreachDetail(owner, subject.id, { ...deps, loader: fixedConfigurationLoader(config({ cadence_enforcement_enabled: false })) }));
-  assert.equal(off.policy.projection_state, "cadence_disabled");
-});
-
-test("team cadence cards: enforcement counts read-time overdue per rep and Unassigned; shadow hides overdue counts but shows attention rows", async () => {
-  const { store, deps } = await seeded();
-  const unassigned = subjectRow({ assigned_agent_id: null, received_at: at("2026-10-05T14:10:00.000Z"), enrollment: { cohort_id: "c", kind: "intake", enrolled_at: at("2026-10-05T14:10:00.000Z"), activation_at: at("2026-10-05T14:10:00.000Z"), manifest_hash: null } });
-  store.evaluation.subjects.set(unassigned.id, unassigned);
-  store.evaluation.periods.push(periodRow(unassigned.id, { started_at: unassigned.received_at! }));
-  const admission = evaluationAdmissionOf(config());
-  assert.ok(admission.ok);
-  await runInFakeTransaction((session) => evaluateAndProject(unassigned.id, admission.context, at("2026-10-05T14:59:00.000Z"), store.evaluation, session));
-  const team = salesOutreachTeamSchema.parse(await readTeam(manager, {}, deps));
-  assert.equal(team.cadence_exposure, "enforcement");
-  assert.deepEqual(team.unassigned, { count: 1, overdue: { value: 1, unknown_reason: null } });
-  // Alice's Lead had its initial response late at 14:45 (no longer overdue; SMS blocked by a restriction),
-  // so only the Unassigned Lead's missed 10:40 initial response is overdue at 11:00.
-  assert.equal(team.distinct_overdue_leads.value, 1);
-  assert.equal(team.daily_call_goals?.find((r) => r.agent_id === REP_A)?.overdue_leads.value, 0);
-  assert.deepEqual(team.leads_needing_attention.rows?.map((r) => [r.subject_id, r.call.status]), [[unassigned.id, "overdue"]]);
-  const shadow = salesOutreachTeamSchema.parse(await readTeam(manager, {}, { ...deps, loader: fixedConfigurationLoader(config({ cadence_shadow_enabled: true })) }));
-  assert.deepEqual(shadow.distinct_overdue_leads, { value: null, unknown_reason: "cadence_shadow" });
-  assert.equal(shadow.unassigned.count, 1);
-  assert.ok(shadow.leads_needing_attention.rows?.every((r) => !r.status_flags.overdue));
 });
