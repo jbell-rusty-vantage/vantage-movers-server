@@ -1,0 +1,2049 @@
+{
+  "baseline": {
+    "start": "2026-11-18T21:06:55.580Z",
+    "now": "2026-11-19T21:06:55.580Z",
+    "rows": [
+      {
+        "_id": {
+          "stage": "call_log_refresh",
+          "status": "completed",
+          "ttl": 14
+        },
+        "count": 3038,
+        "bytes": 2354311,
+        "dayIn": 574,
+        "dayDone": 574,
+        "oldest": "2026-11-14T01:14:35.121Z",
+        "earliestDone": "2026-11-14T01:14:35.693Z",
+        "earliestRoutine": null
+      },
+      {
+        "_id": {
+          "stage": "capture_projection",
+          "status": "completed",
+          "ttl": 14
+        },
+        "count": 26680,
+        "bytes": 25653883,
+        "dayIn": 4987,
+        "dayDone": 4987,
+        "oldest": "2026-11-14T01:07:50.526Z",
+        "earliestDone": "2026-11-14T01:07:50.863Z",
+        "earliestRoutine": null
+      },
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "status": "completed",
+          "ttl": 3
+        },
+        "count": 8328,
+        "bytes": 6845496,
+        "dayIn": 8328,
+        "dayDone": 8328,
+        "oldest": "2026-11-18T21:31:45.736Z",
+        "earliestDone": "2026-11-18T21:32:06.907Z",
+        "earliestRoutine": "2026-11-21T21:32:06.907Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "status": "completed",
+          "ttl": 14
+        },
+        "count": 336986,
+        "bytes": 264380104,
+        "dayIn": 6936,
+        "dayDone": 6936,
+        "oldest": "2026-11-14T01:03:49.402Z",
+        "earliestDone": "2026-11-14T01:04:51.471Z",
+        "earliestRoutine": null
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "status": "completed",
+          "ttl": 3
+        },
+        "count": 869,
+        "bytes": 710724,
+        "dayIn": 863,
+        "dayDone": 863,
+        "oldest": "2026-11-18T20:11:06.289Z",
+        "earliestDone": "2026-11-18T20:11:49.420Z",
+        "earliestRoutine": "2026-11-21T20:11:49.420Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "status": "completed",
+          "ttl": 14
+        },
+        "count": 177592,
+        "bytes": 135763171,
+        "dayIn": 7078,
+        "dayDone": 7078,
+        "oldest": "2026-11-14T01:04:11.451Z",
+        "earliestDone": "2026-11-14T01:05:06.852Z",
+        "earliestRoutine": null
+      },
+      {
+        "_id": {
+          "stage": "outreach_contact_change",
+          "status": "completed",
+          "ttl": 14
+        },
+        "count": 26003,
+        "bytes": 17245099,
+        "dayIn": 753,
+        "dayDone": 753,
+        "oldest": "2026-11-14T01:07:50.845Z",
+        "earliestDone": "2026-11-14T01:07:51.043Z",
+        "earliestRoutine": null
+      },
+      {
+        "_id": {
+          "stage": "call_log_refresh",
+          "status": "pending",
+          "ttl": 0
+        },
+        "count": 1,
+        "bytes": 616,
+        "dayIn": 1,
+        "dayDone": 0,
+        "oldest": "2026-11-19T21:07:17.742Z",
+        "earliestDone": null,
+        "earliestRoutine": null
+      },
+      {
+        "_id": {
+          "stage": "lead_link",
+          "status": "completed",
+          "ttl": 14
+        },
+        "count": 3699,
+        "bytes": 2406463,
+        "dayIn": 691,
+        "dayDone": 693,
+        "oldest": "2026-11-14T01:09:51.020Z",
+        "earliestDone": "2026-11-14T01:10:00.950Z",
+        "earliestRoutine": null
+      },
+      {
+        "_id": {
+          "stage": "outreach_rep_day",
+          "status": "completed",
+          "ttl": 14
+        },
+        "count": 2952,
+        "bytes": 1976276,
+        "dayIn": 88,
+        "dayDone": 88,
+        "oldest": "2026-11-14T01:11:20.805Z",
+        "earliestDone": "2026-11-14T01:11:21.111Z",
+        "earliestRoutine": null
+      },
+      {
+        "_id": {
+          "stage": "rep_sms_sync",
+          "status": "completed",
+          "ttl": 14
+        },
+        "count": 1320,
+        "bytes": 1202760,
+        "dayIn": 206,
+        "dayDone": 206,
+        "oldest": "2026-11-14T02:06:52.000Z",
+        "earliestDone": "2026-11-14T02:06:52.809Z",
+        "earliestRoutine": null
+      },
+      {
+        "_id": {
+          "stage": "outreach_contact_change",
+          "status": "completed",
+          "ttl": 3
+        },
+        "count": 5106,
+        "bytes": 3519179,
+        "dayIn": 5106,
+        "dayDone": 5106,
+        "oldest": "2026-11-18T22:31:00.402Z",
+        "earliestDone": "2026-11-18T22:31:00.633Z",
+        "earliestRoutine": "2026-11-21T22:31:00.633Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_rep_day",
+          "status": "completed",
+          "ttl": 3
+        },
+        "count": 729,
+        "bytes": 506983,
+        "dayIn": 729,
+        "dayDone": 729,
+        "oldest": "2026-11-18T22:59:29.237Z",
+        "earliestDone": "2026-11-18T22:59:29.429Z",
+        "earliestRoutine": "2026-11-21T22:59:29.429Z"
+      }
+    ],
+    "indexes": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "dedupe_key": 1
+        },
+        "name": "csi_job_dedupe_unique",
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "status": 1,
+          "next_attempt_at": 1,
+          "priority": -1
+        },
+        "name": "csi_job_due"
+      },
+      {
+        "v": 2,
+        "key": {
+          "status": 1,
+          "leased_until": 1
+        },
+        "name": "csi_job_lease"
+      },
+      {
+        "v": 2,
+        "key": {
+          "deployment": 1,
+          "database": 1,
+          "stage": 1,
+          "status": 1,
+          "priority": -1,
+          "next_attempt_at": 1,
+          "_id": 1
+        },
+        "name": "csi_job_claim"
+      },
+      {
+        "v": 2,
+        "key": {
+          "completed_at": 1
+        },
+        "name": "csi_job_completed_ttl",
+        "expireAfterSeconds": 1209600
+      },
+      {
+        "v": 2,
+        "key": {
+          "routine_purge_at": 1
+        },
+        "name": "csi_job_routine_ttl",
+        "sparse": true,
+        "expireAfterSeconds": 0
+      }
+    ]
+  },
+  "traffic": {
+    "groups": [
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "cause": ":estimates-refresh:"
+        },
+        "n": 158450,
+        "day": 15192
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "cause": ":r"
+        },
+        "n": 149941,
+        "day": 0
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "cause": ":estimates-refresh:"
+        },
+        "n": 143293,
+        "day": 0
+      },
+      {
+        "_id": {
+          "stage": "outreach_contact_change",
+          "cause": ":r"
+        },
+        "n": 30953,
+        "day": 5815
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "cause": ":due:"
+        },
+        "n": 27820,
+        "day": 4912
+      },
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "cause": ":r"
+        },
+        "n": 27468,
+        "day": 212
+      },
+      {
+        "_id": {
+          "stage": "capture_projection",
+          "cause": ":r"
+        },
+        "n": 26690,
+        "day": 4987
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "cause": ":coverage:"
+        },
+        "n": 12232,
+        "day": 1914
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "cause": ":contacts:"
+        },
+        "n": 4541,
+        "day": 963
+      },
+      {
+        "_id": {
+          "stage": "lead_link",
+          "cause": "other"
+        },
+        "n": 3701,
+        "day": 691
+      },
+      {
+        "_id": {
+          "stage": "outreach_rep_day",
+          "cause": ":r"
+        },
+        "n": 3681,
+        "day": 817
+      },
+      {
+        "_id": {
+          "stage": "call_log_refresh",
+          "cause": "other"
+        },
+        "n": 3040,
+        "day": 574
+      },
+      {
+        "_id": {
+          "stage": "rep_sms_sync",
+          "cause": ":r"
+        },
+        "n": 1323,
+        "day": 206
+      },
+      {
+        "_id": {
+          "stage": "outreach_contact_change",
+          "cause": "other"
+        },
+        "n": 170,
+        "day": 44
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "cause": ":policy:"
+        },
+        "n": 31,
+        "day": 10
+      },
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "cause": ":link:"
+        },
+        "n": 2,
+        "day": 2
+      }
+    ],
+    "hours": [
+      {
+        "_id": "2026-11-19T01:00:00.000Z",
+        "n": 5518
+      },
+      {
+        "_id": "2026-11-19T13:00:00.000Z",
+        "n": 4008
+      },
+      {
+        "_id": "2026-11-19T15:00:00.000Z",
+        "n": 3345
+      },
+      {
+        "_id": "2026-11-18T21:00:00.000Z",
+        "n": 2954
+      },
+      {
+        "_id": "2026-11-19T19:00:00.000Z",
+        "n": 2796
+      },
+      {
+        "_id": "2026-11-19T18:00:00.000Z",
+        "n": 2703
+      },
+      {
+        "_id": "2026-11-19T00:00:00.000Z",
+        "n": 2368
+      },
+      {
+        "_id": "2026-11-18T23:00:00.000Z",
+        "n": 2166
+      },
+      {
+        "_id": "2026-11-19T14:00:00.000Z",
+        "n": 2109
+      },
+      {
+        "_id": "2026-11-18T22:00:00.000Z",
+        "n": 2102
+      },
+      {
+        "_id": "2026-11-19T20:00:00.000Z",
+        "n": 2039
+      },
+      {
+        "_id": "2026-11-19T05:00:00.000Z",
+        "n": 2023
+      },
+      {
+        "_id": "2026-11-19T17:00:00.000Z",
+        "n": 1230
+      },
+      {
+        "_id": "2026-11-19T16:00:00.000Z",
+        "n": 874
+      },
+      {
+        "_id": "2026-11-19T03:00:00.000Z",
+        "n": 57
+      },
+      {
+        "_id": "2026-11-19T04:00:00.000Z",
+        "n": 24
+      },
+      {
+        "_id": "2026-11-19T21:00:00.000Z",
+        "n": 16
+      },
+      {
+        "_id": "2026-11-19T11:00:00.000Z",
+        "n": 5
+      },
+      {
+        "_id": "2026-11-19T12:00:00.000Z",
+        "n": 2
+      }
+    ]
+  },
+  "readWriteSamples": [
+    {
+      "time": "2026-11-19T21:20:43.459Z",
+      "stats": {
+        "ns": "vantagemovers.sales_intelligence_jobs",
+        "host": "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+        "localTime": "2026-11-19T21:20:42.286Z",
+        "latencyStats": {
+          "commands": {
+            "latency": 7071594,
+            "ops": 130070,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "reads": {
+            "latency": 54282249,
+            "ops": 96428,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "writes": {
+            "latency": 134327559,
+            "ops": 169939,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "transactions": {
+            "latency": 0,
+            "ops": 0,
+            "queryableEncryptionLatencyMicros": 0
+          }
+        },
+        "count": 594682
+      },
+      "stamp": {
+        "_id": "6ab49794564e766c93b2b74b",
+        "deployment_commit": "89fd838cfa17cc1b5c4314cb317fd5b8f52ed068",
+        "recorded_at": "2026-11-19T21:20:01.128Z",
+        "vercel_deployment_id": "dpl_WwDGDWbXryRaYhnLV45CQDc76RbJ"
+      },
+      "recovery": {
+        "_id": "6ab025750c84337849a0666f",
+        "last_run": {
+          "started_at": "2026-11-19T21:20:01.245Z",
+          "finished_at": "2026-11-19T21:20:03.052Z",
+          "runtime_ms": 1807,
+          "pages": 2,
+          "records": 226,
+          "upserts": 0,
+          "throttled_count": 0,
+          "error_code": null
+        }
+      },
+      "generation": [
+        {
+          "_id": null,
+          "requested": 47191,
+          "consumed": 47191,
+          "pending": 0
+        }
+      ],
+      "backlog": [
+        {
+          "_id": {
+            "stage": "call_log_refresh",
+            "state": "pending"
+          },
+          "n": 22,
+          "oldest": "2026-11-19T21:20:46.742Z"
+        },
+        {
+          "_id": {
+            "stage": "capture_projection",
+            "state": "pending"
+          },
+          "n": 1,
+          "oldest": "2026-11-19T21:20:42.719Z"
+        },
+        {
+          "_id": {
+            "stage": "lead_link",
+            "state": "pending"
+          },
+          "n": 2,
+          "oldest": "2026-11-19T21:20:20.535Z"
+        }
+      ]
+    },
+    {
+      "time": "2026-11-19T21:26:34.340Z",
+      "stats": {
+        "ns": "vantagemovers.sales_intelligence_jobs",
+        "host": "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+        "localTime": "2026-11-19T21:26:33.541Z",
+        "latencyStats": {
+          "commands": {
+            "latency": 7131863,
+            "ops": 131349,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "reads": {
+            "latency": 65435190,
+            "ops": 99563,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "writes": {
+            "latency": 150678583,
+            "ops": 172643,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "transactions": {
+            "latency": 0,
+            "ops": 0,
+            "queryableEncryptionLatencyMicros": 0
+          }
+        },
+        "count": 361207
+      },
+      "stamp": {
+        "_id": "6ab49794564e766c93b2b74b",
+        "deployment_commit": "89fd838cfa17cc1b5c4314cb317fd5b8f52ed068",
+        "recorded_at": "2026-11-19T21:26:00.398Z",
+        "vercel_deployment_id": "dpl_WwDGDWbXryRaYhnLV45CQDc76RbJ"
+      },
+      "recovery": {
+        "_id": "6ab025750c84337849a0666f",
+        "last_run": {
+          "started_at": "2026-11-19T21:26:00.429Z",
+          "finished_at": "2026-11-19T21:26:01.097Z",
+          "runtime_ms": 668,
+          "pages": 1,
+          "records": 72,
+          "upserts": 0,
+          "throttled_count": 0,
+          "error_code": null
+        }
+      },
+      "generation": [
+        {
+          "_id": null,
+          "requested": 47191,
+          "consumed": 47191,
+          "pending": 0
+        }
+      ],
+      "backlog": [
+        {
+          "_id": {
+            "stage": "call_log_refresh",
+            "state": "pending"
+          },
+          "n": 6,
+          "oldest": "2026-11-19T21:29:30.414Z"
+        }
+      ]
+    },
+    {
+      "time": "2026-11-19T21:27:34.930Z",
+      "stats": {
+        "ns": "vantagemovers.sales_intelligence_jobs",
+        "host": "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+        "localTime": "2026-11-19T21:27:34.118Z",
+        "latencyStats": {
+          "commands": {
+            "latency": 7136843,
+            "ops": 131462,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "reads": {
+            "latency": 65832355,
+            "ops": 99957,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "writes": {
+            "latency": 155336852,
+            "ops": 192735,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "transactions": {
+            "latency": 0,
+            "ops": 0,
+            "queryableEncryptionLatencyMicros": 0
+          }
+        },
+        "count": 361209
+      },
+      "stamp": {
+        "_id": "6ab49794564e766c93b2b74b",
+        "deployment_commit": "36d4eecfdbd23947632acfce5a37c8d833794722",
+        "recorded_at": "2026-11-19T21:27:00.366Z",
+        "vercel_deployment_id": "dpl_GZN5dYYcTacTRxdeQds71fSzN4mk"
+      },
+      "recovery": {
+        "_id": "6ab025750c84337849a0666f",
+        "last_run": {
+          "started_at": "2026-11-19T21:27:00.383Z",
+          "finished_at": "2026-11-19T21:27:00.890Z",
+          "runtime_ms": 507,
+          "pages": 1,
+          "records": 59,
+          "upserts": 0,
+          "throttled_count": 0,
+          "error_code": null
+        }
+      },
+      "generation": [
+        {
+          "_id": null,
+          "requested": 47191,
+          "consumed": 47191,
+          "pending": 0
+        }
+      ],
+      "backlog": [
+        {
+          "_id": {
+            "stage": "call_log_refresh",
+            "state": "pending"
+          },
+          "n": 6,
+          "oldest": "2026-11-19T21:29:30.414Z"
+        },
+        {
+          "_id": {
+            "stage": "lead_link",
+            "state": "pending"
+          },
+          "n": 1,
+          "oldest": "2026-11-19T21:27:16.596Z"
+        }
+      ]
+    },
+    {
+      "time": "2026-11-19T21:29:51.137Z",
+      "stats": {
+        "ns": "vantagemovers.sales_intelligence_jobs",
+        "host": "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+        "localTime": "2026-11-19T21:29:50.272Z",
+        "latencyStats": {
+          "commands": {
+            "latency": 7145268,
+            "ops": 131625,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "reads": {
+            "latency": 69800078,
+            "ops": 100750,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "writes": {
+            "latency": 165890736,
+            "ops": 239314,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "transactions": {
+            "latency": 0,
+            "ops": 0,
+            "queryableEncryptionLatencyMicros": 0
+          }
+        },
+        "count": 361208
+      },
+      "stamp": {
+        "_id": "6ab49794564e766c93b2b74b",
+        "deployment_commit": "36d4eecfdbd23947632acfce5a37c8d833794722",
+        "recorded_at": "2026-11-19T21:29:00.412Z",
+        "vercel_deployment_id": "dpl_GZN5dYYcTacTRxdeQds71fSzN4mk"
+      },
+      "recovery": {
+        "_id": "6ab025750c84337849a0666f",
+        "last_run": {
+          "started_at": "2026-11-19T21:29:00.435Z",
+          "finished_at": "2026-11-19T21:29:01.011Z",
+          "runtime_ms": 576,
+          "pages": 1,
+          "records": 59,
+          "upserts": 0,
+          "throttled_count": 0,
+          "error_code": null
+        }
+      },
+      "generation": [
+        {
+          "_id": null,
+          "requested": 47191,
+          "consumed": 47191,
+          "pending": 0
+        }
+      ],
+      "backlog": [
+        {
+          "_id": {
+            "stage": "call_log_refresh",
+            "state": "pending"
+          },
+          "n": 6,
+          "oldest": "2026-11-19T21:29:59.917Z"
+        }
+      ]
+    },
+    {
+      "time": "2026-11-19T21:37:04.938Z",
+      "stats": {
+        "ns": "vantagemovers.sales_intelligence_jobs",
+        "host": "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+        "localTime": "2026-11-19T21:37:04.131Z",
+        "latencyStats": {
+          "commands": {
+            "latency": 7193041,
+            "ops": 131933,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "reads": {
+            "latency": 73692156,
+            "ops": 102765,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "writes": {
+            "latency": 192043360,
+            "ops": 349570,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "transactions": {
+            "latency": 0,
+            "ops": 0,
+            "queryableEncryptionLatencyMicros": 0
+          }
+        },
+        "count": 361173
+      },
+      "stamp": {
+        "_id": "6ab49794564e766c93b2b74b",
+        "deployment_commit": "36d4eecfdbd23947632acfce5a37c8d833794722",
+        "recorded_at": "2026-11-19T21:33:00.349Z",
+        "vercel_deployment_id": "dpl_GZN5dYYcTacTRxdeQds71fSzN4mk"
+      },
+      "recovery": {
+        "_id": "6ab025750c84337849a0666f",
+        "last_run": {
+          "started_at": "2026-11-19T21:37:00.398Z",
+          "finished_at": "2026-11-19T21:37:00.502Z",
+          "runtime_ms": 104,
+          "pages": 1,
+          "records": 12,
+          "upserts": 0,
+          "throttled_count": 0,
+          "error_code": null
+        }
+      },
+      "generation": [
+        {
+          "_id": null,
+          "requested": 47191,
+          "consumed": 47191,
+          "pending": 0
+        }
+      ],
+      "backlog": [
+        {
+          "_id": {
+            "stage": "call_log_refresh",
+            "state": "pending"
+          },
+          "n": 1,
+          "oldest": "2026-11-19T21:39:18.197Z"
+        }
+      ]
+    },
+    {
+      "time": "2026-11-19T21:39:18.345Z",
+      "stats": {
+        "ns": "vantagemovers.sales_intelligence_jobs",
+        "host": "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+        "localTime": "2026-11-19T21:39:17.312Z",
+        "latencyStats": {
+          "commands": {
+            "latency": 7204288,
+            "ops": 132065,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "reads": {
+            "latency": 78809757,
+            "ops": 103182,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "writes": {
+            "latency": 192148484,
+            "ops": 349733,
+            "queryableEncryptionLatencyMicros": 0
+          },
+          "transactions": {
+            "latency": 0,
+            "ops": 0,
+            "queryableEncryptionLatencyMicros": 0
+          }
+        },
+        "count": 361104
+      },
+      "stamp": {
+        "_id": "6ab49794564e766c93b2b74b",
+        "deployment_commit": "36d4eecfdbd23947632acfce5a37c8d833794722",
+        "recorded_at": "2026-11-19T21:33:00.349Z",
+        "vercel_deployment_id": "dpl_GZN5dYYcTacTRxdeQds71fSzN4mk"
+      },
+      "recovery": {
+        "_id": "6ab025750c84337849a0666f",
+        "last_run": {
+          "started_at": "2026-11-19T21:39:00.530Z",
+          "finished_at": "2026-11-19T21:39:00.696Z",
+          "runtime_ms": 166,
+          "pages": 1,
+          "records": 17,
+          "upserts": 0,
+          "throttled_count": 0,
+          "error_code": null
+        }
+      },
+      "generation": [
+        {
+          "_id": null,
+          "requested": 47191,
+          "consumed": 47191,
+          "pending": 0
+        }
+      ],
+      "backlog": [
+        {
+          "_id": {
+            "stage": "call_log_refresh",
+            "state": "pending"
+          },
+          "n": 3,
+          "oldest": "2026-11-19T21:39:18.197Z"
+        },
+        {
+          "_id": {
+            "stage": "capture_projection",
+            "state": "pending"
+          },
+          "n": 2,
+          "oldest": "2026-11-19T21:39:17.663Z"
+        }
+      ]
+    }
+  ],
+  "closingStock": {
+    "at": "2026-11-19T21:39:13.069Z",
+    "distribution": [
+      {
+        "_id": {
+          "stage": "rep_sms_sync",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 1344,
+        "bytes": 1224558,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T02:06:52.809Z"
+      },
+      {
+        "_id": {
+          "stage": "call_log_refresh",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 3115,
+        "bytes": 2413986,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T01:14:35.693Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "status": "completed",
+          "ttl": 3,
+          "receipt": "completion_receipt"
+        },
+        "n": 35555,
+        "bytes": 25423638,
+        "earliest": "2026-11-19T22:04:08.899Z",
+        "oldestCompletion": "2026-11-16T22:04:08.899Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_contact_change",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 1398,
+        "bytes": 926846,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T01:30:12.845Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 40279,
+        "bytes": 32659605,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T01:04:51.471Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_rep_day",
+          "status": "completed",
+          "ttl": 3,
+          "receipt": "completion_receipt"
+        },
+        "n": 2879,
+        "bytes": 1577692,
+        "earliest": "2026-11-19T21:45:20.682Z",
+        "oldestCompletion": "2026-11-16T21:45:20.682Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "status": "completed",
+          "ttl": 3,
+          "receipt": "completion_receipt"
+        },
+        "n": 119344,
+        "bytes": 67768051,
+        "earliest": "2026-11-19T21:39:33.168Z",
+        "oldestCompletion": "2026-11-16T21:39:33.168Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "status": "completed",
+          "ttl": 3,
+          "receipt": "full"
+        },
+        "n": 3598,
+        "bytes": 2957556,
+        "earliest": "2026-11-22T13:03:10.217Z",
+        "oldestCompletion": "2026-11-19T13:03:10.217Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_rep_day",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 2,
+        "bytes": 1338,
+        "earliest": null,
+        "oldestCompletion": "2026-11-19T15:09:51.871Z"
+      },
+      {
+        "_id": {
+          "stage": "call_log_refresh",
+          "status": "pending",
+          "ttl": 0,
+          "receipt": "full"
+        },
+        "n": 3,
+        "bytes": 1848,
+        "earliest": null,
+        "oldestCompletion": null
+      },
+      {
+        "_id": {
+          "stage": "lead_link",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 3777,
+        "bytes": 2456514,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T01:10:00.950Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 102560,
+        "bytes": 77763682,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T01:05:06.852Z"
+      },
+      {
+        "_id": {
+          "stage": "capture_projection",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 27237,
+        "bytes": 26190890,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T01:07:50.863Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_contact_change",
+          "status": "completed",
+          "ttl": 3,
+          "receipt": "completion_receipt"
+        },
+        "n": 20013,
+        "bytes": 10390511,
+        "earliest": "2026-11-19T21:39:02.323Z",
+        "oldestCompletion": "2026-11-16T21:39:02.323Z"
+      }
+    ],
+    "liveReceipts": [
+      {
+        "_id": "outreach_evaluate",
+        "n": 8,
+        "bytes": 4324,
+        "earliest": "2026-11-22T21:27:21.433Z"
+      },
+      {
+        "_id": "outreach_rep_day",
+        "n": 3,
+        "bytes": 1644,
+        "earliest": "2026-11-22T21:27:21.352Z"
+      },
+      {
+        "_id": "outreach_contact_change",
+        "n": 34,
+        "bytes": 17647,
+        "earliest": "2026-11-22T21:27:17.007Z"
+      }
+    ],
+    "pre": {
+      "start": "2026-11-19T20:11:00.000Z",
+      "end": "2026-11-19T20:16:00.000Z",
+      "byStage": {
+        "call_log_refresh": {
+          "completed": 2,
+          "valid": 2,
+          "p50": 268,
+          "p95": 268
+        },
+        "outreach_evaluate": {
+          "completed": 1,
+          "valid": 1,
+          "p50": 302,
+          "p95": 302
+        },
+        "capture_projection": {
+          "completed": 19,
+          "valid": 19,
+          "p50": 183,
+          "p95": 268
+        },
+        "outreach_contact_change": {
+          "completed": 22,
+          "valid": 22,
+          "p50": 151,
+          "p95": 227
+        },
+        "lead_link": {
+          "completed": 1,
+          "valid": 1,
+          "p50": 47422,
+          "p95": 47422
+        },
+        "rep_sms_sync": {
+          "completed": 2,
+          "valid": 2,
+          "p50": 841,
+          "p95": 841
+        }
+      },
+      "distance": 15
+    },
+    "post": {
+      "start": "2026-11-19T21:34:00.000Z",
+      "end": "2026-11-19T21:39:00.000Z",
+      "byStage": {
+        "capture_projection": {
+          "completed": 17,
+          "valid": 17,
+          "p50": 231,
+          "p95": 444
+        },
+        "outreach_contact_change": {
+          "completed": 24,
+          "valid": 24,
+          "p50": 183,
+          "p95": 293
+        },
+        "lead_link": {
+          "completed": 1,
+          "valid": 1,
+          "p50": 350,
+          "p95": 350
+        },
+        "outreach_rep_day": {
+          "completed": 1,
+          "valid": 1,
+          "p50": 221,
+          "p95": 221
+        },
+        "outreach_evaluate": {
+          "completed": 6,
+          "valid": 6,
+          "p50": 236,
+          "p95": 267
+        },
+        "rep_sms_sync": {
+          "completed": 5,
+          "valid": 5,
+          "p50": 831,
+          "p95": 1006
+        }
+      }
+    },
+    "daily": {
+      "outreach_contact_change": {
+        "jobs": 5629,
+        "fullBytes": 3866033,
+        "compactBytes": 2922701
+      },
+      "outreach_evaluate": {
+        "jobs": 958,
+        "fullBytes": 780790,
+        "compactBytes": 518490
+      },
+      "outreach_rep_day": {
+        "jobs": 815,
+        "fullBytes": 564567,
+        "compactBytes": 446620
+      },
+      "outreach_lead_change": {
+        "jobs": 4730,
+        "fullBytes": 3887940,
+        "compactBytes": 3476430
+      }
+    }
+  },
+  "comparison": {
+    "at": "2026-11-19T21:32:02.111Z",
+    "distribution": [
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "status": "completed",
+          "ttl": 3,
+          "receipt": "full"
+        },
+        "n": 1053,
+        "bytes": 856356,
+        "earliest": "2026-11-21T20:11:49.420Z",
+        "oldestCompletion": "2026-11-18T20:11:49.420Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_contact_change",
+          "status": "completed",
+          "ttl": 3,
+          "receipt": "full"
+        },
+        "n": 5696,
+        "bytes": 3925717,
+        "earliest": "2026-11-21T22:31:00.633Z",
+        "oldestCompletion": "2026-11-18T22:31:00.633Z"
+      },
+      {
+        "_id": {
+          "stage": "rep_sms_sync",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 1339,
+        "bytes": 1220018,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T02:06:52.809Z"
+      },
+      {
+        "_id": {
+          "stage": "call_log_refresh",
+          "status": "pending",
+          "ttl": 0,
+          "receipt": "full"
+        },
+        "n": 1,
+        "bytes": 616,
+        "earliest": null,
+        "oldestCompletion": null
+      },
+      {
+        "_id": {
+          "stage": "outreach_contact_change",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 6509,
+        "bytes": 4316222,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T01:30:12.845Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 77820,
+        "bytes": 62042895,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T01:04:51.471Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_rep_day",
+          "status": "completed",
+          "ttl": 3,
+          "receipt": "completion_receipt"
+        },
+        "n": 1383,
+        "bytes": 757884,
+        "earliest": "2026-11-19T21:32:20.760Z",
+        "oldestCompletion": "2026-11-16T21:32:20.760Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "status": "completed",
+          "ttl": 3,
+          "receipt": "full"
+        },
+        "n": 8328,
+        "bytes": 6845496,
+        "earliest": "2026-11-21T21:32:06.907Z",
+        "oldestCompletion": "2026-11-18T21:32:06.907Z"
+      },
+      {
+        "_id": {
+          "stage": "lead_link",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 3776,
+        "bytes": 2455873,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T01:10:00.950Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "status": "completed",
+          "ttl": 3,
+          "receipt": "completion_receipt"
+        },
+        "n": 20875,
+        "bytes": 14862952,
+        "earliest": "2026-11-19T22:04:08.899Z",
+        "oldestCompletion": "2026-11-16T22:04:08.899Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 112510,
+        "bytes": 85454888,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T01:05:06.852Z"
+      },
+      {
+        "_id": {
+          "stage": "capture_projection",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 27216,
+        "bytes": 26170597,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T01:07:50.863Z"
+      },
+      {
+        "_id": {
+          "stage": "call_log_refresh",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 3114,
+        "bytes": 2413211,
+        "earliest": null,
+        "oldestCompletion": "2026-11-14T01:14:35.693Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "status": "completed",
+          "ttl": 3,
+          "receipt": "completion_receipt"
+        },
+        "n": 80754,
+        "bytes": 45868548,
+        "earliest": "2026-11-19T21:31:49.583Z",
+        "oldestCompletion": "2026-11-16T21:31:49.583Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_rep_day",
+          "status": "completed",
+          "ttl": 14,
+          "receipt": "full"
+        },
+        "n": 724,
+        "bytes": 484662,
+        "earliest": null,
+        "oldestCompletion": "2026-11-18T13:49:21.022Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_rep_day",
+          "status": "completed",
+          "ttl": 3,
+          "receipt": "full"
+        },
+        "n": 775,
+        "bytes": 538975,
+        "earliest": "2026-11-21T22:59:29.429Z",
+        "oldestCompletion": "2026-11-18T22:59:29.429Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_contact_change",
+          "status": "completed",
+          "ttl": 3,
+          "receipt": "completion_receipt"
+        },
+        "n": 9309,
+        "bytes": 4833219,
+        "earliest": "2026-11-19T21:31:44.960Z",
+        "oldestCompletion": "2026-11-16T21:31:44.960Z"
+      }
+    ],
+    "liveReceipts": [
+      {
+        "_id": "outreach_contact_change",
+        "n": 10,
+        "bytes": 5190,
+        "earliest": "2026-11-22T21:27:17.007Z"
+      },
+      {
+        "_id": "outreach_evaluate",
+        "n": 2,
+        "bytes": 1080,
+        "earliest": "2026-11-22T21:27:21.433Z"
+      },
+      {
+        "_id": "outreach_rep_day",
+        "n": 2,
+        "bytes": 1096,
+        "earliest": "2026-11-22T21:27:21.352Z"
+      }
+    ],
+    "pre": {
+      "start": "2026-11-19T20:57:00.000Z",
+      "end": "2026-11-19T21:02:00.000Z",
+      "byStage": {
+        "capture_projection": {
+          "completed": 7,
+          "valid": 7,
+          "p50": 195,
+          "p95": 254
+        },
+        "outreach_contact_change": {
+          "completed": 10,
+          "valid": 10,
+          "p50": 165,
+          "p95": 219
+        },
+        "outreach_rep_day": {
+          "completed": 3,
+          "valid": 3,
+          "p50": 171,
+          "p95": 171
+        },
+        "outreach_evaluate": {
+          "completed": 5,
+          "valid": 5,
+          "p50": 226,
+          "p95": 242
+        },
+        "lead_link": {
+          "completed": 1,
+          "valid": 1,
+          "p50": 5489,
+          "p95": 5489
+        },
+        "rep_sms_sync": {
+          "completed": 2,
+          "valid": 2,
+          "p50": 1201,
+          "p95": 1201
+        },
+        "call_log_refresh": {
+          "completed": 5,
+          "valid": 5,
+          "p50": 289,
+          "p95": 377
+        }
+      },
+      "distance": 7
+    },
+    "post": {
+      "start": "2026-11-19T21:27:00.000Z",
+      "end": "2026-11-19T21:32:00.000Z",
+      "byStage": {
+        "capture_projection": {
+          "completed": 7,
+          "valid": 7,
+          "p50": 285,
+          "p95": 536
+        },
+        "outreach_contact_change": {
+          "completed": 10,
+          "valid": 10,
+          "p50": 227,
+          "p95": 473
+        },
+        "outreach_rep_day": {
+          "completed": 2,
+          "valid": 2,
+          "p50": 414,
+          "p95": 414
+        },
+        "outreach_evaluate": {
+          "completed": 2,
+          "valid": 2,
+          "p50": 495,
+          "p95": 495
+        },
+        "lead_link": {
+          "completed": 1,
+          "valid": 1,
+          "p50": 44386,
+          "p95": 44386
+        },
+        "call_log_refresh": {
+          "completed": 6,
+          "valid": 6,
+          "p50": 315,
+          "p95": 360
+        }
+      }
+    },
+    "daily": {
+      "outreach_contact_change": {
+        "jobs": 5629,
+        "fullBytes": 3866033,
+        "compactBytes": 2922701
+      },
+      "outreach_evaluate": {
+        "jobs": 958,
+        "fullBytes": 780790,
+        "compactBytes": 518490
+      },
+      "outreach_rep_day": {
+        "jobs": 815,
+        "fullBytes": 564567,
+        "compactBytes": 446620
+      },
+      "outreach_lead_change": {
+        "jobs": 4730,
+        "fullBytes": 3887940,
+        "compactBytes": 3476430
+      }
+    }
+  },
+  "arrivalIdWindow": {
+    "start": "2026-11-19T21:06:55Z",
+    "end": "2026-11-19T21:39:13Z",
+    "n": 1639
+  },
+  "deskReconciliation": {
+    "at": "2026-11-19T21:34:22.918Z",
+    "summary": {
+      "2026-11-18": {
+        "reps": 9,
+        "confirmed": 456,
+        "eligible": 407,
+        "awaiting": 0
+      },
+      "2026-11-19": {
+        "reps": 6,
+        "confirmed": 409,
+        "eligible": 368,
+        "awaiting": 0
+      }
+    },
+    "mismatches": [],
+    "sample": {
+      "sms": {
+        "rows": 30,
+        "matchedSource": 30,
+        "matchedIdentity": 30,
+        "linkedSubjects": 11,
+        "subjects": 11
+      },
+      "call": {
+        "rows": 30,
+        "matchedSource": 30,
+        "matchedIdentity": 30,
+        "linkedSubjects": 20,
+        "subjects": 20
+      }
+    }
+  },
+  "adjacent": {
+    "time": "2026-11-19T21:35:54.981Z",
+    "profile": false,
+    "collections": {
+      "sales_outreach_subjects": {
+        "documents": 3812,
+        "logicalBytes": 3594069,
+        "storageBytes": 1675264,
+        "indexBytes": 892928
+      },
+      "sales_outreach_policy_periods": {
+        "documents": 7103,
+        "logicalBytes": 4086368,
+        "storageBytes": 880640,
+        "indexBytes": 1032192
+      },
+      "sales_outreach_contact_events": {
+        "documents": 50618,
+        "logicalBytes": 34077653,
+        "storageBytes": 9281536,
+        "indexBytes": 5627904
+      },
+      "sales_outreach_rep_day_projections": {
+        "documents": 514,
+        "logicalBytes": 510285,
+        "storageBytes": 167936,
+        "indexBytes": 151552
+      },
+      "sales_outreach_projections": {
+        "documents": 3812,
+        "logicalBytes": 29890908,
+        "storageBytes": 7204864,
+        "indexBytes": 2420736
+      },
+      "sales_outreach_refresh_requests": {
+        "documents": 1800,
+        "logicalBytes": 1972405,
+        "storageBytes": 1359872,
+        "indexBytes": 581632
+      },
+      "sales_intelligence_sync_state": {
+        "documents": 59,
+        "logicalBytes": 38630,
+        "storageBytes": 53248,
+        "indexBytes": 73728
+      },
+      "sales_intelligence_audit_events": {
+        "documents": 23531,
+        "logicalBytes": 18784042,
+        "storageBytes": 135045120,
+        "indexBytes": 73629696
+      },
+      "call_interactions": {
+        "documents": 37469,
+        "logicalBytes": 116872298,
+        "storageBytes": 23203840,
+        "indexBytes": 11497472
+      },
+      "ringcentral_rep_sms_evidence": {
+        "documents": 13149,
+        "logicalBytes": 12435396,
+        "storageBytes": 2469888,
+        "indexBytes": 2076672
+      },
+      "sales_intelligence_jobs": {
+        "documents": 361181,
+        "logicalBytes": 251809833,
+        "storageBytes": 326991872,
+        "indexBytes": 230752256
+      }
+    }
+  },
+  "cleanup": [
+    {
+      "asOf": "2026-11-19T21:18:49.146Z",
+      "run": "df5fb1c2-dd3d-47ab-b1ba-57f8e7b2af71",
+      "recent": null,
+      "eligible": {
+        "outreach_evaluate": {
+          "rows": 178416,
+          "bytes": 139171207
+        },
+        "outreach_contact_change": {
+          "rows": 10172,
+          "bytes": 6746503
+        },
+        "outreach_rep_day": {
+          "rows": 849,
+          "bytes": 568409
+        }
+      },
+      "held": {
+        "outreach_evaluate:unclassified": {
+          "rows": 19966,
+          "bytes": 16190747
+        },
+        "outreach_contact_change:unclassified": {
+          "rows": 518,
+          "bytes": 343455
+        }
+      },
+      "scanned": 209921,
+      "reconciled": {
+        "asOf": "2026-11-19T21:31:33.708Z",
+        "rows": 189437,
+        "gone": 189437,
+        "receipts": 0,
+        "expired": 0,
+        "changed": 0,
+        "earliestPending": null
+      },
+      "catalog": {
+        "object": "history/sales-intelligence/v1/vantagemovers/df5fb1c2-dd3d-47ab-b1ba-57f8e7b2af71/catalog.json",
+        "generation": "1795123637834429",
+        "hash": "21bc75f9c90d9d814f4a6cfb619f8b4ca6199adcf5776456dbfe5b0755e2254c",
+        "bytes": 34094,
+        "released": "2026-11-19T21:27:17.989Z"
+      },
+      "objects": 105,
+      "compressedBytes": 18467418,
+      "removed": 189437,
+      "compacted": 0,
+      "netBsonRemoved": 146486119,
+      "remainingReceiptBytes": 0,
+      "changedOrAbsentAtCommit": 0
+    },
+    {
+      "asOf": "2026-11-19T21:22:33.290Z",
+      "run": "1cb81399-8371-45f2-80f9-eae89f20f112",
+      "recent": null,
+      "eligible": {
+        "outreach_lead_change": {
+          "rows": 44210,
+          "bytes": 34174186
+        }
+      },
+      "held": {
+        "outreach_lead_change:unclassified": {
+          "rows": 66230,
+          "bytes": 49729300
+        }
+      },
+      "scanned": 110440,
+      "reconciled": {
+        "asOf": "2026-11-19T21:31:43.739Z",
+        "rows": 44210,
+        "gone": 44210,
+        "receipts": 0,
+        "expired": 0,
+        "changed": 0,
+        "earliestPending": null
+      },
+      "catalog": {
+        "object": "history/sales-intelligence/v1/vantagemovers/1cb81399-8371-45f2-80f9-eae89f20f112/catalog.json",
+        "generation": "1795123641171624",
+        "hash": "bf8e4d76683a1f46a81736da8323b4e79dfc87e75cdca2da95e538f9eec24b36",
+        "bytes": 17811,
+        "released": "2026-11-19T21:27:21.444Z"
+      },
+      "objects": 55,
+      "compressedBytes": 4907113,
+      "removed": 44210,
+      "compacted": 0,
+      "netBsonRemoved": 34174186,
+      "remainingReceiptBytes": 0,
+      "changedOrAbsentAtCommit": 0
+    },
+    {
+      "asOf": "2026-11-19T21:24:16.007Z",
+      "run": "dd40d951-adea-4e15-ad48-2eb87d7e1a52",
+      "recent": true,
+      "eligible": {
+        "outreach_contact_change": {
+          "rows": 20040,
+          "bytes": 13437699
+        },
+        "outreach_evaluate": {
+          "rows": 119332,
+          "bytes": 93396265
+        },
+        "outreach_rep_day": {
+          "rows": 2872,
+          "bytes": 1942724
+        },
+        "outreach_lead_change": {
+          "rows": 35555,
+          "bytes": 27715473
+        }
+      },
+      "held": {
+        "outreach_lead_change:unclassified": {
+          "rows": 36330,
+          "bytes": 28034382
+        },
+        "outreach_evaluate:unclassified": {
+          "rows": 20313,
+          "bytes": 16468858
+        },
+        "outreach_contact_change:unclassified": {
+          "rows": 874,
+          "bytes": 579425
+        },
+        "outreach_lead_change": {
+          "rows": 3598,
+          "bytes": 2957556
+        },
+        "outreach_rep_day:unclassified": {
+          "rows": 2,
+          "bytes": 1338
+        }
+      },
+      "scanned": 238916,
+      "reconciled": {
+        "asOf": "2026-11-19T21:37:01.912Z",
+        "rows": 177799,
+        "gone": 0,
+        "receipts": 177709,
+        "expired": 90,
+        "changed": 0,
+        "earliestPending": "2026-11-19T21:37:20.039Z"
+      },
+      "catalog": {
+        "object": "history/sales-intelligence/v1/vantagemovers/dd40d951-adea-4e15-ad48-2eb87d7e1a52/catalog.json",
+        "generation": "1795124218058801",
+        "hash": "de27074707e365272fb8c3472a5ac374e07cfb198aa12b551183423b74bba4ad",
+        "bytes": 38922,
+        "released": "2026-11-19T21:36:58.187Z"
+      },
+      "objects": 120,
+      "compressedBytes": 17129428,
+      "removed": 0,
+      "compacted": 177799,
+      "netBsonRemoved": 31328580,
+      "remainingReceiptBytes": 105163581,
+      "changedOrAbsentAtCommit": 0
+    },
+    {
+      "asOf": "2026-11-19T21:27:00.000Z",
+      "run": "c0e46715-199c-46ee-96a2-a7382a8acdae",
+      "recent": false,
+      "eligible": {
+        "outreach_contact_change": {
+          "rows": 82,
+          "bytes": 54382
+        },
+        "outreach_evaluate": {
+          "rows": 6,
+          "bytes": 4551
+        }
+      },
+      "held": {
+        "outreach_evaluate:unclassified": {
+          "rows": 19966,
+          "bytes": 16190747
+        },
+        "outreach_contact_change:unclassified": {
+          "rows": 518,
+          "bytes": 343455
+        }
+      },
+      "scanned": 20572,
+      "reconciled": {
+        "asOf": "2026-11-19T21:38:20.508Z",
+        "rows": 88,
+        "gone": 88,
+        "receipts": 0,
+        "expired": 0,
+        "changed": 0,
+        "earliestPending": null
+      },
+      "catalog": {
+        "object": "history/sales-intelligence/v1/vantagemovers/c0e46715-199c-46ee-96a2-a7382a8acdae/catalog.json",
+        "generation": "1795124295892866",
+        "hash": "912ff962de09d0111ea8b8bc6324554c996603b71000690b092d9e2406ca2aff",
+        "bytes": 410,
+        "released": "2026-11-19T21:38:16.079Z"
+      },
+      "objects": 1,
+      "compressedBytes": 4180,
+      "removed": 88,
+      "compacted": 0,
+      "netBsonRemoved": 58933,
+      "remainingReceiptBytes": 0,
+      "changedOrAbsentAtCommit": 0
+    },
+    {
+      "asOf": "2026-11-19T21:27:00.000Z",
+      "run": "56bce97f-04fe-4b43-860c-5fdaa209dde5",
+      "recent": false,
+      "eligible": {},
+      "held": {
+        "outreach_lead_change:unclassified": {
+          "rows": 66230,
+          "bytes": 49729300
+        }
+      },
+      "scanned": 66230,
+      "reconciled": null,
+      "catalog": null,
+      "objects": 0,
+      "compressedBytes": 0,
+      "removed": 0,
+      "compacted": 0,
+      "netBsonRemoved": 0,
+      "remainingReceiptBytes": 0,
+      "changedOrAbsentAtCommit": 0
+    },
+    {
+      "asOf": "2026-11-19T21:27:00.000Z",
+      "run": "67928806-528c-4c97-b2a4-7175eeba34b2",
+      "recent": true,
+      "eligible": {
+        "outreach_contact_change": {
+          "rows": 27,
+          "bytes": 18606
+        },
+        "outreach_evaluate": {
+          "rows": 6,
+          "bytes": 4832
+        },
+        "outreach_rep_day": {
+          "rows": 4,
+          "bytes": 2780
+        }
+      },
+      "held": {
+        "outreach_lead_change:unclassified": {
+          "rows": 36330,
+          "bytes": 28034382
+        },
+        "outreach_evaluate:unclassified": {
+          "rows": 20313,
+          "bytes": 16468858
+        },
+        "outreach_contact_change:unclassified": {
+          "rows": 876,
+          "bytes": 580747
+        },
+        "outreach_lead_change": {
+          "rows": 3598,
+          "bytes": 2957556
+        },
+        "outreach_rep_day:unclassified": {
+          "rows": 2,
+          "bytes": 1338
+        }
+      },
+      "scanned": 61156,
+      "reconciled": {
+        "asOf": "2026-11-19T21:38:36.204Z",
+        "rows": 37,
+        "gone": 0,
+        "receipts": 37,
+        "expired": 0,
+        "changed": 0,
+        "earliestPending": "2026-11-22T21:24:20.841Z"
+      },
+      "catalog": {
+        "object": "history/sales-intelligence/v1/vantagemovers/67928806-528c-4c97-b2a4-7175eeba34b2/catalog.json",
+        "generation": "1795124311362286",
+        "hash": "5964be3bbcfa841e7b535432ac4d6b3f9f48fe0ce9f20b9d73a5ced7a2171db9",
+        "bytes": 410,
+        "released": "2026-11-19T21:38:31.692Z"
+      },
+      "objects": 1,
+      "compressedBytes": 2821,
+      "removed": 0,
+      "compacted": 37,
+      "netBsonRemoved": 6768,
+      "remainingReceiptBytes": 19450,
+      "changedOrAbsentAtCommit": 0
+    }
+  ],
+  "deskSamples": [
+    {
+      "at": "2026-11-19T21:23:40.531Z",
+      "configurationRevision": 42,
+      "jobs": {
+        "open_by_stage_status": {
+          "call_log_refresh": {
+            "pending": 6
+          },
+          "lead_link": {
+            "pending": 1
+          }
+        },
+        "dead_letters_total": 0,
+        "pending_or_retry_due_now": 1,
+        "oldest_pending_or_retry_by_stage": {
+          "call_log_refresh": "2026-11-19T21:23:44.567Z",
+          "lead_link": "2026-11-19T21:23:34.903Z"
+        },
+        "completed_last_10_min_by_stage": {
+          "call_log_refresh": 62,
+          "capture_projection": 277,
+          "lead_link": 43,
+          "outreach_contact_change": 321,
+          "outreach_evaluate": 89,
+          "outreach_lead_change": 2,
+          "outreach_rep_day": 12,
+          "rep_sms_sync": 5
+        },
+        "completed_last_hour_by_stage": {
+          "call_log_refresh": 138,
+          "capture_projection": 1037,
+          "lead_link": 145,
+          "outreach_contact_change": 1237,
+          "outreach_evaluate": 335,
+          "outreach_lead_change": 18,
+          "outreach_rep_day": 161,
+          "rep_sms_sync": 45
+        }
+      },
+      "subjects": 3812,
+      "goals": {
+        "confirmed": 405,
+        "awaiting_confirmation": 0,
+        "other_outbound": 41
+      },
+      "active": 1855,
+      "servedRule": 703,
+      "designCount": 703
+    },
+    {
+      "at": "2026-11-19T21:33:51.914Z",
+      "configurationRevision": 42,
+      "jobs": {
+        "open_by_stage_status": {},
+        "dead_letters_total": 0,
+        "pending_or_retry_due_now": 0,
+        "oldest_pending_or_retry_by_stage": {},
+        "completed_last_10_min_by_stage": {
+          "call_log_refresh": 12,
+          "capture_projection": 46,
+          "lead_link": 7,
+          "outreach_contact_change": 55,
+          "outreach_evaluate": 10,
+          "outreach_rep_day": 8,
+          "rep_sms_sync": 3
+        },
+        "completed_last_hour_by_stage": {
+          "call_log_refresh": 137,
+          "capture_projection": 922,
+          "lead_link": 137,
+          "outreach_contact_change": 1091,
+          "outreach_evaluate": 291,
+          "outreach_lead_change": 14,
+          "outreach_rep_day": 136,
+          "rep_sms_sync": 41
+        }
+      },
+      "subjects": 3812,
+      "goals": {
+        "confirmed": 409,
+        "awaiting_confirmation": 0,
+        "other_outbound": 41
+      },
+      "active": 1855,
+      "servedRule": 703,
+      "designCount": 703
+    }
+  ]
+}

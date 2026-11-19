@@ -1,0 +1,28 @@
+# Complete Sales Intelligence jobs and Sales Outreach storage work
+
+Work on `vantage-main-server` in the primary checkout on `main`. Own the full change from producer to worker to production cleanup. Reduce recurring job writes and remove each fulfilled job at the earliest point its consumers, retry paths and business records allow. Use server code, MongoDB and Google Cloud Storage together where they earn their cost. Deliver the implementation, release, eligible backlog cleanup and measured results in this session.
+
+## Establish what each job does
+
+- Start from the live stage registry and deployed producers, including queues, crons, repair and legacy rows. For each stage identify the trigger, dedupe key, consumer, downstream effect, last reader, replay source and condition for retirement. Follow Sales Outreach through subject evaluation, contact changes, calls and SMS, Lead changes, cadence and rep-day projections. Include shared Sales Intelligence stages using the same collection. Inspect adjacent collections wherever needed to establish those contracts. Keep this assignment on the main server.
+- Refresh the primary baseline. On November 19 at 3:25 p.m. New York, `sales_intelligence_jobs` contained 591,786 documents and 440.0 MiB of logical BSON. Measure count, bytes, arrivals, completions, retry/backlog age and read/write rates by stage and state across a representative operating day using available telemetry. Identify the current three-day and fourteen-day cohorts, rows without a deadline and producers already coalescing work. Record the actual window, units, sampling limits and peak traffic.
+- Calculate separately what producer changes prevent each day, what immediate retirement saves, and what the historical pass can remove once. Subtract bytes and writes added for replay, lookup or recovery. If GCS is used, include object count, stored bytes, request volume, retention and expected growth.
+
+## Implement retirement at the point work finishes
+
+1. Fix redundant enqueue or repeat evaluation at its source when the same durable result already exists. Preserve genuinely new revisions and concurrent changes. For each stage, choose the smallest durable record that can still answer duplicate deliveries, corrections and recovery after the full job disappears. A completed status by itself is insufficient.
+2. Once the business effect and required handoffs are durable, recheck the job identity, state, lease or generation and outstanding references before retiring it. Make publication and removal safe across crashes, retries and concurrent workers. Use conditional MongoDB TTL as a fallback for a proven eligible cohort. Keep actionable, retryable, leased, failed and disputed work available to its operators until its own obligations end.
+3. Where a reader needs historical detail, reuse verified GCS evidence or archive it economically. Verify the checksum and exact generation by reading it back, and exercise the real lookup or restore path before releasing MongoDB data. Give each discharged generation a 30-day recovery window starting when its last reader, replay and backup obligation ends. Scope and verify the lifecycle rule for the actual Sales Intelligence prefix. Account for soft-delete retention, rollback packs and reused generations. Leave freed Atlas space available for reuse.
+4. Apply the same criteria to existing rows, including those written by older releases. Preview counts, bytes and hold reasons. Verify recovery for the exact cohort, then apply in bounded, resumable batches with per-batch rechecks. Reconcile planned, removed, newly arrived and held rows. Retain a reason and next condition for each held cohort.
+
+## Prove the Desk and workers still behave correctly
+
+Exercise ordinary producers, queue consumers, retries and Desk reads on an isolated replica. Cover duplicate delivery before and after retirement, conflicting input, out-of-order revisions, stale leases, partial failure and retry, late RingCentral corrections, and archive unavailability if used. Verify that a real change still reaches its subject, while redundant work yields no duplicate effect. Reconcile sampled subjects, cadence deadlines, rep attribution, call/SMS contact evidence, rep-day counts and manager totals. Preserve qualified Call Lead billing, official Booking and Cancellation reporting, and Sheet delivery where a shared producer touches those paths.
+
+Ship the tested change. Verify the production API and active worker serve the intended commit. Observe a normal producer-to-worker cycle, verify actual retirements and late replay safely, then compare before/after throughput, queue latency, outstanding work and storage under comparable load. Distinguish observed results from projected steady-state savings. Where an expiry deadline is still in the future, record the exact cohort and earliest verification time and keep that proof open.
+
+## Close the ledgers
+
+Update the server roadmap and next-session handoff, the workspace optimization bookmark and the owner's root ledger. For each major service and collection record what shipped, release identity, measured before/after and time window, what remains in MongoDB or GCS and why, and the next outstanding proof. Put detailed evidence in the linked release record and keep the owner row short. Finish on `main` with any task-created branches and worktrees merged and cleaned up.
+
+[Sales Intelligence job contract](../knowledge/services/sales-intelligence-foundation.md) · [Sales Outreach lifecycle](../knowledge/sales-outreach-lifecycle.md) · [Prior production and TTL evidence](OUTREACH-CADENCE-HANDBACK-2026-11-18.md) · [Server roadmap](SERVICE-OPTIMIZATION-ROADMAP.md) · [Next-session handoff](NEXT-SESSION.md)
