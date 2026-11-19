@@ -1,5 +1,21 @@
 # Granot storage retention
 
+## Releasing a production archive generation
+
+The bucket deletes Granot objects under `history/granot/v1/vantagemovers/` and `history/granot/released/vantagemovers/` after 30 days measured from the object's release marker (`customTime`). Unmarked generations stay available. Bucket soft deletion adds seven days of recovery after lifecycle deletion.
+
+For a content-addressed production archive, first establish that its last reader, replay and backup obligations have ended. Include historical catalog exports, standalone rollback packs and daily and weekly backups. Check that every external publisher has finished or uses the release-aware writer. A missing current MongoDB pointer alone cannot establish this.
+
+Record the exact `hash` and string `generation` in a JSON file with evidence references in `reader_clearance`, `backup_clearance`, `rollback_clearance` and `external_writer_clearance`. Run the following from the server root against the verified production deployment.
+
+```sh
+node --env-file=.env --import tsx ops/granot-release-archive-generation.ts begin evidence.json
+# Allow at least 800 seconds for any publication already in flight to drain.
+node --env-file=.env --import tsx ops/granot-release-archive-generation.ts release evidence.json
+```
+
+Both commands check live MongoDB references. The release checks the original evidence digest and review hold before updating the exact GCS generation and metageneration. Reuse invalidates the review or holds a released generation before publishing a new pointer. A later review starts a fresh recovery window once those obligations end.
+
 The main server owns retention. Terminal scheduled Estimates plans can move to Cloud Storage after their original action deadline. Superseded completed Lead snapshots enter archive review after one day. Historical cleanup uses a separate operator-reviewed manifest.
 
 ## Online processing

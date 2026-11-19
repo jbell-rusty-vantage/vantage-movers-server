@@ -1,5 +1,7 @@
 # Resume the server optimization sprint from main
 
+**November 19 Granot receipt cleanup.** Production removed 22,781 historical HTTP receipts and six superseded Observations with their six Decisions. Verified archive locators reduced the receipt cohort by 47.10 MiB net. Eight original-ID lookups and replays passed. The duplicate rollback generation entered its 30-day recovery window. Sales Intelligence jobs are next. [Archive release procedure](../knowledge/granot-lifecycle/storage-retention-operations.md)
+
 **Fulfilled scheduled Estimates runs are in production.** The November 19 drain verified and retired the complete baseline and 130 later arrivals, with zero held runs. For the next scheduled slot, use the normal two-minute worker and compare the run completion timestamp with its MongoDB deletion timestamp. [Measured release](SERVICE-OPTIMIZATION-ROADMAP.md) · [Workspace verification bookmark](C:/Users/Pinda/Proyectos/vantage/SERVER-OPTIMIZATION.md)
 
 Use the primary `vantage-main-server` checkout on `main`. The Sheet Sync drainer and its recovery harness are integrated. The [workspace bookmark](C:/Users/Pinda/Proyectos/vantage/SERVER-OPTIMIZATION.md) records the production revision and the [roadmap](SERVICE-OPTIMIZATION-ROADMAP.md) tracks the remaining proofs. Measure Sheet savings on natural overlapping jobs. The scheduled-run archive verifier is the next implementation candidate.

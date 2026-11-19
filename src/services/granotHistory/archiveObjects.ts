@@ -22,8 +22,25 @@ export async function storeArchiveObject(database: string, bytes: Buffer) {
     generation = created.data.generation;
   } catch (error) {
     if (Number((error as { code?: unknown }).code) !== 412) throw error;
-    const existing = await storage(false).objects.get({ bucket: ARCHIVE_BUCKET, object, fields: "generation" }, { timeout: 15000 });
+    const existing = await storage(false).objects.get({ bucket: ARCHIVE_BUCKET, object,
+      fields: "generation,metageneration,customTime,temporaryHold,metadata" }, { timeout: 15000 });
     generation = existing.data.generation;
+    if (existing.data.customTime && existing.data.temporaryHold && !existing.data.metadata?.granotReleaseReview &&
+        existing.data.metadata?.granotPublisherHold !== "1") {
+      throw new Error("Granot archive recovery clock has an independent hold");
+    }
+    if (existing.data.metadata?.granotReleaseReview || (existing.data.customTime && !existing.data.temporaryHold)) {
+      // A concurrent release must lose its metadata CAS before this generation can acquire another reader.
+      if (!generation || !existing.data.metageneration) throw new Error("Granot archive metadata fence missing");
+      const metadataWriter = google.storage({ version: "v1", auth: createGoogleServiceAccountAuth([
+        "https://www.googleapis.com/auth/devstorage.full_control",
+      ]) });
+      await metadataWriter.objects.patch({
+        bucket: ARCHIVE_BUCKET, object, generation, ifGenerationMatch: generation,
+        ifMetagenerationMatch: existing.data.metageneration,
+        requestBody: { temporaryHold: true, metadata: { ...existing.data.metadata, granotReleaseReview: "", granotPublisherHold: "1" } },
+      }, { timeout: 15000 });
+    }
   }
   if (!generation) throw new Error("Granot archive generation unavailable");
   const persisted = await readArchiveObject(database, hash, generation);
