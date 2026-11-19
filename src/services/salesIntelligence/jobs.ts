@@ -279,6 +279,22 @@ export async function completeCsiJob<T>(
     const stored = options.resultFrom ? options.resultFrom(result) : options.result;
     const completed_at = new Date();
     const routine_purge_at = routineJobExpiry(held.stage, held.dedupe_key, stored, completed_at, held.subject_key);
+    if (routine_purge_at && held.reason == null) {
+      // The same unique key fences concurrent enqueue throughout the transition. Lease/attempt
+      // state is useful only while actionable. Admissions and Granot still read Lead results.
+      const receipt = await Model.collection.updateOne(
+        { ...fence(lease), _id: held._id, payload_hash: held.payload_hash },
+        { $set: { record_kind: "completion_receipt", status: "completed", completed_at,
+            updatedAt: completed_at, routine_purge_at,
+            ...(held.stage === "outreach_lead_change" ? { result: stored } : {}) },
+          $unset: { lease_owner: "", leased_until: "", lease_epoch: "", attempts: "", max_attempts: "",
+            next_attempt_at: "", reason: "", priority: "",
+            ...(held.stage === "outreach_lead_change" ? {} : { result: "" }) } },
+        { session },
+      );
+      if (receipt.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
+      return result;
+    }
     const updated = await Model.updateOne(
       fence(lease),
       {

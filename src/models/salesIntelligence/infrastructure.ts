@@ -84,6 +84,7 @@ export const SalesIntelligenceJobSchema = new Schema(
     },
     completed_at: date,
     routine_purge_at: { type: Date },
+    record_kind: { type: String, enum: ["completion_receipt"] },
     input_refs: refs,
   },
   { collection: "sales_intelligence_jobs" },

@@ -1062,6 +1062,8 @@ async function main() {
   assert.ok(credited && String(credited.subject_id) === String(subjectId));
   const completedIds = [firstRevision.id, recountId];
   for (const job of await Jobs.find({ _id: { $in: completedIds } }).lean()) {
+    assert.equal(job.record_kind, "completion_receipt");
+    assert.equal(job.lease_epoch, undefined);
     assert.ok(job.completed_at && job.routine_purge_at);
     assert.equal(+job.routine_purge_at - +job.completed_at, 3 * 86_400_000);
   }
