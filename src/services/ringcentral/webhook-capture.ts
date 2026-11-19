@@ -199,19 +199,19 @@ export function previewRingCentralWebhookPayload(
   };
 }
 
+/** Delivery verification happens against the request. Credentials have no role in stored evidence or replay. */
+export const WEBHOOK_CREDENTIAL_HEADERS = [
+  "authorization", "cookie", "x-api-secret", "verification-token", "validation-token",
+  "x-vercel-oidc-token", "x-vercel-proxy-signature",
+] as const;
+
 export function sanitizeHeaders(
   headers: Record<string, string | string[] | undefined>,
 ): Record<string, string | string[] | undefined> {
   const sanitized: Record<string, string | string[] | undefined> = {};
   for (const [key, value] of Object.entries(headers)) {
     const normalizedKey = key.toLowerCase();
-    if (
-      normalizedKey === "authorization" ||
-      normalizedKey === "cookie" ||
-      normalizedKey === "x-api-secret"
-    ) {
-      continue;
-    }
+    if (WEBHOOK_CREDENTIAL_HEADERS.some(name => name === normalizedKey)) continue;
     if (Array.isArray(value)) {
       sanitized[normalizedKey] = value;
     } else if (typeof value === "string") {
@@ -247,19 +247,11 @@ async function getWebhookEventsCollection() {
 
 export async function listRingCentralWebhookEvents(limit: number) {
   const collection = await getWebhookEventsCollection();
-  return collection
-    .find(
-      {},
-      {
-        projection: {
-          rawBody: 0,
-          headers: 0,
-        },
-      },
-    )
-    .sort({ receivedAt: -1 })
-    .limit(limit)
-    .toArray();
+  const receipts = await collection.find({}, { projection: { headers: 0 } })
+    .sort({ receivedAt: -1 }).limit(limit).toArray();
+  return receipts.map(({ rawBody, normalizedPreview, ...fields }) => ({
+    ...fields, normalizedPreview: normalizedPreview ?? previewRingCentralWebhookPayload(rawBody),
+  }));
 }
 
 /**
