@@ -1,6 +1,7 @@
 import { createPlanningCheckpointGate, persistActionReceipt, renewRunLeaseWhenDue } from "./runPersistence";
 import { closedRuns } from "../granotHistory/closedAutomationRun";
 import { createHash, randomUUID } from "node:crypto";
+import { BSON } from "mongodb";
 import { readGranotCredentials as readCredentials } from "./credentials";
 import { send } from "@vercel/queue";
 import { Types } from "mongoose";
@@ -51,6 +52,20 @@ const LEASE_SCOPE = "granot:automation:account";
 // Collection and apply share the account lease. Renew halfway through its lifetime.
 const LEASE_TTL_MS = 45 * 60_000;
 const PLAN_TTL_MS = 24 * 60 * 60_000;
+
+type ApplyTiming = {
+  processed_actions: number;
+  lifecycle_ms: number;
+  outreach_ms: number;
+};
+
+type WorkerTiming = {
+  claimed_status: string;
+  claim_document_bson_bytes: number;
+  claim_ms: number;
+  planning_ms: number;
+  apply?: ApplyTiming & { elapsed_ms: number };
+};
 
 type EstimatesRunSelection = { estimatesSelection?: 'all' | 'pool'; estimatesLane?: EstimatesLane };
 type GranotRunRequest = {
@@ -208,6 +223,7 @@ export async function runGranotWorker(deps: {
   claimed: boolean;
   run_id?: string;
   status?: string;
+  timing?: WorkerTiming;
 }> {
   await connectMongo();
   const now = new Date();
@@ -225,19 +241,30 @@ export async function runGranotWorker(deps: {
   try {
     // One age-ordered queue: untouched collection/approved actions progress
     // alongside due retries. A waiting match cannot monopolize every wakeup.
+    const claimStarted = performance.now();
     const run = await claimGranotRun(granotRecoverableFilter(now), lease, now);
+    const claimMs = performance.now() - claimStarted;
     if (!run) return { claimed: false };
     runId = String(run._id);
-    if (run.status === "applying") {
-      const status = await applyRun(runId, lease, deps);
-      return { claimed: true, run_id: runId, status };
+    const timing: WorkerTiming = {
+      claimed_status: run.status,
+      claim_document_bson_bytes: BSON.calculateObjectSize(run),
+      claim_ms: claimMs,
+      planning_ms: 0,
+    };
+    let status: string = run.status;
+    if (status !== "applying") {
+      const planningStarted = performance.now();
+      status = await (deps.planRun ?? planScheduledEstimatesRun)(runId, lease);
+      timing.planning_ms = performance.now() - planningStarted;
     }
-    const plannedStatus = await (deps.planRun ?? planScheduledEstimatesRun)(runId, lease);
-    if (plannedStatus === "applying") {
-      const status = await applyRun(runId, lease, deps);
-      return { claimed: true, run_id: runId, status };
+    if (status === "applying") {
+      const applyStarted = performance.now();
+      const applyTiming = { processed_actions: 0, lifecycle_ms: 0, outreach_ms: 0 };
+      status = await applyRun(runId, lease, deps, applyTiming);
+      timing.apply = { ...applyTiming, elapsed_ms: performance.now() - applyStarted };
     }
-    return { claimed: true, run_id: runId, status: plannedStatus };
+    return { claimed: true, run_id: runId, status, timing };
   } catch (error) {
     if (runId && !(error instanceof EstimatesOutreachRefreshRetry)) await failRun(runId, lease, error);
     throw error;
@@ -396,7 +423,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
   applyAction?: typeof applyAutomationPlanAction;
   loadReplayStates?: typeof loadAutomationReplayStates;
   refreshOutreach?: typeof refreshExistingEstimatesOutreach;
-} = {}): Promise<string> {
+}, timing: ApplyTiming): Promise<string> {
   const applyAction = deps.applyAction ?? applyOpenAutomationPlanAction;
   const run = await GranotAutomationRun.findOne({
     ...fenced(runId, lease, ["applying"]),
@@ -446,7 +473,9 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
   const refreshReceipt = async (receipt: GranotAutomationActionReceipt) => {
     if (receipt.outreach_refresh_completed || !isTerminalAutomationActionOutcome(receipt.outcome)) return;
     try {
+      const outreachStarted = performance.now();
       await (deps.refreshOutreach ?? refreshExistingEstimatesOutreach)(receipt);
+      timing.outreach_ms += performance.now() - outreachStarted;
       receipt.outreach_refresh_completed = true;
       await upsertActionReceipt(runId, lease, receipt, completed);
     } catch (error) {
@@ -490,6 +519,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
       throw new GranotRunConflict("RUN_EXPIRED_OR_DRIFTED", "The approved Granot plan expired before the next action.");
     }
     let receipt: GranotAutomationActionReceipt;
+    const lifecycleStarted = performance.now();
     try {
       receipt = await applyAction({
         action_id: action.action_id,
@@ -513,6 +543,8 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
       } else {
         throw error;
       }
+    } finally {
+      timing.lifecycle_ms += performance.now() - lifecycleStarted;
     }
     const terminal = isTerminalAutomationActionOutcome(receipt.outcome);
     if (terminal && (!existing || isPendingAutomationActionOutcome(existing.outcome))) {
@@ -525,6 +557,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
     // still reach their canonical decisions before the run waits for retries.
   }
 
+  timing.processed_actions = processedActions;
   const refreshPending = selected.some((id) => {
     const receipt = receiptsByAction.get(id);
     return receipt && isTerminalAutomationActionOutcome(receipt.outcome) && !receipt.outreach_refresh_completed;

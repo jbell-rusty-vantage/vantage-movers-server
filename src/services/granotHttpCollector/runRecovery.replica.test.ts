@@ -63,6 +63,13 @@ test('worker crash after canonical action but before run result replays the exac
     await GranotAutomationRun.updateOne({ _id: id }, { $set: { leased_until: new Date(0) } });
     const resumed = await runGranotWorker({ applyAction, refreshOutreach: async () => 'enqueued' });
     assert.equal(resumed.status, 'completed');
+    assert.ok(resumed.timing?.apply);
+    assert.equal(resumed.timing.claimed_status, 'applying');
+    assert.equal(resumed.timing.claim_document_bson_bytes, 43);
+    assert.ok(resumed.timing.claim_ms > 0);
+    assert.equal(resumed.timing.planning_ms, 0);
+    assert.equal(resumed.timing.apply.processed_actions, 1);
+    assert.ok(resumed.timing.apply.elapsed_ms >= resumed.timing.apply.lifecycle_ms + resumed.timing.apply.outreach_ms);
     assert.equal(await effects.countDocuments({ _id: `${id}:row-1` }), 1);
     const final = await GranotAutomationRun.findById(id).lean();
     assert.equal(calls, 2);

@@ -79,7 +79,7 @@ router.all(
       if (runs.every(run => run.status === 'archived')) return res.json({ ok: true, skipped: true, reason: 'already_archived' });
       const created = runs[0]!;
       if (!runs.some((run) => run.queue_published)) {
-        const worker = await runGranotWorker();
+        const { claimed, run_id, status } = await runGranotWorker();
         return res.json({
           ok: true,
           skipped: false,
@@ -87,7 +87,7 @@ router.all(
           run_ids: runs.map((run) => run.run_id),
           date_window: decision.run ? decision.dateWindow : poolDuties[0]?.dateWindow ?? null,
           pool_enabled: poolActive,
-          local_worker: worker,
+          local_worker: { claimed, run_id, status },
         });
       }
       return res.json({

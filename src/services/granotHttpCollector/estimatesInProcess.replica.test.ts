@@ -28,6 +28,7 @@ import { parseEstimatesInProcessHtml } from "./estimatesInProcess";
 const LIVE_NAME = "Live Caller";
 const LIVE_EMAIL = "live.caller@example.test";
 const MOVE_DATE = "11/20/2026";
+const STORED_MOVE_DATE = new Date("2026-11-20T05:00:00.000Z");
 
 const writeFlags = {
   ...GRANOT_LIFECYCLE_FLAG_DEFAULTS,
@@ -351,6 +352,7 @@ test("estimates apply fills a RingCentral Call Lead and leaves a conflicting or 
     assert.equal(untouched?.granot_priority, undefined);
     assert.equal(untouched?.job_no, undefined);
     assert.equal(untouched?.receiver_agent, undefined);
+    assert.equal(untouched?.move_date, undefined);
 
     const freshResult = await apply(freshAction);
     assert.equal(freshResult.outcome, "applied");
@@ -365,7 +367,7 @@ test("estimates apply fills a RingCentral Call Lead and leaves a conflicting or 
     assert.equal(fresh?.email, LIVE_EMAIL);
     assert.equal(fresh?.granot_contact_snapshot, undefined);
     assert.equal(fresh?.cubic_feet, undefined);
-    assert.equal((fresh as { move_date?: string } | null)?.move_date, undefined);
+    assert.deepEqual(fresh?.move_date, STORED_MOVE_DATE);
 
     const quotedResult = await apply(quotedAction);
     assert.equal(quotedResult.outcome, "applied");
@@ -374,7 +376,7 @@ test("estimates apply fills a RingCentral Call Lead and leaves a conflicting or 
     assert.equal(quoted?.job_no, quotedJob);
     assert.ok(quoted?.granot_contact_snapshot);
     assert.equal(quoted?.cubic_feet, 250);
-    assert.equal((quoted as { move_date?: string } | null)?.move_date, undefined);
+    assert.deepEqual(quoted?.move_date, STORED_MOVE_DATE);
     assert.equal(quoted?.phone_number, quotedPhone);
     assert.equal(quoted?.name, LIVE_NAME);
 
