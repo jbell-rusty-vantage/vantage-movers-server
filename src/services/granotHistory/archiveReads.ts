@@ -1,7 +1,8 @@
+import { evidenceFormat, readEvidencePage } from "./evidencePage";
 import type { Db, Document } from "mongodb";
 import { archiveJobKey, decodeChains } from "./archiveCodec";
 
-export type ArchiveEntry = { _id: string; hash?: string; generation?: string; job: string; job_key: string; newest: Date; oldest: Date; count: number };
+export type ArchiveEntry = { _id: string; evidence_ids?: Document["_id"][]; format?: string; hash?: string; generation?: string; job: string; job_key: string; newest: Date; oldest: Date; count: number };
 export const archiveCatalog = (db: Db) => db.collection<ArchiveEntry>("granot_history_archive_chunks");
 export function mergeEvidence(hot: Document[], cold: Document[]): Document[] {
   const rows = new Map(cold.map(row => [String(row._id), row]));
@@ -12,7 +13,7 @@ export function mergeEvidence(hot: Document[], cold: Document[]): Document[] {
 export async function readArchiveEntry(db: Db, entry: ArchiveEntry) {
   const { readArchiveObject } = await import("./archiveObjects.js");
   const hash = entry.hash ?? entry._id;
-  const rows = decodeChains(await readArchiveObject(db.databaseName, hash, entry.generation), hash, entry.job);
+  const rows = entry.format === evidenceFormat && entry.generation ? (await readEvidencePage(db,{ format: evidenceFormat, job:entry.job, hash, generation:entry.generation })).filter(c=>c.observation.identity?.normalized_job_no===entry.job && entry.evidence_ids?.some(id=>String(id)===String(c.observation._id))) : decodeChains(await readArchiveObject(db.databaseName, hash, entry.generation), hash, entry.job);
   if (rows.length !== entry.count) throw new Error("Granot archive count mismatch");
   return rows;
 }

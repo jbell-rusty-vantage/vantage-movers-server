@@ -52,13 +52,15 @@ export async function referencedChains(
   const ids = chains.flatMap((c) => [
     c.observation._id,
     c.receipt._id,
+    ...(c.receipt.processing?.latest_decision_id ? [c.receipt.processing.latest_decision_id] : []),
     ...c.decisions.map((d) => d._id),
   ]);
   for (const c of chains)
     for (const id of [
       c.observation._id,
       c.receipt._id,
-      ...c.decisions.map((d) => d._id),
+      ...(c.receipt.processing?.latest_decision_id ? [c.receipt.processing.latest_decision_id] : []),
+    ...c.decisions.map((d) => d._id),
     ])
       owner.set(String(id), String(c.observation._id));
   const choices = [...ids, ...ids.map(String)];

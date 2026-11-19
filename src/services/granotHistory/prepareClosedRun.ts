@@ -1,3 +1,5 @@
+import { BSON } from "mongodb";
+import { evidenceFormat } from "./evidencePage";
 import type { ClientSession, Db } from "mongodb";
 import { toObjectId } from "../../utils/objectId";
 import { closedRuns, packClosedRun, unpackClosedRun, type ClosedOperation } from "./closedAutomationRun";
@@ -21,7 +23,7 @@ export async function prepareClosedRun(db: Db, run: string, cutoff: Date) {
 /** Enumerate the actual operation namespace as well as the run's sealed plan, so orphan captures cannot vanish. */
 export async function loadClosedOperations(db: Db, run: string, cutoff: Date, session?: ClientSession) {
   const receipts = await db.collection("granot_webhook_receipts").find({ observation_channel: "granot_http_automation",
-    channel_operation_id: { $type: "string", $gte: run + ":", $lt: run + ";" } }, {session,projection:{channel_operation_id:1,channel_operation_kind:1,payload_sha256:1,processing:1}})
+    channel_operation_id: { $type: "string", $gte: run + ":", $lt: run + ";" } }, {session,projection:{evidence_archive:1,channel_operation_id:1,channel_operation_kind:1,payload_sha256:1,processing:1}})
     .hint("granot_observation_receipt_channel_operation_id_unique").limit(5001).maxTimeMS(3000).toArray();
   if (receipts.length > 5000) return { reason: "run_size" as const };
   if (!receipts.length) return { reason: "ready" as const, rows: [] as ClosedOperation[] };
@@ -36,6 +38,15 @@ export async function loadClosedOperations(db: Db, run: string, cutoff: Date, se
   const rows: ClosedOperation[] = [];
   for (const r of receipts) {
     const d = byId.get(String(r.processing.latest_decision_id));
+    const proof = r.evidence_archive;
+    if (!d && proof?.format === evidenceFormat && proof.generation && proof.decided_at instanceof Date && proof.decided_at < cutoff &&
+        /^[a-f0-9]{64}$/.test(proof.hash) && /^[a-f0-9]{64}$/.test(r.payload_sha256) && r.channel_operation_kind) {
+      const saved = currentReceiptReplay(r.processing.replay_result,r.processing.latest_decision_id);
+      if (saved && proof.replay_hash === digest(BSON.serialize(saved))) {
+        rows.push({operation:r.channel_operation_id,kind:r.channel_operation_kind,hash:r.payload_sha256,receipt:String(r._id),result:saved});
+        continue;
+      }
+    }
     if (!d || receiptsByObservation.get(String(d.observation_id)) !== String(r._id) || !d.outcome || ["pending_match","accepted_for_processing"].includes(d.outcome) || !(d.decided_at instanceof Date) || d.decided_at >= cutoff
       || !/^[a-f0-9]{64}$/i.test(r.payload_sha256) || !r.channel_operation_kind) return { reason: "incomplete_evidence" as const };
     const result = { decision_id:String(d._id), observation_id:String(d.observation_id), outcome:d.outcome,

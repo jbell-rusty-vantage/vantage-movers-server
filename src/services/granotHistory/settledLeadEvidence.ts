@@ -1,3 +1,4 @@
+import { evidenceForReceipt, readEvidencePage, type EvidenceLocator } from "./evidencePage";
 import { isDeepStrictEqual } from "node:util";
 import { readRetiredWebhook, webhookReceiptFormat } from "./completedWebhooks";
 import type { ClientSession, Db, ObjectId } from "mongodb";
@@ -65,6 +66,9 @@ export async function preserveReceiptLocator(db: Db, chain: ArchivedChain, locat
 /** On-demand diagnostics for archived webhooks and extension operations. A corrupt locator must fail visibly. */
 export async function readArchivedReceipt(db: Db, receiptId: ObjectId, read = readArchiveObject) {
   const recorded = await db.collection<ReceiptArchiveLocator>("granot_archived_receipts").findOne({ _id: receiptId });
+  const transport = recorded ?? await db.collection("granot_webhook_receipts").findOne({_id:receiptId},{projection:{ evidence_archive:1 }});
+  const evidence = (transport as { evidence_archive?: EvidenceLocator } | null)?.evidence_archive;
+  if (evidence) return evidenceForReceipt(await readEvidencePage(db,evidence,read),{_id:receiptId},evidence);
   if ((recorded as { format?: string } | null)?.format === webhookReceiptFormat) {
     const receipt = await readRetiredWebhook(db, receiptId, undefined, read);
     const observation = await db.collection("granot_observations").findOne({ receipt_id: receiptId });

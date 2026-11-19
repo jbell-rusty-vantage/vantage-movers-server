@@ -47,6 +47,7 @@ export async function installRetention(db: Db, now = new Date()) {
       { job_key: 1, newest: -1 },
       { name: "granot_archive_job_newest" },
     );
+  await db.collection("granot_history_archive_chunks").createIndex({evidence_ids:1},{sparse:true,name:"granot_archived_evidence_id"});
   await policies(db).updateOne(
     { _id: "v1" },
     { $setOnInsert: { mode: "shadow", new_data_from: now } },

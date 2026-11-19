@@ -1,3 +1,4 @@
+import { readCaseDecision } from "./caseEvidence";
 import { readRetiredWebhook } from "../granotHistory/completedWebhooks";
 import { withTransaction } from "../../db";
 import { currentReceiptReplay, storeReceiptReplay, type StoredReceiptReplay } from "./receiptReplay";
@@ -950,7 +951,7 @@ async function readReceiptResult(receipt: ClaimedReceiptSnapshot | null, deps: D
 async function defaultLoadDecisionResult(
   decisionId: mongoose.Types.ObjectId,
 ): Promise<ProcessorResult | null> {
-  const decision = await getSynchronizationDecisionModel().findById(decisionId).lean();
+  const decision = await getSynchronizationDecisionModel().findById(decisionId).lean() ?? await readCaseDecision(decisionId);
   if (!decision) {
     return null;
   }

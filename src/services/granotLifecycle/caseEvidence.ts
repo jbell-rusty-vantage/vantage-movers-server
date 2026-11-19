@@ -1,3 +1,5 @@
+import { readEvidenceIds } from "../granotHistory/evidencePage";
+import type { GranotObservationDocument } from "../../models/GranotObservation";
 import { readRetiredWebhook } from "../granotHistory/completedWebhooks";
 import type { ClientSession, Types } from "mongoose";
 import { getGranotObservationModel } from "../../models/GranotObservation";
@@ -29,7 +31,8 @@ export async function preserveCaseEvidence(observationId: Types.ObjectId, decisi
 
 export async function readCaseObservation(id: Types.ObjectId, session?: ClientSession) {
   return await observations().findOne({ _id: id }, { session })
-    ?? await getGranotObservationModel().findById(id).session(session ?? null).lean();
+    ?? await getGranotObservationModel().findById(id).session(session ?? null).lean()
+    ?? ((await readEvidenceIds(getGranotObservationModel().db.db!,[id],"observation",session))[0] as GranotObservationDocument | undefined) ?? null;
 }
 
 export async function readCaseStatement(id: Types.ObjectId, session?: ClientSession) {
@@ -40,9 +43,10 @@ export async function readCaseStatement(id: Types.ObjectId, session?: ClientSess
   return cold && { _id: id, observation_channel: cold.observation_channel, payload: cold.payload };
 }
 
-export async function readCaseDecision(id: Types.ObjectId, session: ClientSession) {
+export async function readCaseDecision(id: Types.ObjectId, session?: ClientSession) {
   return await decisions().findOne({ _id: id }, { session })
-    ?? await getSynchronizationDecisionModel().findById(id).session(session).lean();
+    ?? await getSynchronizationDecisionModel().findById(id).session(session ?? null).lean()
+    ?? ((await readEvidenceIds(getSynchronizationDecisionModel().db.db!,[id],"decision",session))[0] as SynchronizationDecisionDocument | undefined) ?? null;
 }
 
 export async function readCaseObservations(ids: Types.ObjectId[]) {
@@ -50,7 +54,9 @@ export async function readCaseObservations(ids: Types.ObjectId[]) {
   const pinned = new Set(rows.map(row => String(row._id)));
   const missing = ids.filter(id => !pinned.has(String(id)));
   if (missing.length) rows.push(...await getGranotObservationModel().find({ _id: { $in: missing } }).lean());
-  return rows;
+  const found = new Set(rows.map(row=>String(row._id)));
+  const archived = await readEvidenceIds(getGranotObservationModel().db.db!,missing.filter(id=>!found.has(String(id))),"observation");
+  return [...rows,...archived as GranotObservationDocument[]];
 }
 
 export async function readCaseDecisions(ids: Types.ObjectId[]) {
@@ -58,5 +64,7 @@ export async function readCaseDecisions(ids: Types.ObjectId[]) {
   const pinned = new Set(rows.map(row => String(row._id)));
   const missing = ids.filter(id => !pinned.has(String(id)));
   if (missing.length) rows.push(...await getSynchronizationDecisionModel().find({ _id: { $in: missing } }).lean());
-  return rows;
+  const found = new Set(rows.map(row=>String(row._id)));
+  const archived = await readEvidenceIds(getSynchronizationDecisionModel().db.db!,missing.filter(id=>!found.has(String(id))),"decision");
+  return [...rows,...archived as SynchronizationDecisionDocument[]];
 }

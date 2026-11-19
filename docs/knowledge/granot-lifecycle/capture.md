@@ -93,6 +93,12 @@ Every two minutes the retention worker examines up to eight completed receipts p
 
 The worker reads back the exact compressed BSON from a pinned GCS generation, verifies its checksum and compares it with the original. It rechecks the receipt and business evidence before replacing the receipt with a compact archive locator in one MongoDB transaction. The Observation and Decision continue to support the Desk and booking readers. Failed storage verification leaves the receipt available for retry. Booking status receipts use their own lifecycle.
 
+## Retirement of Lead Observations and Decisions
+
+The two-minute retention job scans Observations in ID order, 192 per pass. For a completed HTTP automation receipt the saved replay must identify the same Observation, Decision and Lead and report an effect-free already-current or stale outcome. If the original Decision was previously removed, history contains the Observation and an empty Decision list. A surviving Decision also requires a later winning Lead Observation. For an inbound Lead webhook whose receipt is already in GCS, the worker uses the verified completed receipt and the linked live Decision. Priority 5, booking actions, unresolved work and live references stay hot.
+
+The worker verifies a compressed GCS page, repeats the source and reference checks, then commits the job history catalog, original-ID lookup, receipt locator and source removals together. The receipt continues serving its original replay. A sealed automation run can verify an archived Decision against the saved replay digest. This path operates independently of the general shadow retention policy and the MongoDB TTL monitor.
+
 ## Related
 
 - CRM Posting on form-lead create does **not** write a receipt and is not triggered by webhooks ([`form-lead.md`](../services/form-lead.md)).
