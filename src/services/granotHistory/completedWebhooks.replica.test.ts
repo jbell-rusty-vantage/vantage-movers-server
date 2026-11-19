@@ -30,12 +30,12 @@ test("completed inbound Lead receipts leave Mongo only after exact GCS recovery 
       store: async (_db: string, bytes: Buffer) => {
         const hash = digest(bytes);
         objects.set(hash, bytes);
-        return { hash, persisted: bytes, generation: "1" };
+        return { hash, persisted: Buffer.from(bytes), generation: "1" };
       },
     };
     const read = async (_db: string, hash: string, generation?: string) => {
       assert.equal(generation, "1");
-      return objects.get(hash)!;
+      return Buffer.from(objects.get(hash)!);
     };
     async function seed(
       route: string,
