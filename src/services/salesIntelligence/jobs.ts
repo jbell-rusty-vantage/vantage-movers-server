@@ -47,6 +47,24 @@ export async function findMatchingCsiJob(input: JobInput, session: ClientSession
   return row;
 }
 
+/** Validate an overlapping feed page in one indexed read inside the cursor transaction. */
+export async function existingJobMatches(inputs: readonly JobInput[], session: ClientSession) {
+  const matches = new Map<string, boolean>();
+  if (!inputs.length) return matches;
+  const Model = getSalesIntelligenceJobModel();
+  await assertIndexes(Model.collection, SALES_INTELLIGENCE_JOB_INDEXES);
+  const expected = new Map(inputs.map(input => [input.dedupe_key, input]));
+  const dataset = csiDataset();
+  const rows = await Model.find({ dedupe_key: { $in: [...expected.keys()] } },
+    { dedupe_key: 1, deployment: 1, database: 1, payload_hash: 1 }).session(session).lean();
+  for (const row of rows) {
+    const input = expected.get(row.dedupe_key)!;
+    matches.set(row.dedupe_key, row.deployment === dataset.deployment &&
+      row.database === dataset.database && row.payload_hash === jobPayloadHash(input, dataset));
+  }
+  return matches;
+}
+
 export async function enqueueCsiJob(
   input: JobInput,
   session: ClientSession,

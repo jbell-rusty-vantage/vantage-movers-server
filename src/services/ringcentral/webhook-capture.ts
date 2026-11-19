@@ -86,14 +86,15 @@ export async function captureRingCentralWebhookEvent(
 
   try {
     const collection = await getWebhookEventsCollection();
-    const inserted = await collection.insertOne(document);
+    const { normalizedPreview, ...receipt } = document;
+    const inserted = await collection.insertOne(receipt);
     logger.info({
       msg: "ringcentral.webhook.capture.persisted",
       receivedAt: document.receivedAt.toISOString(),
-      subscriptionId: document.normalizedPreview.subscriptionId,
-      telephonySessionId: document.normalizedPreview.telephonySessionId,
-      partyId: document.normalizedPreview.partyId,
-      event: document.normalizedPreview.event,
+      subscriptionId: normalizedPreview.subscriptionId,
+      telephonySessionId: normalizedPreview.telephonySessionId,
+      partyId: normalizedPreview.partyId,
+      event: normalizedPreview.event,
     });
     return {
       storedRawEvent: true,

@@ -10,7 +10,7 @@ import { getSalesOutreachSubjectModel } from "../../../models/salesOutreach";
 import { getSalesIntelligenceSyncStateModel } from "../../../models/SalesIntelligenceSyncState";
 import { MongoLeaseStore } from "../../durableWork/leases";
 import { CsiError } from "../../salesIntelligence/auth";
-import { enqueueCsiJob, type JobInput } from "../../salesIntelligence/jobs";
+import { enqueueCsiJob, existingJobMatches, type JobInput } from "../../salesIntelligence/jobs";
 import type { SalesOutreachConfigurationValue } from "../../../validation/v1/salesOutreach";
 import type { ConfigurationLoader } from "../config/load";
 import { salesOutreachConfigurationLoader } from "../config/load";
@@ -253,6 +253,7 @@ export type ReconcileSubject = Readonly<{
 }>;
 
 export type OutreachFeedStore = {
+  existingJobMatches?: typeof existingJobMatches;
   relatedForms(callIds: readonly string[], session: ClientSession): Promise<Map<string, string>>;
   readTailCursor(session: ClientSession): Promise<FeedCursor | null>;
   writeTailCursor(cursor: FeedCursor, session: ClientSession): Promise<void>;
@@ -396,6 +397,7 @@ export const mongoOutreachFeedStore: OutreachFeedStore = {
     }
     return revisions;
   },
+  existingJobMatches,
   async enqueue(job, session) {
     try {
       await enqueueCsiJob(job, session);
@@ -465,9 +467,12 @@ async function runTailPass(now: Date, deps: OutreachFeedDeps, gates: TailGates, 
     const subjects = await store.subjectLeadKeys(uniqueLeads(changes.map((c) => c.lead)), session);
     let nominated = 0;
     let conflicts = 0;
-    for (const nomination of nominateLeadChanges(changes, subjects, gates.intake, gates.admission, gates.pool)) {
-      const job = nomination.kind === "admission" ? admissionJobInput(nomination.lead, nomination.revision) : leadChangeJobInput(nomination.lead, nomination.revision);
-      if ((await store.enqueue(job, session)) === "conflict") conflicts++;
+    const jobs = nominateLeadChanges(changes, subjects, gates.intake, gates.admission, gates.pool)
+      .map(({ lead, revision, kind }) => kind === "admission" ? admissionJobInput(lead, revision) : leadChangeJobInput(lead, revision));
+    const existing = overlap.length ? await store.existingJobMatches?.(jobs, session) : undefined;
+    for (const job of jobs) {
+      const match = existing?.get(job.dedupe_key);
+      if (match === false || (match === undefined && await store.enqueue(job, session) === "conflict")) conflicts++;
       else nominated++;
     }
     // One projected read per bounded page, never a read per EntityChange. Reference-only fields

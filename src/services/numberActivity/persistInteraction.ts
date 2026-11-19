@@ -22,7 +22,7 @@ import {
   type CallLogRecordInput,
 } from "./interactionProjection";
 import { csiFlag } from "../../config/domain/salesIntelligence";
-import { recomputeCallSummary } from "./callSummary";
+import { recomputeCallSummary, sameCallSummaryContribution, hasInitializedCallSummary } from "./callSummary";
 import { leadLinkNumberJobInput } from "./leadLinkJobs";
 import { reverseDigits, toNationalTenDigit } from "./phone";
 import { addObservedSearchTerm } from "./searchTerms";
@@ -361,13 +361,18 @@ async function applyOnce(
     );
   }
 
-  // All Numbers v2: every number this observation touched gets its call summary recomputed from its
-  // calls, in this transaction (the number it is on, the one it left, and the merged losers' numbers).
-  const touchedNumbers = new Set<string>();
-  if (number.id) touchedNumbers.add(String(number.id));
-  if (canonical?.contact_number_id) touchedNumbers.add(String(canonical.contact_number_id));
-  for (const other of others) if (other.contact_number_id) touchedNumbers.add(String(other.contact_number_id));
-  for (const id of [...touchedNumbers].sort()) await recomputeCallSummary(id, session);
+  // Recount only if this call's summary contribution changed. Creation, moves and merges
+  // always recount every touched number; provider/evidence writes and downstream work remain intact.
+  const sameNumber = canonical?.contact_number_id && number.id && canonical.contact_number_id.equals(number.id);
+  const summaryUnchanged = canonical && sameNumber && !number.created && number.summary_initialized && !others.length &&
+    sameCallSummaryContribution(canonical, { ...stored, _id: interactionId });
+  if (!summaryUnchanged) {
+    const touchedNumbers = new Set<string>();
+    if (number.id) touchedNumbers.add(String(number.id));
+    if (canonical?.contact_number_id) touchedNumbers.add(String(canonical.contact_number_id));
+    for (const other of others) if (other.contact_number_id) touchedNumbers.add(String(other.contact_number_id));
+    for (const id of [...touchedNumbers].sort()) await recomputeCallSummary(id, session);
+  }
 
   const joined = Boolean(number.id && (!canonical?.contact_number_id || !canonical.contact_number_id.equals(number.id) || others.length > 0));
   const jobs = await scheduleDownstream(outcome, String(interactionId), number, joined, session, now);
@@ -420,7 +425,7 @@ async function resolveCanonicalRows(
   return out;
 }
 
-type NumberRef = { id: mongoose.Types.ObjectId | null; created: boolean };
+type NumberRef = { id: mongoose.Types.ObjectId | null; created: boolean; summary_initialized: boolean };
 
 async function upsertContactNumber(
   next: InteractionProjection,
@@ -440,8 +445,8 @@ async function upsertContactNumber(
     next.call_log_state !== "provisional";
   // A call leaving its number (no longer eligible, re-pointed, merged away) needs no write here:
   // the touched numbers' summaries are recomputed from their calls after the interaction is written.
-  if (!eligible) return { id: null, created: false };
-  const existing = await ContactNumber.findOne({ e164 }).session(session);
+  if (!eligible) return { id: null, created: false, summary_initialized: false };
+  const existing = await ContactNumber.findOne({ e164 }).session(session).lean();
   const externalName = next.parties.find((p) => p.role === "external")?.name_raw ?? null;
   if (!existing) {
     const created = await ContactNumber.create(
@@ -462,10 +467,10 @@ async function upsertContactNumber(
       ],
       { session },
     );
-    return { id: created[0]!._id, created: true };
+    return { id: created[0]!._id, created: true, summary_initialized: false };
   }
   await observeOnNumber(existing._id, next, session, externalName);
-  return { id: existing._id, created: false };
+  return { id: existing._id, created: false, summary_initialized: hasInitializedCallSummary(existing) };
 }
 
 /**

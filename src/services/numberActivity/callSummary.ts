@@ -1,6 +1,6 @@
 import mongoose, { type ClientSession } from "mongoose";
 import { getCallInteractionModel } from "../../models/CallInteraction";
-import { getContactNumberModel } from "../../models/ContactNumber";
+import { CONTACT_NUMBER_SUMMARY_VERSION, getContactNumberModel } from "../../models/ContactNumber";
 import { canonicalJson } from "../durableWork/checksum";
 import { callUserParty } from "./callRep";
 
@@ -10,7 +10,7 @@ import { callUserParty } from "./callRep";
  *
  * Always recomputed from the number's `call_interactions`, never incrementally, so a late or
  * out-of-order Call Log reconcile, a merge or a re-pointed call lands correctly. Capture calls
- * `recomputeCallSummary` inside every persisted observation's transaction (`persistInteraction.ts`),
+ * `recomputeCallSummary` when contributions change or the persisted summary is uninitialized (`persistInteraction.ts`),
  * retention after a purge, and the v2 migration once per number.
  *
  * Counted calls are canonical (`merged_into_id: null`), unpurged, external (`Inbound`/`Outbound`)
@@ -101,6 +101,53 @@ export function summarizeCalls(rows: readonly SummaryCallRow[]): CallSummary {
     };
   }
   return summary;
+}
+
+/** All fields that decide whether and how one call contributes to a number's summary. */
+export type SummaryContributionRow = SummaryCallRow & {
+  contact_number_id?: unknown;
+  merged_into_id?: unknown;
+  purged_at?: Date | null;
+  terminal?: boolean;
+  call_log_state?: string | null;
+};
+
+/**
+ * Compare contributions, not provider payloads. Recording metadata, evidence freshness and
+ * non-selected parties may change without changing the summary. Creation, merges and number
+ * moves still force a full recount in the persistence caller; this is not an incremental rollup.
+ */
+export function sameCallSummaryContribution(before: SummaryContributionRow, after: SummaryContributionRow): boolean {
+  const contribution = (row: SummaryContributionRow) => {
+    if (!row.contact_number_id || row.merged_into_id || row.purged_at || row.terminal !== true ||
+      row.call_log_state === "provisional" || !["Inbound", "Outbound"].includes(row.direction)) return null;
+    return {
+      number_id: String(row.contact_number_id),
+      interaction_id: String(row._id),
+      direction: row.direction,
+      started_at: row.started_at,
+      result: callResult(row),
+      duration_seconds: typeof row.duration_seconds === "number" ? row.duration_seconds : null,
+      rc_extension_id: callUserParty(row)?.extension_id ?? null,
+    };
+  };
+  return stableJson(contribution(before)) === stableJson(contribution(after));
+}
+
+/** Missing persisted fields must not be hidden by Mongoose defaults before this check. */
+export function hasInitializedCallSummary(row: Record<string, unknown>): boolean {
+  if (row.summary_version !== CONTACT_NUMBER_SUMMARY_VERSION) return false;
+  const calls = row.calls as Record<string, unknown> | null | undefined;
+  if (!calls || !["inbound", "outbound", "missed"].every(key =>
+    typeof calls[key] === "number" && Number.isInteger(calls[key]) && Number(calls[key]) >= 0)) return false;
+  if (!["last_inbound_at", "last_outbound_at", "waiting_since"].every(key =>
+    row[key] === null || (row[key] instanceof Date && Number.isFinite(+row[key])))) return false;
+  if (Number(calls.inbound) + Number(calls.outbound) === 0) return row.last_call === null;
+  const last = row.last_call as Record<string, unknown> | null | undefined;
+  return Boolean(last?.interaction_id && last.at instanceof Date && Number.isFinite(+last.at) &&
+    ["inbound", "outbound"].includes(String(last.direction)) && ["answered", "missed", "voicemail"].includes(String(last.result)) &&
+    (last.duration_seconds === null || (typeof last.duration_seconds === "number" && Number.isFinite(last.duration_seconds) && last.duration_seconds >= 0)) &&
+    (last.rc_extension_id === null || typeof last.rc_extension_id === "string"));
 }
 
 /** The `call_interactions` predicate of a counted call on one number (index `call_interaction_number_started_id`). */
