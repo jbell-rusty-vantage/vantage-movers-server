@@ -73,6 +73,21 @@ async function main() {
   const completeBytes = await bytes(); await withTransaction(s => enqueueCsiJob(input, s)); assert.deepEqual(await bytes(), completeBytes);
   assert.equal(await claimCsiJob("worker", String(first._id)), null);
   assert.equal((await Model.collection.indexes()).find(i => i.name === "csi_job_completed_ttl")?.expireAfterSeconds, 14 * 86400);
+  const { ensureCaptureProjectionJob, fanOutCaptureProjection } = await import("../src/services/numberActivity/webhookFanout.js");
+  const receipt = { receiptId: String(new mongoose.Types.ObjectId()), uuid: randomUUID() };
+  const capture = await ensureCaptureProjectionJob(receipt);
+  assert.equal(capture.created, true);
+  const noEnqueue = async (): Promise<never> => { throw new Error("duplicate attempted an upsert"); };
+  assert.equal((await ensureCaptureProjectionJob(receipt, { enqueue: noEnqueue })).job_id, capture.job_id);
+  await assert.rejects(ensureCaptureProjectionJob({ ...receipt, receiptId: String(new mongoose.Types.ObjectId()) }),
+    /IDEMPOTENCY_CONFLICT/);
+  const captureLease = await claimCsiJob("capture", capture.job_id);
+  assert.ok(captureLease);
+  await completeCsiJob({ job_id: capture.job_id, owner: "capture", epoch: captureLease.lease_epoch }, async () => {});
+  const delivered = await fanOutCaptureProjection({ ...receipt, telephonySessionId: "synthetic" }, {
+    flag: () => true, enqueue: noEnqueue, publish: async () => { throw new Error("completed receipt published a wake"); },
+  });
+  assert.deepEqual(delivered, { status: "existing", job_id: capture.job_id, dedupe_key: capture.dedupe_key, published: false });
   await proveRetiredStageFence(Model, withTransaction);
   console.log("PASS: insert timestamps, byte-stable pending/leased/completed duplicates, payload conflicts, transaction requirement, concurrent inserts, dataset fences, claims, renewal, retry, continuation, completion, lease rejection, unchanged TTL and the retired-stage fence");
 }

@@ -4,8 +4,7 @@ import { csiFlag } from "../../config/domain/salesIntelligence";
 import { isTestMode, isVantageTestRunner } from "../../config/domain/runtime";
 import { withTransaction } from "../../db";
 import { logger } from "../../logger";
-import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
-import { enqueueCsiJob } from "../salesIntelligence/jobs";
+import { enqueueCsiJob, findMatchingCsiJob } from "../salesIntelligence/jobs";
 
 /**
  * CSI-03 durable webhook fan-out (03 §2.2).
@@ -46,6 +45,7 @@ export type EnsureCaptureProjectionJobResult = {
   job_id: string;
   dedupe_key: string;
   created: boolean;
+  completed?: boolean;
 };
 
 export type EnsureDependencies = {
@@ -65,21 +65,18 @@ export async function ensureCaptureProjectionJob(
   const enqueue = deps.enqueue ?? enqueueCsiJob;
   const dedupe_key = captureProjectionDedupeKey(ref);
   return withTransaction(async (session) => {
-    const Model = getSalesIntelligenceJobModel();
-    const prior = await Model.findOne({ dedupe_key }).session(session).lean();
-    const row = await enqueue(
-      {
-        dedupe_key,
-        stage: CAPTURE_PROJECTION_STAGE,
-        subject_key: captureProjectionSubjectKey(ref),
-        input_revision: 1,
-        input_refs: [ref.receiptId],
-        priority: 10,
-      },
-      session,
-      now(),
-    );
-    return { job_id: String(row._id), dedupe_key, created: prior === null };
+    const input = {
+      dedupe_key,
+      stage: CAPTURE_PROJECTION_STAGE,
+      subject_key: captureProjectionSubjectKey(ref),
+      input_revision: 1,
+      input_refs: [ref.receiptId],
+      priority: 10,
+    };
+    const prior = await findMatchingCsiJob(input, session);
+    if (prior) return { job_id: String(prior._id), dedupe_key, created: false, completed: prior.status === "completed" };
+    const row = await enqueue(input, session, now());
+    return { job_id: String(row._id), dedupe_key, created: true };
   });
 }
 
@@ -230,6 +227,7 @@ export async function fanOutCaptureProjection(
     });
     return { status: "enqueue_failed", error_code: "enqueue_failed" };
   }
+  if (ensured.completed) return { status: "existing", job_id: ensured.job_id, dedupe_key: ensured.dedupe_key, published: false };
   const wake = await (deps.publish ?? publishCaptureProjectionWakeup)(ensured.job_id, deps);
   return {
     status: ensured.created ? "enqueued" : "existing",

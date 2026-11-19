@@ -22,19 +22,24 @@ export async function requestSubjectRefresh(job: JobInput, configuration: Active
   const Model = getSalesOutreachRefreshRequestModel();
   await assertIndexes(Model.collection, SALES_OUTREACH_REFRESH_REQUEST_INDEXES);
   const subject = await getSalesOutreachSubjectModel().findById(subjectId, { priority: 1 }).session(session).lean();
-  await Model.updateOne({ subject_id: oid(subjectId) }, {
-    $inc: { requested_generation: 1 },
-    $set: { pending: true, request_version: "w2-v1", requested_mode: control.mode,
-      ...(control.mode === "active" ? { requires_projection: true } : {}),
-      request_fingerprint: refreshFingerprint({ configuration: configuration.version, cause: job.dedupe_key, revision: job.input_revision, priority: subject?.priority }),
-      configuration_version: configuration.version, configuration_revision: configuration.revision,
-      accepted_observation_id: subject?.priority.observation_id ? String(subject.priority.observation_id) : null,
-      accepted_at: subject?.priority.accepted_at ?? null, next_due_at: now, cause: job.dedupe_key.slice(0, 240) },
-    $setOnInsert: { active_generation: 0, consumed_generation: 0, lease_epoch: 0, claimed_generation: 0,
-      ...(control.mode === "shadow" ? { requires_projection: false } : {}) },
-  }, { upsert: true, session, setDefaultsOnInsert: false, runValidators: true });
-  if (control.mode === "active") await Model.collection.updateOne({ subject_id: oid(subjectId) },
-    [{ $set: { active_generation: "$requested_generation" } }], { session });
+  const active = control.mode === "active";
+  const nomination = {
+    pending: true, request_version: "w2-v1", requested_mode: control.mode,
+    request_fingerprint: refreshFingerprint({ configuration: configuration.version, cause: job.dedupe_key, revision: job.input_revision, priority: subject?.priority }),
+    configuration_version: configuration.version, configuration_revision: configuration.revision,
+    accepted_observation_id: subject?.priority.observation_id ? String(subject.priority.observation_id) : null,
+    accepted_at: subject?.priority.accepted_at ?? null, next_due_at: now, cause: job.dedupe_key.slice(0, 240),
+  };
+  // Both generation fields use the same pre-update value. Shadow requests retain any active work owed.
+  const nextGeneration = { $add: [{ $ifNull: ["$requested_generation", 0] }, 1] };
+  await Model.collection.updateOne({ subject_id: oid(subjectId) }, [
+    { $replaceWith: { $mergeObjects: [
+      { active_generation: 0, consumed_generation: 0, lease_epoch: 0, claimed_generation: 0, requires_projection: false, createdAt: "$$NOW" },
+      "$$ROOT", { $literal: nomination },
+      { requested_generation: nextGeneration, updatedAt: "$$NOW",
+        ...(active ? { active_generation: nextGeneration, requires_projection: true } : {}) },
+    ] } },
+  ], { upsert: true, session });
   return control.mode === "active";
 }
 

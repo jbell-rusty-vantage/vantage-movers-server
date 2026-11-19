@@ -24,6 +24,29 @@ export type JobInput = {
   priority?: number;
 };
 export type JobLease = { job_id: string; owner: string; epoch: number };
+function jobPayloadHash(input: JobInput, dataset: ReturnType<typeof csiDataset>) {
+  return payloadHash({
+    ...dataset,
+    stage: input.stage,
+    subject_key: input.subject_key,
+    input_revision: input.input_revision,
+    input_refs: input.input_refs ?? [],
+  });
+}
+
+/** Receipt recovery usually finds an existing job. Validate its immutable identity before skipping the upsert. */
+export async function findMatchingCsiJob(input: JobInput, session: ClientSession) {
+  const Model = getSalesIntelligenceJobModel();
+  await assertIndexes(Model.collection, SALES_INTELLIGENCE_JOB_INDEXES);
+  const row = await Model.findOne({ dedupe_key: input.dedupe_key }, {
+    deployment: 1, database: 1, payload_hash: 1, status: 1,
+  }).session(session).lean();
+  const dataset = csiDataset();
+  if (row && (row.deployment !== dataset.deployment || row.database !== dataset.database ||
+    row.payload_hash !== jobPayloadHash(input, dataset))) throw new CsiError("IDEMPOTENCY_CONFLICT");
+  return row;
+}
+
 export async function enqueueCsiJob(
   input: JobInput,
   session: ClientSession,
@@ -35,13 +58,7 @@ export async function enqueueCsiJob(
   const Model = getSalesIntelligenceJobModel();
   await assertIndexes(Model.collection, SALES_INTELLIGENCE_JOB_INDEXES);
   const dataset = csiDataset();
-  const payload_hash = payloadHash({
-    ...dataset,
-    stage: input.stage,
-    subject_key: input.subject_key,
-    input_revision: input.input_revision,
-    input_refs: input.input_refs ?? [],
-  });
+  const payload_hash = jobPayloadHash(input, dataset);
   const row = await Model.findOneAndUpdate(
     { dedupe_key: input.dedupe_key },
     {
