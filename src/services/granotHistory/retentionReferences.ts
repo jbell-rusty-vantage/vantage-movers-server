@@ -43,7 +43,7 @@ function values(row: unknown, path: string[]): string[] {
   return values((row as Document)[path[0]], path.slice(1));
 }
 
-const OBJECT_ID = /^[a-f0-9]{24}$/i;
+const CANONICAL_OBJECT_ID = /^[a-f0-9]{24}$/;
 const chainIds = (c: ArchivedChain) => [
   c.observation._id,
   c.receipt._id,
@@ -53,27 +53,26 @@ const chainIds = (c: ArchivedChain) => [
 
 /**
  * The Form Lead reads for a batch. Every writer of a Form Lead's provenance paths is the Granot lifecycle
- * writing its own Decision target (`synchronizeLeadFromGranot`, `createLeadFromGranot`); the Call-only writers
- * (RingCentral convergence, the Call move-date repair) never touch a Form. A November 20 production check found
- * no Form whose referenced Observation has a Decision naming another Lead. So:
- * - the Form Lead targets of the chains' Decisions are read by `_id`;
- * - a chain none of whose Decisions has a target (or that has no Decision left) keeps the full path scan,
- *   because nothing names the Lead that may hold it (production holds such references from older
- *   `lead_created` Observations);
- * - a chain whose Decisions target only Call Leads needs no Form read.
- * The paths are still compared row by row, so a target that moved on holds nothing.
+ * writing its own Decision target (`synchronizeLeadFromGranot`, `createLeadFromGranot`), through a command whose
+ * EntityChange cites the Observation (`entity_changes.provenance.*`, checked below for every chain); the Call-only
+ * writers (RingCentral convergence, the Call move-date repair) never touch a Form. A November 20 production check
+ * found no Form whose referenced Observation has a Decision naming another Lead.
+ *
+ * Only the plainest chain is probed by `_id`: exactly one Decision, whose target is a Form Lead with a canonical
+ * lowercase 24-hex id. Every other chain keeps the full six-path scan, restricted to its own IDs: no Decision
+ * left (older `lead_created` Observations), several Decisions, an untargeted Decision, a Call target, or a target
+ * id stored in any other form. The paths are still compared row by row, so a target that moved on holds nothing.
  */
 function formLeadFilters(chains: ArchivedChain[], paths: string[]): Document[] {
-  const ids = new Set<string>();
-  for (const chain of chains)
-    for (const decision of chain.decisions) {
-      const target = decision?.target as { model?: unknown; id?: unknown } | undefined;
-      if (target?.model === "FormLead" && typeof target.id === "string" && OBJECT_ID.test(target.id)) ids.add(target.id.toLowerCase());
-    }
-  const untargeted = chains.filter((chain) => !chain.decisions.some((decision) => decision?.target));
-  const scan = untargeted.flatMap(chainIds);
+  const probe = new Set<string>();
+  const scan: unknown[] = [];
+  for (const chain of chains) {
+    const target = chain.decisions.length === 1 ? chain.decisions[0]?.target as { model?: unknown; id?: unknown } | undefined : undefined;
+    if (target?.model === "FormLead" && typeof target.id === "string" && CANONICAL_OBJECT_ID.test(target.id)) probe.add(target.id);
+    else scan.push(...chainIds(chain));
+  }
   return [
-    ...(ids.size ? [{ _id: { $in: [...ids].map((id) => new Types.ObjectId(id)) } }] : []),
+    ...(probe.size ? [{ _id: { $in: [...probe].map((id) => new Types.ObjectId(id)) } }] : []),
     ...(scan.length ? [{ $or: paths.map((k) => ({ [k]: { $in: [...scan, ...scan.map(String)] } })) }] : []),
   ];
 }
