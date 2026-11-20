@@ -26,6 +26,8 @@ generated:
 
 # RingCentral Call Lead Qualification
 
+> **Lifecycle reference:** the complete, code-cited Call lifecycle at `9955430d` is in [`../lead-lifecycle/call-leads.md`](../lead-lifecycle/call-leads.md); start at [`../lead-lifecycle/README.md`](../lead-lifecycle/README.md). Where this page and the pack disagree, the pack was verified against code.
+
 **RingCentral capture:** queue qualification remains mandatory for every RingCentral-created or adopted Call Lead. Historical saved evidence remains valid regardless of ingestion origin. Reporting separately preserves the exact 69-ID native Best Relocation historical inventory and accepts the owner-approved final source admission through `leads/callLeadAdmission.ts`; neither creates RingCentral qualification. Historical compatibility requires exact canonical source bindings and performs no entity writes. The bounded Owner-return final reconciliation completed November 3: 272 exception Forms and 43 exception Calls, zero new normal Leads, 495 unique memberships and all ten scoped Bookings verified. External ingestion and Granot creation remain retired; the Source Company remains active. See [final evidence](../../lead-reporting-retirement/FINAL-RECONCILIATION-2026-11-03.md). See the [billing contract and release checks](../../call-lead-billing.md).
 
 **Role:** **Call Qualification** rules decide which Ring Central inbound calls become Call Leads, then promote them through one shared ingest path. `ingestRingCentralQualifiedCall` is the only RingCentral promotion gate: it may adopt one exact pending Granot-created Call Lead or create/shadow/dry-run a RingCentral-origin Call Lead. Routes, webhooks, cron, and scripts do neither directly.
@@ -94,7 +96,7 @@ The singleton needs the unique `{ key: 1 }` index `ringcentral_call_log_sync_sta
 
 **Cadence and rollback:** `vercel.json` runs `/api/cron/ringcentral-call-log-sync` at `*/30 * * * *`. Roll back by restoring `0 */2 * * *` first, then `RINGCENTRAL_CALL_LOG_SYNC_ENABLED=false`, then (only if adoption is unsafe) `RINGCENTRAL_GRANOT_ADOPTION_ENABLED=false`. Keep the additive lease/telemetry fields and the unique safety index. Do not rewind a successful cursor without a reviewed recovery plan.
 
-**Local script:** `node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/ringcentral/ringcentral-call-log-sync-run.ts`.
+**Local script:** `node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/ringcentral/ringcentral-call-log-sync-run.ts` (local untracked tooling: this runner is not tracked at `9955430d`; tracked `scripts/` holds only `okf-progress.mjs`, `okf-query.mjs` and `dev_ops/seed-oi-team-fixture.ts`).
 
 ## 4. Shared ingest (`ringcentral-call-lead-ingest.service.ts`) — promotion gate
 
@@ -105,6 +107,7 @@ The singleton needs the unique `{ key: 1 }` index `ringcentral_call_log_sync_sta
 ```
 1. findProcessedCall(telephonySessionId | sessionId | callLogId)
    └─ any terminal create/adopt/shadow result → skipped_already_processed
+   └─ in create mode, a saved Lead first gets any newer final Call Log result (persistRingCentralFinalCallLogResult)
 
 2. attemptRingCentralCallLeadConvergence
    └─ only when RINGCENTRAL_GRANOT_ADOPTION_ENABLED=true
@@ -141,9 +144,9 @@ Exactly one candidate is adopted through the canonical `adoptRingCentralCall` co
 
 Granot Call creation and RingCentral ingest share a hashed Source Granularity + normalized-phone scope fence in `ringcentral_convergence_locks`. Owner language uses [Caller Match Key](../../../../CONTEXT.md); the locked implementation key is exact Source Granularity + normalized phone — never Source Company alone. The lock contains no raw phone.
 
-The Granot fence is **always on** when the Observation has a normalized phone: `ensureRingCentralConvergenceScopeLock` before the create transaction and `acquireRingCentralConvergenceScopeLock` + `findPreCreationRingCentralConvergenceCandidates` inside it. `RINGCENTRAL_GRANOT_ADOPTION_ENABLED` does **not** gate those Granot sites. Job-only Observations skip both sites (residual hole; do not invent a phone).
+Granot Call creation is now refused before this fence (`createLeadFromGranot` throws `policy` for `CallLead`, `granotLifecycle/createLeadFromGranot.ts` L163), so the Granot side no longer runs for Calls. Historically, the Granot fence was **always on** when the Observation had a normalized phone: `ensureRingCentralConvergenceScopeLock` before the create transaction and `acquireRingCentralConvergenceScopeLock` + `findPreCreationRingCentralConvergenceCandidates` inside it. `RINGCENTRAL_GRANOT_ADOPTION_ENABLED` does **not** gate those Granot sites. Job-only Observations skip both sites (residual hole; do not invent a phone).
 
-The ingest-side lock in `ringcentral-call-lead-ingest.service.ts` still runs **only** when `RINGCENTRAL_GRANOT_ADOPTION_ENABLED` is true. [RingCentral Call Adoption](../../../../CONTEXT.md) mutations stay flagged. Do not describe the ingest lock as always on. Concurrent one-Lead safety is required with adoption on and RingCentral write mode `create`; adoption off plus a later qualifying create can mint a twin. Mapped inbound Granot CRM Sources stay `link_only`; ordinary Granot Call `create_if_missing` is rejected. The bounded final Best Relocation command is a separate source-admission path and does not relax these capture gates.
+The ingest-side lock in `ringcentral-call-lead-ingest.service.ts` still runs **only** when `RINGCENTRAL_GRANOT_ADOPTION_ENABLED` is true. [RingCentral Call Adoption](../../../../CONTEXT.md) mutations stay flagged. Do not describe the ingest lock as always on. Concurrent one-Lead safety is required with adoption on and RingCentral write mode `create`; adoption off plus a later qualifying create can mint a twin. Mapped inbound Granot CRM Sources stay `link_only`; ordinary Granot Call `create_if_missing` is rejected. The bounded final Best Relocation command was a separate source-admission path and did not relax these capture gates; it was removed with the external ingestion in `226dba24` (2026-11-18).
 
 More than one candidate is never guessed. `markRingCentralConvergenceConflict` atomically revalidates the full candidate set, sets every still-eligible row to `conflict` with reason `multiple_adoption_candidates` and a bounded call-identity hash, records canonical Change/outbox evidence, then allows the qualified call to continue through normal ingest. A failed conflict transaction is a technical failure, not a silent fallback. Zero/ineligible candidates also continue through normal create/shadow/dry-run behavior without mutating an existing Lead.
 
@@ -203,9 +206,9 @@ Logger `msg` keys and Section 33 metrics only; nothing is persisted (the Operati
 |-------|------|
 | `ringcentral.call_lead.created` | Real lead, non-duplicate |
 | `ringcentral.call_lead.duplicate_created` | Real lead, duplicate |
-| `ringcentral.call_lead.adopted` | Qualified call adopted into a Granot-created Lead |
-| `ringcentral.call_lead.adopted_duplicate` | Adopted Lead matched a different prior qualifying Lead |
-| `ringcentral.call_lead.skipped_already_processed` | Idempotent skip |
+| `ringcentral.granot_adoption.adopted` | Qualified call adopted into a Granot-created Lead; the `outcome` field is `lead_adopted` or `lead_adopted_duplicate` |
+| `ringcentral.granot_adoption.conflict` | Several adoption candidates; conflict recorded |
+| `ringcentral.ingest.skipped_already_processed` | Idempotent skip |
 | `ringcentral.call_log_sync.completed` / `.failed` | Cron run outcome |
 | `ringcentral.webhook.ingest_failed` | Ingest threw on qualified session |
 
@@ -226,7 +229,7 @@ Logger `msg` keys and Section 33 metrics only; nothing is persisted (the Operati
 | `GET /api/dev/ringcentral/*` | Candidates, sessions, decisions, processed calls, config |
 | `pnpm ringcentral:webhook:monitor` | Live webhook inspection |
 | `pnpm ringcentral:workflow:test` | End-to-end qualification scenarios |
-| `scripts/dev_ops/ringcentral/ringcentral-call-log-sync-run.ts` (via `tsx`) | Manual cron run + artifact JSON, including masked lease owner, runtime, and cursor-advanced |
+| `scripts/dev_ops/ringcentral/ringcentral-call-log-sync-run.ts` (via `tsx`; untracked local tooling at `9955430d`) | Manual cron run + artifact JSON, including masked lease owner, runtime, and cursor-advanced |
 
 ## Related modules
 
@@ -241,8 +244,8 @@ Logger `msg` keys and Section 33 metrics only; nothing is persisted (the Operati
 | `processed-calls-store.ts` | Ingest idempotency ledger |
 | `call-log-sync-state.store.ts` | Singleton cursor + five-minute renewable run lease with owner-fenced writes |
 | `ringcentral-metrics.ts` | Section 33 RingCentral runtime/adoption/contention metrics |
-| `scripts/migrations/ringcentral-processed-call-indexes.ts` | Report/apply/verify unique call-log race fence |
-| `scripts/migrations/granot-lifecycle-indexes.ts` | Report/apply/verify the unique Call Log sync state singleton key index |
+| `scripts/migrations/ringcentral-processed-call-indexes.ts` (not tracked at `9955430d`; local checkouts only) | Report/apply/verify unique call-log race fence |
+| `scripts/migrations/granot-lifecycle-indexes.ts` (not tracked at `9955430d`; local checkouts only) | Report/apply/verify the unique Call Log sync state singleton key index |
 | `shadow-call-leads-store.ts` | Shadow-mode staging |
 | `leads/callLead.service.ts` | `createRingCentralCallLead` — Mongo + Sheet Sync |
 | [`call-lead.md`](./call-lead.md) | Call Lead create semantics, CPL, sheet tabs |
@@ -270,9 +273,9 @@ The final Detailed Call Log vetter carries parent `result`, observation time, Ca
 
 Processed/replayed calls still capture newly available final evidence through `recordRingCentralFinalCallLogResult`, an idempotent audited transaction with revision/Entity Change/Sheet Sync intent. A later Detailed Call Log observation with identical final facts advances only the ordering timestamp on the qualified Call. Identity, qualification and the observation are rechecked inside the transaction. The stored timestamp fences stale and equal-time arrivals. Only a semantic correction needs a command execution, revision, EntityChange and Sheet intent. A source correction reevaluates reporting without rewriting saved qualification. Provisional webhook status cannot overwrite this fact. Reporting classification lives in `leads/callLeadReportingDisposition.ts`; only exact normalized Missed with confirmed final evidence is mapped to overnight bad-call reporting.
 
-The one-time `ops/best-relocation-retirement/callBackfill.ts` exposes bounded, checksum-bound plan/apply/verify APIs from November 1, 2026 04:00Z through a fixed watermark. It retains timestamp discrepancies, uses source-scoped eligible Forms for audited Form Fill repair, looks up the same account/call identity for missing overnight results, and records unresolved evidence explicitly. The independent general run uses `generalCallRun.ts` to bind the frozen plan to its deployment/database/watermark in a dedicated sync-state scope and requires completed apply plus actual Sheet membership and independent cohort verification. It can run while the entire Best Relocation source apply is held and does not imply source-ingestion completion. Production completion is recorded separately in the release record.
+The one-time `ops/best-relocation-retirement/callBackfill.ts` exposes bounded, checksum-bound plan/apply/verify APIs from November 1, 2026 04:00Z through a fixed watermark. It retains timestamp discrepancies, uses source-scoped eligible Forms for audited Form Fill repair, looks up the same account/call identity for missing overnight results, and records unresolved evidence explicitly. The independent general run used `generalCallRun.ts` to bind the frozen plan to its deployment/database/watermark in a dedicated sync-state scope and required completed apply plus actual Sheet membership and independent cohort verification. That runner was removed in `226dba24`; the library remains with no runner. Production shows its 16 `recordRingCentralFinalCallLogResult` writes on 2026-11-03 and no Form Fill repairs. It can run while the entire Best Relocation source apply is held and does not imply source-ingestion completion. Production completion is recorded separately in the release record.
 
 
 ## November 4 ordering and Form Fill review
 
-Final observations use the Detailed Call Log read/descriptor observation clock, not the call arrival clock. Newer identical evidence advances only the saved ordering watermark through the canonical command, with no semantic revision, EntityChange or Sheet Sync job. Older or equal observations cannot replace it; a later changed observation commits its revision, audit and outbox together. An equal-time disagreement keeps the first saved fact. This does not reinterpret arrival, qualification or DST. See [billing policy](../../call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering) and [review evidence](../../call-billing-review-2026-11-04.md).
+Final observations use the Detailed Call Log read/descriptor observation clock, not the call arrival clock. Newer identical evidence advances only the saved ordering watermark, through a plain transactional `updateOne` outside the canonical command (no command execution record, revision, EntityChange or Sheet Sync job; `ringcentralFinalResult.ts` L118–L131). Older or equal observations cannot replace it; a later changed observation commits its revision, audit and outbox together. An equal-time disagreement keeps the first saved fact. This does not reinterpret arrival, qualification or DST. See [billing policy](../../call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering) and [review evidence](../../call-billing-review-2026-11-04.md).
