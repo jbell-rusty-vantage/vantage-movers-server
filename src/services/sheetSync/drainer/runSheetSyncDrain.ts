@@ -369,9 +369,8 @@ export const MAX_STALE_LEASE_RECLAIMS = 3;
 
 export async function reclaimStaleProcessingJobs(now: Date, leaseMs: number): Promise<number> {
   const expiredBefore = new Date(now.getTime() - leaseMs);
-  const stale = { status: "processing", leased_until: { $lte: expiredBefore } };
   const exhausted = await SheetSyncJob.updateMany(
-    { ...stale, stale_reclaims: { $gte: MAX_STALE_LEASE_RECLAIMS } },
+    { status: "processing", leased_until: { $lte: expiredBefore }, stale_reclaims: { $gte: MAX_STALE_LEASE_RECLAIMS } },
     { $set: { status: "failed", leased_until: new Date(0),
       last_error: "stale processing lease reclaim limit reached", last_error_at: now } },
   );
@@ -379,7 +378,7 @@ export async function reclaimStaleProcessingJobs(now: Date, leaseMs: number): Pr
     logger.error({ msg: "sheet_sync.drain.stale_lease_reclaim_limit", failed: exhausted.modifiedCount });
   }
   const result = await SheetSyncJob.updateMany(
-    { ...stale, stale_reclaims: { $not: { $gte: MAX_STALE_LEASE_RECLAIMS } } },
+    { status: "processing", leased_until: { $lte: expiredBefore }, stale_reclaims: { $not: { $gte: MAX_STALE_LEASE_RECLAIMS } } },
     { $set: { status: "retrying", due_at: now, leased_until: new Date(0),
       last_error: "stale processing lease reclaimed", last_error_at: now },
       $inc: { stale_reclaims: 1 } },
