@@ -312,3 +312,21 @@ test("an annotated row clears its formula-stored managed phone and keeps the ope
   assert.ok(outcomes.every(outcome => outcome.status === "synced"));
   assert.deepEqual(f.rows.get("Calls")?.slice(1), [["", "", "keep"], ["B", "neighbor"]]);
 });
+
+test("a row shifted after the identity read is never overwritten; the next drain updates the right row", async () => {
+  // Operator inserts a row above the Lead between the tab read and the positional update.
+  const f = statefulWorkbook({ Calls: [headers, ["A", "old"], ["neighbor", "preserve"]] });
+  let reads = 0;
+  f.afterRequest((operation) => {
+    if (operation === "read" && ++reads === 2) f.rows.get("Calls")!.splice(1, 0, ["inserted", "operator"]);
+  });
+  const first = await writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("upsert")], quota: grant, ensureHeaders: false });
+  assert.equal(first[0].status, "failed");
+  assert.match(String(first[0].error), /sheet_update_identity_changed/);
+  assert.equal(f.count("update"), 0);
+  assert.deepEqual(f.rows.get("Calls"), [headers, ["inserted", "operator"], ["A", "old"], ["neighbor", "preserve"]]);
+
+  const retried = await writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("upsert")], quota: grant, ensureHeaders: false });
+  assert.equal(retried[0].status, "synced");
+  assert.deepEqual(f.rows.get("Calls"), [headers, ["inserted", "operator"], ["A", "current"], ["neighbor", "preserve"]]);
+});

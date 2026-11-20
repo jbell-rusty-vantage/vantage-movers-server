@@ -192,7 +192,21 @@ async function applyUpdates(
   }));
   const outcomes: PlannedWriteOutcome[] = [];
 
-  for (const chunk of chunks) {
+  for (const candidates of chunks) {
+    // Updates are positional. Re-read identities right before writing so a row
+    // shifted by an operator edit or another writer is never overwritten with
+    // this Lead's values (which would silently remove the other Lead's row).
+    let current: TabRowMap;
+    try {
+      current = await buildTabRowMap(sheets, group.spreadsheetId, group.tabName, group.headers);
+    } catch (error) {
+      outcomes.push(...candidates.map(({ write }) => failed(write, "update", error)));
+      continue;
+    }
+    const chunk = candidates.filter(({ write, rowNumber }) => current.get(write.mongoId) === rowNumber);
+    outcomes.push(...candidates.filter((entry) => !chunk.includes(entry))
+      .map(({ write }) => failed(write, "update", "sheet_update_identity_changed")));
+    if (chunk.length === 0) continue;
     const data: sheets_v4.Schema$ValueRange[] = chunk.map((entry) => ({
       range: `${escapeSheetTitleForRange(group.tabName)}!A${entry.rowNumber}:${endColumn}${entry.rowNumber}`,
       values: [entry.write.row],
