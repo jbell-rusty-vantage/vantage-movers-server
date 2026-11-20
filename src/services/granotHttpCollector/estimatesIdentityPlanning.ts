@@ -12,6 +12,73 @@ import type { GranotAutomationLifecycleApply, GranotTableSection } from "./lifec
 import type { SynchronizationMatchMethod } from "../granotLifecycle/identity";
 import type { GranotSourceCollection } from "./index";
 import { buildLifecycleApply } from "./lifecycleStatement";
+import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
+import { findFormsNeedingSiblingUpdate } from "../granotLifecycle/callLeadFormSibling";
+import { getCallLeadModel } from "../../models/CallLead";
+import { getGranotObservationModel } from "../../models/GranotObservation";
+import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
+import { reportingEligibleCallLeadFilter } from "../leads/callLeadAdmission";
+import { logger } from "../../logger";
+
+/**
+ * Work an already-current matched row still owes, as the webhook processor does for the same row:
+ * - `record_link`: the Lead has no active Record Link: the identity ladder did not reach it through one, and
+ *   no active link holds the row's exact job (or that link has no Lead). The Lead command then establishes or
+ *   attaches it. A link naming another Lead is never contested from an already-current row; a real change
+ *   still records that dispute. A Call Lead qualifies only while reporting-eligible (`hasReportingEligibleCall`,
+ *   not `created_on_unmatched`): only admitted Calls take part in the lifecycle (Owner, November 20);
+ * - `form_sibling`: the Form Lead's qualified Call sibling is behind (Owner 2026-10-28 sibling rule).
+ */
+export type EstimatesFollowUp = "record_link" | "form_sibling";
+
+/** Most already-current rows one plan promotes; a backlog drains over later slots, after real updates. */
+export const FOLLOW_UP_PROMOTION_CAP = 50;
+/** A Form whose scheduled sibling catch-up committed within this window is not promoted again (failure backoff). */
+export const FORM_SIBLING_RETRY_AFTER_MS = 6 * 60 * 60 * 1000;
+/** Bound on each batched follow-up read; a slow or failed read only skips follow-ups for that plan. */
+export const FOLLOW_UP_READ_MAX_TIME_MS = 5_000;
+
+/** Batched reads for follow-up detection; each runs at most once per planned run. */
+export type EstimatesFollowUpStore = {
+  findActiveLinks(normalizedJobs: string[]): Promise<Array<{ normalized_job_no: string; lead_ref?: { model: string; id: string } | null; disputed?: boolean }>>;
+  findEligibleCallLeads(callLeadIds: string[]): Promise<Set<string>>;
+  findFormsNeedingSiblingUpdate(formLeadIds: string[]): Promise<Set<string>>;
+  findRecentScheduledSiblingCatchUps(formLeadIds: string[], since: Date): Promise<Set<string>>;
+};
+
+export function createMongoEstimatesFollowUpStore(): EstimatesFollowUpStore {
+  return {
+    async findActiveLinks(normalizedJobs) {
+      if (!normalizedJobs.length) return [];
+      const rows = await getGranotRecordLinkModel()
+        .find({ provider: "granot", state: "active", normalized_job_no: { $in: normalizedJobs } }, { normalized_job_no: 1, lead_ref: 1, disputed: 1 })
+        .maxTimeMS(FOLLOW_UP_READ_MAX_TIME_MS).lean().exec();
+      return rows.map((row) => ({ normalized_job_no: row.normalized_job_no,
+        lead_ref: row.lead_ref ? { model: row.lead_ref.model, id: String(row.lead_ref.id) } : null, disputed: row.disputed === true }));
+    },
+    async findEligibleCallLeads(ids) {
+      if (!ids.length) return new Set();
+      const rows = await getCallLeadModel()
+        .find({ $and: [{ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } }, reportingEligibleCallLeadFilter(), { created_on_unmatched: { $ne: true } }] }, { _id: 1 })
+        .maxTimeMS(FOLLOW_UP_READ_MAX_TIME_MS).lean().exec();
+      return new Set(rows.map((row) => String(row._id)));
+    },
+    findFormsNeedingSiblingUpdate: (ids) => findFormsNeedingSiblingUpdate(ids, { maxTimeMS: FOLLOW_UP_READ_MAX_TIME_MS }),
+    async findRecentScheduledSiblingCatchUps(ids, since) {
+      if (!ids.length) return new Set();
+      const decisions = await getSynchronizationDecisionModel()
+        .find({ "target.model": "FormLead", "target.id": { $in: ids }, decided_at: { $gte: since }, outcome: "already_current", execution_mode: "live" },
+          { observation_id: 1, "target.id": 1 })
+        .maxTimeMS(FOLLOW_UP_READ_MAX_TIME_MS).lean().exec();
+      if (!decisions.length) return new Set();
+      // Only scheduled Observations count: a webhook Decision is not a scheduled catch-up attempt.
+      const scheduled = new Set((await getGranotObservationModel()
+        .find({ _id: { $in: decisions.map((row) => row.observation_id) }, scheduled_run_id: { $exists: true } }, { _id: 1 })
+        .maxTimeMS(FOLLOW_UP_READ_MAX_TIME_MS).lean().exec()).map((row) => String(row._id)));
+      return new Set(decisions.filter((row) => scheduled.has(String(row.observation_id))).map((row) => String(row.target?.id)));
+    },
+  };
+}
 
 export type EstimatesPlanAction = {
   action_id: string;
@@ -23,6 +90,8 @@ export type EstimatesPlanAction = {
   reason?: string;
   warnings?: string[];
   lifecycle_apply?: GranotAutomationLifecycleApply;
+  /** Set only on an already-current row promoted to `update` for its follow-up work. */
+  follow_up?: EstimatesFollowUp[];
   collection_captured_at?: string;
   report_identity?: {
     version: 1;
@@ -45,6 +114,8 @@ export type EstimatesIdentityPlanningDeps = {
   sourcePolicyStore?: SourcePolicyStore;
   identityStore?: LeadIdentityStore;
   loadLeadProjection?: typeof loadGranotLeadProjection;
+  followUpStore?: EstimatesFollowUpStore;
+  now?: () => Date;
 };
 
 /** A single preview reads one consistent Registry resolution per key; apply resolves it again. */
@@ -203,5 +274,70 @@ export async function planEstimatesIdentities(
       counters.competing_target_job_attachments = (counters.competing_target_job_attachments ?? 0) + 1;
     }
   }
+  await promoteFollowUps(actions, jobsByAction, counters, input.followUpStore ?? createMongoEstimatesFollowUpStore(), input.now?.() ?? new Date());
   return { kind: "estimates_in_process", schema_version: 2, actions, counters };
+}
+
+/**
+ * An already-current row needs no Lead change, but the webhook processor would still establish its Record
+ * Link and bring the Form's Call sibling up to date. Promote exactly those rows to `update`, marked with their
+ * follow-up, so apply rechecks and performs them. At most `FOLLOW_UP_PROMOTION_CAP` rows per plan, placed after
+ * the plan's real updates. A failed follow-up read promotes nothing; every other unchanged row still creates
+ * no per-Lead history.
+ */
+async function promoteFollowUps(
+  actions: EstimatesPlanAction[],
+  jobsByAction: Map<string, string | undefined | null>,
+  counters: Record<string, number>,
+  store: EstimatesFollowUpStore,
+  now: Date,
+): Promise<void> {
+  const current = actions.filter((action) => action.classification === "unchanged"
+    && action.desired_state_summary?.outcome === "already_current" && action.lifecycle_apply?.expected_target
+    && jobsByAction.get(action.action_id));
+  if (!current.length) return;
+  const targetIds = (model: "FormLead" | "CallLead") => [...new Set(current.flatMap((action) =>
+    action.lifecycle_apply!.expected_target!.model === model ? [action.lifecycle_apply!.expected_target!.id] : []))];
+  let links: Awaited<ReturnType<EstimatesFollowUpStore["findActiveLinks"]>>;
+  let eligibleCalls: Set<string>, siblings: Set<string>, backedOff: Set<string>;
+  try {
+    links = await store.findActiveLinks([...new Set(current.map((action) => jobsByAction.get(action.action_id)!))]);
+    eligibleCalls = await store.findEligibleCallLeads(targetIds("CallLead"));
+    siblings = await store.findFormsNeedingSiblingUpdate(targetIds("FormLead"));
+    backedOff = await store.findRecentScheduledSiblingCatchUps([...siblings], new Date(+now - FORM_SIBLING_RETRY_AFTER_MS));
+  } catch (error) {
+    logger.warn({ msg: "granot_estimates.follow_up_read_failed", errorName: error instanceof Error ? error.name : null });
+    counters.follow_up_unavailable = 1;
+    return;
+  }
+  const linkByJob = new Map(links.map((link) => [link.normalized_job_no, link]));
+  const promoted: EstimatesPlanAction[] = [];
+  for (const action of current) {
+    const target = action.lifecycle_apply!.expected_target!;
+    const link = linkByJob.get(jobsByAction.get(action.action_id)!);
+    // A Lead the ladder reached through a Record Link (any equivalent job) already has an active link: no alias
+    // link is added and no dispute is raised from an already-current row.
+    const linkOwed = action.report_identity?.match_method !== "granot_record_link" && (!link || !link.lead_ref)
+      && (target.model === "FormLead" || eligibleCalls.has(target.id));
+    const siblingOwed = target.model === "FormLead" && siblings.has(target.id);
+    if (siblingOwed && backedOff.has(target.id)) counters.follow_up_form_sibling_backoff = (counters.follow_up_form_sibling_backoff ?? 0) + 1;
+    const followUp: EstimatesFollowUp[] = [
+      ...(linkOwed ? ["record_link" as const] : []),
+      ...(siblingOwed && !backedOff.has(target.id) ? ["form_sibling" as const] : []),
+    ];
+    if (!followUp.length) continue;
+    if (promoted.length >= FOLLOW_UP_PROMOTION_CAP) {
+      counters.follow_up_deferred = (counters.follow_up_deferred ?? 0) + 1;
+      continue;
+    }
+    action.classification = "update";
+    action.follow_up = followUp;
+    promoted.push(action);
+    counters.unchanged = Math.max(0, (counters.unchanged ?? 0) - 1);
+    counters.update = (counters.update ?? 0) + 1;
+    for (const kind of followUp) counters[`follow_up_${kind}`] = (counters[`follow_up_${kind}`] ?? 0) + 1;
+  }
+  // Apply processes a bounded number of actions per pass in plan order: real updates go first.
+  const moved = new Set(promoted);
+  actions.splice(0, actions.length, ...actions.filter((action) => !moved.has(action)), ...promoted);
 }

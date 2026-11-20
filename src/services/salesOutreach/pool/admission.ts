@@ -165,8 +165,8 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
       || +observation.captured_at !== +facts.accepted_observation.captured_at || !jobNumbersEquivalent(observation.identity.normalized_job_no, facts.normalized_job_no)) return refuse("accepted_observation_conflict");
     const decision = proof ? { execution_mode: "live", outcome: proof.outcome, target: ref, source_scope: proof.source_scope }
       : decisionByObservation.get(String(observation._id));
-    // Scheduled Observations commit atomically with the applied Decision and Lead revision.
-    const completed = Boolean(proof) || archivedIds.has(String(observation.receipt_id)) || ("scheduled_run_id" in observation && !!observation.scheduled_run_id && decision?.outcome === "applied") || receiptById.get(String(observation.receipt_id))?.processing.state === "completed";
+    // Scheduled Observations commit atomically with the applied or linked Decision and the Lead's temporal winner.
+    const completed = Boolean(proof) || archivedIds.has(String(observation.receipt_id)) || ("scheduled_run_id" in observation && !!observation.scheduled_run_id && (decision?.outcome === "applied" || decision?.outcome === "linked")) || receiptById.get(String(observation.receipt_id))?.processing.state === "completed";
     if (!decision || decision.execution_mode !== "live" || !["created", "linked", "applied", "already_current"].includes(decision.outcome)
       || decision.target?.model !== ref.model || String(decision.target?.id) !== ref.id
       || String(decision.source_scope?.lead_source_company) !== companyId || String(decision.source_scope?.source_granularity_id) !== granularityId

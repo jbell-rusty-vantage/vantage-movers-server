@@ -114,6 +114,8 @@ type SynchronizeLeadDailyOperationsPending = {
   source_company: string | null;
   lead_id: string;
   lead_model: LeadModel;
+  /** Set on a conflict: true when this command marked the Record Link disputed. */
+  dispute_recorded?: boolean;
 };
 
 export async function finalizeSynchronizedLead(pending: SynchronizeLeadDailyOperationsPending) {
@@ -364,7 +366,7 @@ async function classifyLinkAction(
   }
   const existing = await (input.execution.findActiveLink
     ? input.execution.findActiveLink(job.normalized_job_no, session)
-    : defaultFindActiveLink(job.normalized_job_no, session));
+    : findExactActiveRecordLink(job.normalized_job_no, session));
   if (!existing) {
     return { kind: "establish" };
   }
@@ -471,10 +473,13 @@ async function persistConflict(
       { model: input.lead_ref.model, id: input.lead_ref.id },
       { model: "GranotRecordLink", id: String(linkId) },
     ],
-    pending: synchronizeDailyOperationsPending(input, {
-      outcome: "conflict",
-      job_no: input.execution.job?.job_no_snapshot ?? null,
-    }),
+    pending: {
+      ...synchronizeDailyOperationsPending(input, {
+        outcome: "conflict",
+        job_no: input.execution.job?.job_no_snapshot ?? null,
+      }),
+      dispute_recorded: newlyDisputed,
+    },
   };
 }
 
@@ -831,7 +836,8 @@ async function loadLeadSnapshot(
   };
 }
 
-async function defaultFindActiveLink(
+/** The active Record Link for the exact normalized job (the rule `classifyLinkAction` applies). */
+export async function findExactActiveRecordLink(
   normalizedJobNo: string,
   session?: ClientSession,
 ): Promise<GranotRecordLinkDocument | null> {

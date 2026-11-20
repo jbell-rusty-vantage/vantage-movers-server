@@ -44,6 +44,17 @@ export type GranotAutomationActionReceipt = {
   error_code?: string;
   scheduled_direct?: true;
   outreach_refresh_completed?: boolean;
+  /** Scheduled direct actions only: the bounded post-commit steps (they never fail the action). */
+  post_commit?: ScheduledPostCommitOutcome;
+};
+
+/**
+ * `done`/`timeout`/`failed` per the 2 s never-throw rule; a finished sibling update records its own outcome
+ * (`updated`, or the skip reason from `callLeadFormSibling.ts`).
+ */
+export type ScheduledPostCommitOutcome = {
+  lead_link_wake?: "done" | "timeout" | "failed";
+  form_sibling?: string;
 };
 
 export type ApplyAutomationActionInput = {
