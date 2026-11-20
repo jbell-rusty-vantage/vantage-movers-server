@@ -1734,7 +1734,7 @@ function withLinkEffect(
   };
 }
 
-function toDecisionDocument(
+export function toDecisionDocument(
   id: mongoose.Types.ObjectId,
   prepared: PreparedDecision,
 ): SynchronizationDecisionDocument {

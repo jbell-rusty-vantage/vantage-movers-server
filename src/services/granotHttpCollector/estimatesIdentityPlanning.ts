@@ -12,6 +12,36 @@ import type { GranotAutomationLifecycleApply, GranotTableSection } from "./lifec
 import type { SynchronizationMatchMethod } from "../granotLifecycle/identity";
 import type { GranotSourceCollection } from "./index";
 import { buildLifecycleApply } from "./lifecycleStatement";
+import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
+import { findFormsNeedingSiblingUpdate } from "../granotLifecycle/callLeadFormSibling";
+
+/**
+ * Work an already-current matched row still owes, as the webhook processor does for the same row:
+ * - `record_link`: the Lead lacks the exact active Record Link for the row's job (or the link has no Lead,
+ *   or names another Lead and is not yet disputed, so apply records the dispute once);
+ * - `form_sibling`: the Form Lead's qualified Call sibling is behind (Owner 2026-10-28 sibling rule).
+ */
+export type EstimatesFollowUp = "record_link" | "form_sibling";
+
+/** Batched reads for follow-up detection; one call of each per planned run. */
+export type EstimatesFollowUpStore = {
+  findActiveLinks(normalizedJobs: string[]): Promise<Array<{ normalized_job_no: string; lead_ref?: { model: string; id: string } | null; disputed?: boolean }>>;
+  findFormsNeedingSiblingUpdate(formLeadIds: string[]): Promise<Set<string>>;
+};
+
+export function createMongoEstimatesFollowUpStore(): EstimatesFollowUpStore {
+  return {
+    async findActiveLinks(normalizedJobs) {
+      if (!normalizedJobs.length) return [];
+      const rows = await getGranotRecordLinkModel()
+        .find({ provider: "granot", state: "active", normalized_job_no: { $in: normalizedJobs } }, { normalized_job_no: 1, lead_ref: 1, disputed: 1 })
+        .lean().exec();
+      return rows.map((row) => ({ normalized_job_no: row.normalized_job_no,
+        lead_ref: row.lead_ref ? { model: row.lead_ref.model, id: String(row.lead_ref.id) } : null, disputed: row.disputed === true }));
+    },
+    findFormsNeedingSiblingUpdate: (ids) => findFormsNeedingSiblingUpdate(ids),
+  };
+}
 
 export type EstimatesPlanAction = {
   action_id: string;
@@ -23,6 +53,8 @@ export type EstimatesPlanAction = {
   reason?: string;
   warnings?: string[];
   lifecycle_apply?: GranotAutomationLifecycleApply;
+  /** Set only on an already-current row promoted to `update` for its follow-up work. */
+  follow_up?: EstimatesFollowUp[];
   collection_captured_at?: string;
   report_identity?: {
     version: 1;
@@ -45,6 +77,7 @@ export type EstimatesIdentityPlanningDeps = {
   sourcePolicyStore?: SourcePolicyStore;
   identityStore?: LeadIdentityStore;
   loadLeadProjection?: typeof loadGranotLeadProjection;
+  followUpStore?: EstimatesFollowUpStore;
 };
 
 /** A single preview reads one consistent Registry resolution per key; apply resolves it again. */
@@ -203,5 +236,45 @@ export async function planEstimatesIdentities(
       counters.competing_target_job_attachments = (counters.competing_target_job_attachments ?? 0) + 1;
     }
   }
+  await promoteFollowUps(actions, jobsByAction, counters, input.followUpStore ?? createMongoEstimatesFollowUpStore());
   return { kind: "estimates_in_process", schema_version: 2, actions, counters };
+}
+
+/**
+ * An already-current row needs no Lead change, but the webhook processor would still establish its Record
+ * Link and bring the Form's Call sibling up to date. Promote exactly those rows to `update`, marked with their
+ * follow-up, so apply rechecks and performs them. Every other unchanged row still creates no per-Lead history.
+ */
+async function promoteFollowUps(
+  actions: EstimatesPlanAction[],
+  jobsByAction: Map<string, string | undefined>,
+  counters: Record<string, number>,
+  store: EstimatesFollowUpStore,
+): Promise<void> {
+  const current = actions.filter((action) => action.classification === "unchanged"
+    && action.desired_state_summary?.outcome === "already_current" && action.lifecycle_apply?.expected_target);
+  if (!current.length) return;
+  const jobs = [...new Set(current.flatMap((action) => jobsByAction.get(action.action_id) ?? []))];
+  const forms = [...new Set(current.flatMap((action) => action.lifecycle_apply!.expected_target!.model === "FormLead"
+    && jobsByAction.get(action.action_id) ? [action.lifecycle_apply!.expected_target!.id] : []))];
+  const [links, siblings] = [await store.findActiveLinks(jobs), await store.findFormsNeedingSiblingUpdate(forms)];
+  const linkByJob = new Map(links.map((link) => [link.normalized_job_no, link]));
+  for (const action of current) {
+    const target = action.lifecycle_apply!.expected_target!;
+    const job = jobsByAction.get(action.action_id);
+    if (!job) continue;
+    const link = linkByJob.get(job);
+    const linkOwed = !link || !link.lead_ref
+      || ((link.lead_ref.model !== target.model || link.lead_ref.id !== target.id) && link.disputed !== true);
+    const followUp: EstimatesFollowUp[] = [
+      ...(linkOwed ? ["record_link" as const] : []),
+      ...(target.model === "FormLead" && siblings.has(target.id) ? ["form_sibling" as const] : []),
+    ];
+    if (!followUp.length) continue;
+    action.classification = "update";
+    action.follow_up = followUp;
+    counters.unchanged = Math.max(0, (counters.unchanged ?? 0) - 1);
+    counters.update = (counters.update ?? 0) + 1;
+    for (const kind of followUp) counters[`follow_up_${kind}`] = (counters[`follow_up_${kind}`] ?? 0) + 1;
+  }
 }

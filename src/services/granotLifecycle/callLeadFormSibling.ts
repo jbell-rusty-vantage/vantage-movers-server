@@ -25,7 +25,7 @@ import { createHash, randomUUID } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
-import { equivalentNormalizedJobFilter, jobNumbersEquivalent } from "../bookings/bookingIdentity";
+import { equivalentNormalizedJobFilter, jobNumberDigitCore, jobNumbersEquivalent } from "../bookings/bookingIdentity";
 import { persistEntityChangeMutations } from "../domainCommands/entityChange";
 import { executeCanonicalCommandWithPostCommit } from "../domainCommands/idempotency";
 import type { CanonicalCommandContext } from "../domainCommands/types";
@@ -190,6 +190,45 @@ export async function loadFormSiblingCandidates(formLeadId: string, session?: Cl
     ] }, SIBLING_CALL_PROJECTION).limit(10).session(session ?? null).lean<SiblingCallLead[]>()
     : [];
   return { form, jobMatches, phoneMatches };
+}
+
+/**
+ * Which of these Form Leads the sibling update would write now (read-only; the scheduled Estimates catch-up).
+ * Two batched reads find any Call that could be a sibling: an eligible Call holding the Form's exact job or its
+ * digit core, or an eligible Call in the Form's Lead Source Company sharing one of its phones. Only a Form with
+ * such a candidate is planned exactly, with the same loader and `planFormSiblingUpdate` the update uses, so the
+ * eligibility gate stays in one place. A Call whose only tie is a letter-prefixed variant of the Form's job
+ * (`P123` against `X123`) is not found here; the Form's next applied change or webhook still reaches it.
+ */
+export async function findFormsNeedingSiblingUpdate(formLeadIds: readonly string[]): Promise<Set<string>> {
+  const needed = new Set<string>();
+  if (!formLeadIds.length) return needed;
+  const forms = (await getFormLeadModel().find({ _id: { $in: [...new Set(formLeadIds)] } }, SIBLING_FORM_PROJECTION).lean<SiblingFormLead[]>())
+    .filter((form) => form.duplicate !== true && !form.bad_lead && form.job_no && form.normalized_job_no);
+  if (!forms.length) return needed;
+  const jobs = [...new Set(forms.flatMap((form) => [form.normalized_job_no!, jobNumberDigitCore(form.normalized_job_no!) ?? form.normalized_job_no!]))];
+  const phones = [...new Set(forms.flatMap(formSiblingPhones))];
+  // As stored on the Form (normally an ObjectId), the same value the per-Form loader queries with.
+  const companies = forms.flatMap((form) => form.lead_source_company ? [form.lead_source_company] : []);
+  const calls = getCallLeadModel();
+  const byJob = await calls.find({ $and: [reportingEligibleCallLeadFilter(), { normalized_job_no: { $in: jobs } }] },
+    { normalized_job_no: 1 }).lean<Array<{ normalized_job_no?: string | null }>>();
+  const byPhone = phones.length && companies.length
+    ? await calls.find({ $and: [reportingEligibleCallLeadFilter(), { lead_source_company: { $in: companies } },
+      { $or: [{ normalized_phone_number: { $in: phones } }, { "ingested_contact_snapshot.normalized_phone_number": { $in: phones } }] }] },
+    { lead_source_company: 1, normalized_phone_number: 1, "ingested_contact_snapshot.normalized_phone_number": 1 })
+      .lean<Array<{ lead_source_company?: Id | null; normalized_phone_number?: string | null; ingested_contact_snapshot?: PhoneSnapshot }>>()
+    : [];
+  for (const form of forms) {
+    const formPhones = formSiblingPhones(form);
+    const possible = byJob.some((call) => jobNumbersEquivalent(call.normalized_job_no, form.normalized_job_no))
+      || byPhone.some((call) => same(call.lead_source_company, form.lead_source_company)
+        && [call.normalized_phone_number, call.ingested_contact_snapshot?.normalized_phone_number].some((phone) => !!phone && formPhones.includes(phone)));
+    if (!possible) continue;
+    const current = await loadFormSiblingCandidates(String(form._id));
+    if (current.form && planFormSiblingUpdate(current.form, current.jobMatches, current.phoneMatches, new Date(0)).kind === "update") needed.add(String(form._id));
+  }
+  return needed;
 }
 
 /**

@@ -5,7 +5,7 @@ import type { LeadIdentityStore, IdentityCallLead, IdentityFormLead, IdentityRec
 import type { SourcePolicyStore } from "../granotLifecycle/sourcePolicy";
 import type { GranotSourceCollection } from "./index";
 import { assembleEstimatesPlan } from "./runWorkflow";
-import type { EstimatesPlanAction } from "./estimatesIdentityPlanning";
+import type { EstimatesFollowUpStore, EstimatesPlanAction } from "./estimatesIdentityPlanning";
 
 const company = "64b000000000000000000001", granularity = "64b000000000000000000002", leadId = "64b000000000000000000003";
 const runId = "64b000000000000000000004";
@@ -113,4 +113,41 @@ test("fresh report holds all competing new Jobs for one Form target, permits ali
   const bad = stores("FormLead", { forms: [{ ...forms[0]!, bad_lead: "spam" }] });
   const priorityOnly = await assembleEstimatesPlan([source("Synthetic", [{ ref_no: "exact", job_no: "123" }, { ref_no: "exact", job_no: "124" }])], { runId, canonical: bad.canonical });
   assert.ok(priorityOnly.actions.every((action) => "classification" in action && action.classification === "update" && action.desired_state_summary?.changed_paths.every((field) => field === "granot_priority")));
+});
+
+test("an already-current row is promoted only for the Record Link or Call sibling work it still owes", async () => {
+  const forms = [{ id: leadId, duplicate: false, ref_no: "exact", lead_source_company: company, source_granularity_id: granularity,
+    job_no: "123", normalized_job_no: "123", granot_priority: "0" }];
+  const deps = stores("FormLead", { forms });
+  const plan = async (links: Awaited<ReturnType<EstimatesFollowUpStore["findActiveLinks"]>>, siblings: string[] = []) => {
+    const reads: string[][] = [];
+    const result = await assembleEstimatesPlan([source("Synthetic", [{ ref_no: "exact" }])], { runId, canonical: { ...deps.canonical, followUpStore: {
+      async findActiveLinks(jobs) { reads.push(jobs); return links; },
+      async findFormsNeedingSiblingUpdate(ids) { reads.push(ids); return new Set(siblings.filter((id) => ids.includes(id))); },
+    } } });
+    return { action: formAction(result), counters: result.counters, reads };
+  };
+  const owner = { normalized_job_no: "123", lead_ref: { model: "FormLead", id: leadId } };
+  const current = await plan([owner]);
+  assert.equal(current.action.classification, "unchanged");
+  assert.equal(current.action.desired_state_summary?.outcome, "already_current");
+  assert.equal(current.action.follow_up, undefined);
+  assert.deepEqual(current.reads, [["123"], [leadId]], "one batched read of each per plan");
+
+  const unlinked = await plan([]);
+  assert.equal(unlinked.action.classification, "update");
+  assert.deepEqual(unlinked.action.follow_up, ["record_link"]);
+  assert.deepEqual(unlinked.action.desired_state_summary?.changed_paths, [], "no Lead field changes");
+  assert.equal(unlinked.counters.follow_up_record_link, 1);
+  assert.equal(unlinked.counters.unchanged ?? 0, 0);
+
+  assert.deepEqual((await plan([{ ...owner, lead_ref: null }])).action.follow_up, ["record_link"]);
+  const contested = { ...owner, lead_ref: { model: "FormLead", id: "64b000000000000000000098" } };
+  assert.deepEqual((await plan([contested])).action.follow_up, ["record_link"], "an undisputed contested link records its dispute once");
+  assert.equal((await plan([{ ...contested, disputed: true }])).action.classification, "unchanged", "an already-disputed link leaves no new history");
+
+  const sibling = await plan([owner], [leadId]);
+  assert.equal(sibling.action.classification, "update");
+  assert.deepEqual(sibling.action.follow_up, ["form_sibling"]);
+  assert.equal(sibling.counters.follow_up_form_sibling, 1);
 });

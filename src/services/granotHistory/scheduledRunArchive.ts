@@ -64,8 +64,8 @@ function matchesPlan(run: Document, operations: ClosedOperation[]) {
       return !!item && !op && selectedIds.has(action.action_id) && saved.outreach_refresh_completed === true
         && item.operation_id === String(run._id) + ":" + action.action_id
         && item.operation_kind === "lead_snapshot_apply" && typeof saved.lifecycle_receipt_id === "string"
-        && ["applied", "already_current", "stale", "unmatched", "policy_blocked", "ambiguous", "invalid", "conflict", "unsupported", "deferred"].includes(saved.outcome)
-        && (saved.outcome !== "applied" || (!!saved.decision_id && !!saved.observation_id));
+        && ["applied", "linked", "already_current", "stale", "unmatched", "policy_blocked", "ambiguous", "invalid", "conflict", "unsupported", "deferred"].includes(saved.outcome)
+        && ((saved.outcome !== "applied" && saved.outcome !== "linked") || (!!saved.decision_id && !!saved.observation_id));
     }
     return !!item && !!saved && !!op && selectedIds.has(action.action_id)
       && item.operation_id === String(run._id) + ":" + action.action_id && op.kind === item.operation_kind

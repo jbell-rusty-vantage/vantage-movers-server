@@ -13,6 +13,8 @@ applies_to:
   - src/services/granotHttpCollector/scheduledLeadChange.ts
   - src/services/granotHttpCollector/estimatesOutreachRefresh.ts
   - src/services/granotHistory/scheduledRunArchive.ts
+  - src/services/granotHttpCollector/estimatesIdentityPlanning.ts
+  - src/services/granotLifecycle/callLeadFormSibling.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -32,11 +34,28 @@ generated:
 
 # Granot HTTP automation apply (`granotLifecycle/`)
 
-Granot supplies the collected CRM fields. MongoDB owns the Lead, its field ownership rules and its accepted update time. Scheduled Estimates plan only real changes for uniquely matched Leads and recheck identity, source policy, temporal order and desired state inside the write transaction. Unchanged, ambiguous and unmatched rows create no per-Lead history. The run keeps aggregate counters for those rows.
+Granot supplies the collected CRM fields. MongoDB owns the Lead, its field ownership rules and its accepted update time. Scheduled Estimates plan real changes for uniquely matched Leads, plus the follow-up work an already-current Lead still owes (below). Apply rechecks identity, source policy, temporal order and desired state inside the write transaction. Other unchanged rows, and ambiguous and unmatched rows, create no per-Lead history. The run keeps aggregate counters for those rows.
 
-A committed change uses the existing Lead synchronization mutation and Sheet Sync outbox inside one canonical command (`synchronizeLeadFromGranot`, idempotency key `scheduled-estimate:<source id>`). The source, Observation and Decision IDs are deterministic hashes of the operation ID. The command inserts the Observation, writes the Decision through the Lead synchronization operation and certifies the winning Lead. Its embedded run result (`scheduled_direct: true`) identifies the source for the Observation, Decision and Lead provenance. When the committed change includes `granot_priority`, the same transaction refreshes Pool membership and nominates the Outreach `outreach_lead_change` stage for an open subject. After commit the worker wakes Lead links and mirrors a Form Lead change onto its qualified Call Lead sibling. New scheduled actions never enter webhook receipt capture. A pre-cutover action with a saved capture, or an action of a run below schema version 3, resumes by its original receipt ID. [Scheduled change command](../../../src/services/granotHttpCollector/scheduledLeadChange.ts)
+## Follow-up work for already-current Leads
 
-A skipped action records its outcome in the run without a Decision: `unmatched` for a missing or changed target, `policy_blocked` when processing, Lead writes or live execution is off, and otherwise the planned Decision outcome. Skipped actions are marked Outreach-complete. A transient failure yields the run and retries the same sealed action.
+The webhook processor does two things for an already-current Lead: it establishes the Record Link, and it brings the Form Lead's qualified Call sibling up to date (Owner rule, October 28). Scheduled apply does the same. Planning promotes an already-current row to `update` with `follow_up` when either is owed. It counts `follow_up_record_link` and `follow_up_form_sibling`. Each plan makes one batched read of each kind.
+
+- **`record_link`:** no active Record Link holds the row's exact normalized job. Or the link has no Lead. Or the link names another Lead and is not yet disputed.
+- **`form_sibling`:** `findFormsNeedingSiblingUpdate` (`callLeadFormSibling.ts`) finds the Form Leads whose sibling update would write now. It uses two batched reads for candidate Calls: the Form's exact job or digit core, and the Form's phones within its Lead Source Company. It then plans each Form that has a candidate with the unchanged `planFormSiblingUpdate` gate. The target Call must pass `hasReportingEligibleCall`: RingCentral queue qualification, or the preserved historical or trusted final-import Best Relocation admission. It must not be a 90-day repeat `duplicate` or `created_on_unmatched`. A Call whose only tie to the Form is a different letter prefix on the same job (`P123` against `X123`) is not found by planning. The Form's next applied change or webhook still reaches it.
+
+Apply follows the processor's association rule on the exact job:
+
+- **Link owed:** the Lead command runs with no Lead field changes. It establishes or attaches the link (outcome `linked`), advances the temporal winner and certifies it for Pool admission. A Daily Operations `granot.linked` fact follows, as on the webhook path.
+- **Sibling owed, link current:** the command commits only the Observation and an `already_current` Decision, which the sibling update cites. The Form Lead is unchanged.
+- **Neither:** the transaction aborts with `already_current` and leaves no history.
+
+The sibling update never creates or qualifies a Call Lead, and never changes `form_fill`, `duplicate` or the qualification. A Form Fill Call is therefore updated in place and stays on **Duplicate Calls**. It requests a Calls-family Sheet update only for a previously synced row whose job or receiver changed. On November 20 a production read-only plan of all 4,697 job-holding, non-duplicate Form Leads created since August 1 found none that the sibling update would write: 4,443 `no_call_sibling`, 36 `already_current`, 218 `form_ineligible`. So the release queues no catch-up writes and no Sheet jobs. Later writes happen one Lead at a time, as live changes.
+
+**Record Link disputes.** If the Lead command finds the exact link naming another Lead, it marks the link disputed. The scheduled command commits that dispute with its `conflict` Decision, and the Lead is not changed. Once the link is disputed, later rows for the same job abort with `conflict` and leave no history.
+
+A committed change uses the existing Lead synchronization mutation and Sheet Sync outbox inside one canonical command (`synchronizeLeadFromGranot`, idempotency key `scheduled-estimate:<source id>`). The source, Observation and Decision IDs are deterministic hashes of the operation ID. The command inserts the Observation, writes the Decision through the Lead synchronization operation and certifies the winning Lead. Its embedded run result (`scheduled_direct: true`) identifies the source for the Observation, Decision and Lead provenance. When the committed change includes `granot_priority`, the same transaction refreshes Pool membership and nominates the Outreach `outreach_lead_change` stage for an open subject. After commit, the worker wakes Lead links after `applied` or `linked`. For a Form Lead, it also runs the sibling update after `applied`, `linked` or `already_current`. Both steps follow the webhook path's rule: each is bounded to 2 s and never throws. The action receipt records the result in `post_commit`: `lead_link_wake` is `done`, `timeout` or `failed`, and `form_sibling` is the update's outcome, `timeout` or `failed`. A persistent post-commit error therefore no longer holds the run until its 24-hour expiry. On an idempotent replay, the committed Decision supplies the outcome and the post-commit steps run again. Both steps are idempotent. New scheduled actions never enter webhook receipt capture. A pre-cutover action with a saved capture, or an action of a run below schema version 3, resumes by its original receipt ID. [Scheduled change command](../../../src/services/granotHttpCollector/scheduledLeadChange.ts)
+
+A skipped action records its outcome in the run without a Decision. The outcome is `unmatched` for a missing or changed target, `policy_blocked` when processing, Lead writes or live execution is off, `already_current` when nothing is owed, `conflict` for an already-disputed link, and otherwise the planned Decision outcome. Archive review accepts the direct outcomes `applied`, `linked`, `already_current`, `conflict` and the skip outcomes. It requires Decision and Observation IDs for `applied` and `linked`. Skipped actions are marked Outreach-complete. A transient failure yields the run and retries the same sealed action.
 
 ## Historical receipt-backed automation
 
@@ -55,7 +74,7 @@ Before checksum lock, `sealAutomationPlan` attaches:
 }
 ```
 
-- Scheduled Estimates rows → `lead_snapshot_apply`. Only `update` classifications are sealed into the plan.
+- Scheduled Estimates rows → `lead_snapshot_apply`. Only `update` classifications are sealed into the plan, including already-current rows promoted for `follow_up`.
 - `booking_action_apply` remains a channel operation kind for the browser extension. The retired Leads & Advertising collector produced it for Booked Jobs rows.
 - `user` and `rep` stay separate; raw Priority stays canonicalizable
 - Schema-v1 approved plans fail closed as `RUN_REPLAN_REQUIRED`
