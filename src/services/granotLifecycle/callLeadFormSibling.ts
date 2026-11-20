@@ -25,7 +25,8 @@ import { createHash, randomUUID } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
-import { equivalentNormalizedJobFilter, jobNumberDigitCore, jobNumbersEquivalent } from "../bookings/bookingIdentity";
+import { jobNumberDigitCore, jobNumbersEquivalent } from "../bookings/bookingIdentity";
+import { leadJobNumberFilter } from "../bookings/indexedJobLookup";
 import { persistEntityChangeMutations } from "../domainCommands/entityChange";
 import { executeCanonicalCommandWithPostCommit } from "../domainCommands/idempotency";
 import type { CanonicalCommandContext } from "../domainCommands/types";
@@ -179,7 +180,7 @@ export async function loadFormSiblingCandidates(formLeadId: string, session?: Cl
   const phones = formSiblingPhones(form);
   const calls = getCallLeadModel();
   // Sequential: inside the command these reads share one transaction session.
-  const jobMatches = await calls.find({ $and: [reportingEligibleCallLeadFilter(), equivalentNormalizedJobFilter(form.normalized_job_no)] }, SIBLING_CALL_PROJECTION)
+  const jobMatches = await calls.find({ $and: [reportingEligibleCallLeadFilter(), leadJobNumberFilter(form.normalized_job_no)] }, SIBLING_CALL_PROJECTION)
     .limit(10).session(session ?? null).lean<SiblingCallLead[]>();
   // A Job match (including ambiguity) decides the ladder. Repeated observations of an established
   // pair need no fallback phone query; the pure planner still applies all eligibility protections.

@@ -108,7 +108,7 @@ Safe projections only: no payload, headers, phone, transcript, recording, `last_
 
 ## Storage, indexes and read paths
 
-The timeline owns no collection and writes nothing. It reads other services' collections per request. Job Number matching uses `equivalentNormalizedJobFilter` (`bookings/bookingIdentity.ts`): an exact `normalized_job_no`, its digit core, and the anchored regex `^[A-Z]+<core>$`.
+The timeline owns no collection and writes nothing. It reads other services' collections per request. Job Number matching uses `equivalentNormalizedJobFilter` (`bookings/bookingIdentity.ts`): an exact `normalized_job_no`, its digit core, and the anchored regex `^[A-Z]+<core>$`. The unique-Lead fallback over `form_leads` and `call_leads` uses `leadJobNumberFilter` (`bookings/indexedJobLookup.ts`). It matches the same Leads with point lookups and bounded ranges, instead of the regex that walks every letter-prefixed key. A November 20 production comparison over 1,192 real Jobs found no difference, and keys examined fell from about 6,640 to 6 on `form_leads` and from 1,342 to 10 on `call_leads`.
 
 Milestone-mode reads, in order, with the declared index that fits (code declarations; production plans for this route are unmeasured except the release record's read counts):
 

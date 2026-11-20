@@ -58,6 +58,16 @@ export function normalizedJobCandidates(
   };
 }
 
+/**
+ * Lead (`form_leads` / `call_leads`) read for one normalized Job: the same matches as
+ * `equivalentNormalizedJobFilter` (the Job itself, its digit core, and the core behind any uppercase letter
+ * prefix, including a trailing newline the PCRE `$` also accepts), as indexed point lookups and bounded
+ * ranges instead of a regex that walks every letter-prefixed key of the index.
+ */
+export function leadJobNumberFilter(normalizedJobNo: string): Record<string, unknown> {
+  return normalizedJobCandidates([normalizedJobNo]);
+}
+
 /** All raw/normalized disagreements and every raw value needing normalization are still
  * inspected by the canonical JavaScript normalizer. Equal ASCII alphanumerics are already
  * covered by the normalized job query, including leading-zero identities. */
