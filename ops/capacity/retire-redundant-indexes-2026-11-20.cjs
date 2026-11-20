@@ -62,6 +62,9 @@ const isPrefix = (prefix, key) => {
       const covering = before[coll].find(i => i.name === cover);
       if (!target) { if (mode !== "unhide") problems.push(`${coll}.${name}: missing`); continue; }
       if (!sameKey(target.key, key)) problems.push(`${coll}.${name}: key ${JSON.stringify(target.key)}`);
+      // A drop only follows the hidden observation window. An index that is visible again was
+      // unhidden as a rollback, so the drop refuses rather than removing it.
+      if (mode === "drop" && target.hidden !== true) problems.push(`${coll}.${name}: not hidden (unhidden as rollback?); refusing to drop`);
       for (const opt of ["unique", "sparse", "partialFilterExpression", "collation", "expireAfterSeconds"])
         if (target[opt] !== undefined) problems.push(`${coll}.${name}: has ${opt}`);
       if (!covering) problems.push(`${coll}.${cover}: covering index missing`);
