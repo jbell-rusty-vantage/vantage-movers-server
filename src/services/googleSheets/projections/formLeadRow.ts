@@ -16,6 +16,7 @@ import {
   localCell,
   overThresholdCell,
   quotedCell,
+  textCell,
 } from "./cells";
 
 export function formLeadToRow(lead: FormLeadSheetSource): string[] {
@@ -28,7 +29,7 @@ export function formLeadToRow(lead: FormLeadSheetSource): string[] {
     formLeadStateCell(lead.delivery_state),
     localCell(lead.local),
     formatDateOnly(lead.move_date),
-    lead.phone_number,
+    textCell(lead.phone_number),
     lead.email?.trim() ?? "",
     quotedCell(Boolean(lead.quoted)),
     formatNumber(lead.cubic_feet),

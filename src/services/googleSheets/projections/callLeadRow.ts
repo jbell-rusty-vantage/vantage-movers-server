@@ -9,13 +9,14 @@ import {
   formatTimestamp,
   optionalLocalCell,
   overThresholdCell,
+  textCell,
 } from "./cells";
 
 export function callLeadToRow(lead: CallLeadSheetSource): string[] {
   return [
     formatTimestamp(lead.timestamp),
     lead.job_no ?? "",
-    lead.phone_number ?? "",
+    textCell(lead.phone_number),
     formatNumber(lead.duration),
     bookedCell(Boolean(lead.booked)),
     bookedDateCell(lead.booked),
