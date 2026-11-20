@@ -593,7 +593,7 @@ Cursors and leases live in `sales_intelligence_sync_state` (unique `scope`): `ou
 
 - Desk business state stays in MongoDB without expiry: subjects, projections, periods, plans, contact events, rep-days, enrollment runs, Pool facts and performance facts. They carry assignment, cadence history, rep attribution and goal snapshots, and every re-evaluation reads them.
 - `sales_outreach_live_events` expire after one day. They are hints; a reconnect refetches.
-- Completed Outreach jobs: a proven routine result becomes a compact completion receipt under its original ID and expires three days after completion (`routine_purge_at`). Every other completion keeps its row and result for 14 days (`completed_at`). Pending, leased, retry, paused and dead-letter rows never expire. The foundation doc has the rules.
+- Completed Outreach jobs: a proven routine result becomes a compact completion receipt under its original ID and expires three days after completion (`routine_purge_at`). A routine result that succeeded after a retry keeps its full row but also expires after three days. Every other completion keeps its row and result for 14 days (`completed_at`). Pending, leased, retry, paused and dead-letter rows never expire. The foundation doc has the rules.
 - The one-time November 19 historical pass archived removed jobs to GCS packs under `history/sales-intelligence/v1/vantagemovers/`, with a 30-day custom-time lifecycle and seven days of soft delete. Normal completions write no archive objects. Recovery is the `lookup` mode of [`ops/sales-outreach/retire-historical-jobs.cjs`](../../../ops/sales-outreach/retire-historical-jobs.cjs) ([release record](../../operations/SALES-INTELLIGENCE-JOBS-RELEASE-2026-11-19.md)).
 
 ### Measured baselines

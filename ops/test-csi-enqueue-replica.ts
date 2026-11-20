@@ -101,7 +101,44 @@ async function main() {
   const repeatedSms = await fanOutRepSmsReceipt(sms, { enabled: async () => true, enqueue: noEnqueue });
   assert.deepEqual(repeatedSms, { ...firstSms, status: "existing", published: false });
   await proveRetiredStageFence(Model, withTransaction);
-  console.log("PASS: insert timestamps, byte-stable pending/leased/completed duplicates, payload conflicts, transaction requirement, concurrent inserts, dataset fences, claims, renewal, retry, continuation, completion, lease rejection, unchanged TTL and the retired-stage fence");
+  await proveRoutinePurgeAfterRetry(Model, withTransaction, { enqueueCsiJob, claimCsiJob, failCsiJob, completeCsiJob });
+  console.log("PASS: insert timestamps, byte-stable pending/leased/completed duplicates, payload conflicts, transaction requirement, concurrent inserts, dataset fences, claims, renewal, retry, continuation, completion, lease rejection, unchanged TTL, the retired-stage fence and the routine purge after one retry");
+}
+/**
+ * A routine job (here a rep-day projection) compacts to a receipt with the three-day purge when it never
+ * failed. After one transient retry it keeps its full row and failure reason, but still carries the same
+ * three-day `routine_purge_at` (a regression from c4176fab left it until the 14-day completed TTL).
+ */
+async function proveRoutinePurgeAfterRetry(
+  Model: Awaited<typeof import("../src/models/SalesIntelligenceJob.js")>["getSalesIntelligenceJobModel"] extends () => infer M ? M : never,
+  withTransaction: Awaited<typeof import("../src/db.js")>["withTransaction"],
+  jobs: Pick<Awaited<typeof import("../src/services/salesIntelligence/jobs.js")>, "enqueueCsiJob" | "claimCsiJob" | "failCsiJob" | "completeCsiJob">,
+) {
+  const DAY = 86_400_000;
+  const routine = (rep: string, hash: string) => ({ stage: "outreach_rep_day" as const, dedupe_key: `sod:rep-day:${rep}:2026-11-20:${hash}`,
+    subject_key: `outreach-rep-day:${rep}:2026-11-20`, input_revision: 1, input_refs: [rep] });
+  const run = async (input: ReturnType<typeof routine>, retryFirst: boolean) => {
+    const job = await withTransaction(session => jobs.enqueueCsiJob(input, session));
+    let claimed = await jobs.claimCsiJob("routine", String(job._id)); assert.ok(claimed);
+    if (retryFirst) {
+      await jobs.failCsiJob({ job_id: String(job._id), owner: "routine", epoch: claimed.lease_epoch }, "transient");
+      await Model.collection.updateOne({ _id: job._id }, { $set: { next_attempt_at: new Date(Date.now() - 1_000) } });
+      claimed = await jobs.claimCsiJob("routine", String(job._id)); assert.ok(claimed);
+    }
+    const before = Date.now();
+    await jobs.completeCsiJob({ job_id: String(job._id), owner: "routine", epoch: claimed.lease_epoch }, async () => undefined,
+      { result: { outcome: "written", publication_revision: 1 } });
+    const row = await Model.collection.findOne({ _id: job._id });
+    assert.ok(row?.routine_purge_at instanceof Date, `routine_purge_at set (retried: ${retryFirst})`);
+    assert.ok(+row.routine_purge_at >= before + 3 * DAY - 60_000 && +row.routine_purge_at <= Date.now() + 3 * DAY + 60_000);
+    return row;
+  };
+  const clean = await run(routine(new mongoose.Types.ObjectId().toHexString(), "a".repeat(16)), false);
+  assert.equal(clean.record_kind, "completion_receipt");
+  const retried = await run(routine(new mongoose.Types.ObjectId().toHexString(), "b".repeat(16)), true);
+  assert.equal(retried.status, "completed");
+  assert.notEqual(retried.record_kind, "completion_receipt", "a retried job keeps its full row");
+  assert.equal(retried.reason, "transient", "and its failure reason");
 }
 /**
  * Slimming SPEC §7.4: rows of retired stages written by an earlier release (pending, retry, paused and a

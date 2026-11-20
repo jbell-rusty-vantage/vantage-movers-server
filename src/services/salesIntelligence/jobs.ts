@@ -297,13 +297,14 @@ export async function completeCsiJob<T>(
     const stored = options.resultFrom ? options.resultFrom(result) : options.result;
     const completed_at = new Date();
     const refs = held.input_refs.map(String);
-    const validRoutineInput = held.reason == null &&
-      routineJobSubjectMatches(held.stage, held.dedupe_key, held.subject_key, refs) &&
+    const validRoutineInput = routineJobSubjectMatches(held.stage, held.dedupe_key, held.subject_key, refs) &&
       held.payload_hash === jobPayloadHash({ stage: held.stage, dedupe_key: held.dedupe_key,
         subject_key: held.subject_key, input_revision: held.input_revision, input_refs: refs }, csiDataset());
     const routine_purge_at = validRoutineInput
       ? routineJobExpiry(held.stage, held.dedupe_key, stored, completed_at, held.subject_key) : undefined;
-    if (routine_purge_at) {
+    // A job that never failed compacts to a receipt. A routine job that succeeded after a retry keeps its full
+    // row (its failure reason is evidence) but still leaves on the routine three-day purge, not the 14-day TTL.
+    if (routine_purge_at && held.reason == null) {
       // The same unique key fences concurrent enqueue throughout the transition. Lease/attempt
       // state is useful only while actionable. Admissions and Granot still read Lead results.
       const receipt = await Model.collection.updateOne(
@@ -323,6 +324,7 @@ export async function completeCsiJob<T>(
         $set: {
           status: "completed",
           completed_at,
+          ...(routine_purge_at ? { routine_purge_at } : {}),
           lease_owner: null,
           leased_until: null,
           ...(stored === undefined ? {} : { result: stored }),
