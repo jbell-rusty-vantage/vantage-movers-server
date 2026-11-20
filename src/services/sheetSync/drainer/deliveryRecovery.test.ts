@@ -330,3 +330,62 @@ test("a row shifted after the identity read is never overwritten; the next drain
   assert.equal(retried[0].status, "synced");
   assert.deepEqual(f.rows.get("Calls"), [headers, ["inserted", "operator"], ["A", "current"], ["neighbor", "preserve"]]);
 });
+
+test("a row shifted during an inline 503 retry of an update is never overwritten", async () => {
+  const f = statefulWorkbook({ Calls: [headers, ["A", "old"], ["neighbor", "preserve"]] });
+  f.fault("update", "before"); // first positional write is rejected and retried inline
+  let reads = 0;
+  // Read 1 builds the tab map, read 2 rechecks attempt 1; the operator inserts a row before attempt 2's recheck.
+  f.afterRequest((operation) => {
+    if (operation === "read" && ++reads === 3) f.rows.get("Calls")!.splice(1, 0, ["inserted", "operator"]);
+  });
+  const [outcome] = await writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("upsert")], quota: grant, ensureHeaders: false });
+  assert.equal(outcome.status, "failed");
+  assert.match(String(outcome.error), /sheet_update_identity_changed/);
+  assert.equal(f.count("update"), 1);
+  assert.deepEqual(f.rows.get("Calls"), [headers, ["inserted", "operator"], ["A", "old"], ["neighbor", "preserve"]]);
+});
+
+test("each update chunk rechecks identity; a shift after an earlier chunk fails only the moved write", async (t) => {
+  singleRowChunks(t);
+  const f = statefulWorkbook({ Calls: [headers, ["A", "old"], ["B", "old"]] });
+  f.afterRequest((operation) => {
+    if (operation === "update" && f.count("update") === 1) f.rows.get("Calls")!.splice(1, 0, ["inserted", "operator"]);
+  });
+  const outcomes = await writeBatchedTargets({ sheets: f.sheets, writes: ["A", "B"].map((id) => recoveryWrite("upsert", id)), quota: grant, ensureHeaders: false });
+  assert.deepEqual(outcomes.map((outcome) => [outcome.write.mongoId, outcome.status]), [["A", "synced"], ["B", "failed"]]);
+  assert.match(String(outcomes[1].error), /sheet_update_identity_changed/);
+  assert.equal(f.count("update"), 1);
+  assert.deepEqual(f.rows.get("Calls"), [headers, ["inserted", "operator"], ["A", "current"], ["B", "old"]]);
+});
+
+test("a failed identity recheck read issues no positional update and is not retried by the update", async () => {
+  const f = statefulWorkbook({ Calls: [headers, ["A", "old"]] });
+  f.fault("read", "none", "transport");
+  const [outcome] = await writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("upsert")], quota: grant, ensureHeaders: false });
+  assert.equal(outcome.status, "failed");
+  assert.match(String(outcome.error), /sheet_update_identity_recheck_failed/);
+  assert.equal(f.count("read"), 2);
+  assert.equal(f.count("update"), 0);
+  assert.deepEqual(f.rows.get("Calls"), [headers, ["A", "old"]]);
+});
+
+test("a quota-refused identity recheck defers the update without writing", async () => {
+  const f = statefulWorkbook({ Calls: [headers, ["A", "old"]] });
+  let reads = 0;
+  const quota = { reserve: async (kind: string) => ({ granted: kind !== "read" || ++reads < 2 }) } as unknown as QuotaLimiter;
+  const [outcome] = await writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("upsert")], quota, ensureHeaders: false });
+  assert.equal(outcome.status, "deferred");
+  assert.equal(f.count("update"), 0);
+  assert.deepEqual(f.rows.get("Calls"), [headers, ["A", "old"]]);
+});
+
+test("a header changed before the identity recheck refuses the positional update", async () => {
+  const f = statefulWorkbook({ Calls: [headers, ["A", "old"]] });
+  let reads = 0;
+  f.afterRequest((operation) => { if (operation === "read" && ++reads === 2) f.rows.get("Calls")![0] = ["Mongo ID", "Renamed"]; });
+  const [outcome] = await writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("upsert")], quota: grant, ensureHeaders: false });
+  assert.equal(outcome.status, "failed");
+  assert.match(String(outcome.error), /sheet_identity_projection_layout_unsafe/);
+  assert.equal(f.count("update"), 0);
+});
