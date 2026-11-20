@@ -36,7 +36,7 @@ This page proves the pack is complete at `main` = `9955430d`. The brief's rule i
 | Verifier sign-off with every mismatch fixed | **Met.** 357 rules verified, 34 mismatches fixed, one re-verification pass, signed off. See [Verification](#verification). |
 | `form-lead.md`, `call-lead.md`, `ringcentral-call-lead-qualification.md` corrected and pointing to the pack; `docs/index.md` links it | **Met.** Corrections are listed under [Service doc corrections](#service-doc-corrections). |
 | Every Owner-directive conflict listed, no code changes | **Met.** See [Owner-directive findings](#owner-directive-findings). |
-| Merged through a PR with a docs-only diff | **Open.** The PR is open. Every push to `main` deploys production, so merging needs the Owner's approval. |
+| Merged through a PR with a docs-only diff | **Approved, not yet merged.** The Owner approved merging PR #244 on November 20. The session coordinator merges it after the Track A re-verification below. |
 | Track A re-verification of `granot-effects.md` and `duplicates-and-form-fill.md` | **Open.** Sections marked "Pending re-verification against the Track A merge" describe `9955430d`. The replica lifecycle suites run after Track A merges. |
 
 ## Totals
@@ -122,15 +122,15 @@ Never recorded on a Lead in production: `markCallLeadFormFill`, `repairCallFormF
 
 ## Production reconciliation
 
-Read-only. Mongo `find`/`countDocuments`/`aggregate` on a secondary; Sheets `values.get` only. Final run: Sheets read 13:37:10–13:37:15 New York, Mongo 13:37:15–13:37:20, November 20, 2026. Earlier runs at 12:44 and 13:08 are kept below because the session coordinator made Owner-directed Form-tab fixes between them (see [Form-tab fixes during the session](#form-tab-fixes-during-the-session)). Track B itself wrote nothing.
+Read-only. Mongo `find`/`countDocuments`/`aggregate` on a secondary; Sheets `values.get` only. Final run: Sheets read 13:50:52–13:50:55 New York, Mongo 13:50:55–13:51:01, November 20, 2026. Earlier runs at 12:44, 13:08 and 13:37 are summarized below because the session coordinator made Owner-approved Form-tab fixes and a test-fixture purge between them (see [Fixes during the session](#fixes-during-the-session)). Track B itself wrote nothing.
 
 Two independent computations agree exactly:
 - **Code decision per document:** `planExpectedSheetTabs` and `getCallLeadReportingDecision` over every Form, Call, Booking and Cancellation (imported from the worktree at `9955430d`).
-- **The documented table as a query:** the filters in [reporting-and-sheets.md](reporting-and-sheets.md), built from the code's exported `billableCallLeadFilter` and `reportingEligibleCallLeadFilter`, run as `countDocuments` at 13:14 New York.
+- **The documented table as a query:** the filters in [reporting-and-sheets.md](reporting-and-sheets.md), built from the code's exported `billableCallLeadFilter` and `reportingEligibleCallLeadFilter`, run as `countDocuments` at 13:52 New York.
 
 | Disposition | Mongo Leads (code) | Mongo Leads (table query) | Tab | Mongo IDs on tab | Matched | Expected, absent | On tab, not expected |
 |---|---:|---:|---|---:|---:|---:|---:|
-| Form → Forms | 7,816 | 7,816 | Forms | 7,816 | 7,816 | 0 | 0 |
+| Form → Forms | 7,817 | 7,817 | Forms | 7,817 | 7,817 | 0 | 0 |
 | Form → Duplicate Forms | 192 | 192 | Duplicate Forms | 192 | 192 | 0 | 0 |
 | Form → Bad Form Leads | 1,035 | 1,035 | Bad Form Leads | 1,035 | 1,035 | 0 | 0 |
 | Form → none (`no_sync`) | 1 | 1 | — | — | — | — | — |
@@ -138,14 +138,14 @@ Two independent computations agree exactly:
 | Call → Duplicate Calls | 430 | 430 | Duplicate Calls | 432 | 426 | 4 | 6 |
 | Call → Bad Call Leads | 19 | 19 | Bad Call Leads | 19 | 19 | 0 | 0 |
 | Call → excluded (no row planned) | 212 | 212 | — | — | — | — | (209 rows, counted above) |
-| Booking → Booked Deals | 1,075 | 1,075 | Booked Deals | 1,073 | 1,072 | 3 | 1 |
-| Cancellation → Cancelled Deals | 51 | 51 | Cancelled Deals | 47 | 47 | 4 | 0 |
+| Booking → Booked Deals | 1,072 | 1,072 | Booked Deals | 1,072 | 1,072 | 0 | 0 |
+| Cancellation → Cancelled Deals | 14 | 14 | Cancelled Deals | 14 | 14 | 0 | 0 |
 
-Totals: 9,044 Form Leads, 2,118 Call Leads. Every tab row had a Mongo ID and no ID appeared twice on one tab. Call admission: 1,794 saved RingCentral qualification (1,614 `call_log_inbound_target_answered_over_120s`, 180 `call_log_inbound_target_elapsed_at_least_120s`), 69 closed Best Relocation historical inventory, 43 trusted final-import admission, 212 none.
+Totals: 9,045 Form Leads (one new Form since 13:37), 2,118 Call Leads, 1,072 Bookings (142 without a Lead), 14 Cancellations (5 without a Lead). Every tab row had a Mongo ID and no ID appeared twice on one tab. Call admission: 1,794 saved RingCentral qualification (1,614 `call_log_inbound_target_answered_over_120s`, 180 `call_log_inbound_target_elapsed_at_least_120s`), 69 closed Best Relocation historical inventory, 43 trusted final-import admission, 212 none.
 
-### Every remaining difference explained (13:37 run)
+### Every remaining difference explained (13:50 run)
 
-The three Form tabs match exactly. Every remaining difference is on the Call and Booked tabs.
+The three Form tabs, Bad Call Leads, Booked Deals and Cancelled Deals match exactly. Every remaining difference is on the Calls and Duplicate Calls tabs, which the Owner handles by hand (directive November 20).
 
 | Tab | Difference | Count | Cause | Code mechanism | Owner action |
 |---|---|---:|---|---|---|
@@ -154,13 +154,10 @@ The three Form tabs match exactly. Every remaining difference is on the Call and
 | Calls | on tab, not expected | 1 | `legacy_unknown` Form Fill Call (row 317) | Disposition `duplicate_calls`; last written July 6, before Form Fill moved to Duplicate Calls on November 3. No job since. | The next intent moves it to Duplicate Calls. Owner item. |
 | Duplicate Calls | expected, absent | 4 | Form Fill Calls: the row-317 Call above, and 3 on no tab | The 3 have synced Calls rows in `sheet_sync` and no tombstone. Removed by hand. | Re-appended (to Duplicate Calls) on the next intent. |
 | Duplicate Calls | on tab, not expected | 6 | Excluded `legacy_unknown` Calls (June 9–16) | As for the 203 above. | Owner item. |
-| Booked Deals | expected, absent | 3 | August certification fixtures (job "U29 … REEVALUATE", boolean `cancelled: true`, no timestamps, empty `sheet_sync`, `domain_revision` 0) | Never delivered. | Owner decides whether to delete the fixtures. |
-| Booked Deals | on tab, not expected | 1 | Booking created by `createBookingFromLead` 2026-09-06 23:12 UTC on a manually created Call; both records later removed | No `deleteBookedLead`/`deleteCallLead` change and no tombstone: removed outside the canonical delete paths, so the row stays. | Owner removes by hand if wanted. |
-| Cancelled Deals | expected, absent | 4 | August 19–20 residue: 3 Cancellations whose Form Lead and Booking no longer exist and never synced, plus 1 with no Lead link | Never delivered. | Same as the fixtures. |
 
-### Form-tab fixes during the session
+### Fixes during the session
 
-The Form differences below were found and explained by code, then fixed by the session coordinator on the Owner's direction through ordinary Sheet Sync re-delivery or exact-row deletes (evidence in the main checkout's untracked `.tmp/bad-form-cleanup-2026-11-20/`). Track B made no writes.
+The Form, Booked Deals and Cancelled Deals differences below were found and explained by code, then fixed by the session coordinator on the Owner's direction through ordinary Sheet Sync re-delivery, tombstoned deletes or exact-row deletes with an identity check (evidence in the main checkout's untracked `.tmp/bad-form-cleanup-2026-11-20/`). Track B made no writes.
 
 | When (New York) | Action | Rows |
 |---|---|---:|
@@ -168,8 +165,10 @@ The Form differences below were found and explained by code, then fixed by the s
 | 13:15 | Deleted the Duplicate Forms row of the non-duplicate Form that was also on Forms | 1 |
 | 13:25 | Re-delivery of the 7 hand-moved or hand-removed non-bad Forms | 7 Forms rows restored, 5 Bad Form Leads rows removed |
 | 13:27 | Deleted the rows whose Mongo ID is in no collection | 3 Forms, 2 Duplicate Forms |
+| 13:40–13:50 | Removed Booked Deals row 682 (the September 6 LNS-03 synthetic test Booking, job `LNS03W01`, deleted outside the app) with an identity check | 1 Booked Deals row |
+| 13:40–13:50 | Purged the August 19–20 replica-test fixtures: 37 Cancellations (job `^U2\d[ -]MT`, from `releaseOwnerCommands.replica.test.ts`), each deleted in a transaction with a synced `delete_cancelled_lead` tombstone, and 3 Bookings (job `…REEVALUATE`, from `discrepancies.replica.test.ts`). Nothing real linked to them. Full documents saved first (`purge-test-fixtures-*.json`). | Cancelled Deals 47 → 14 rows; Booked Deals 1,072 |
 
-Differences at 13:08 (after the 592-row cleanup, before the later fixes):
+Differences before these fixes (Forms at 13:08, after the 592-row cleanup; Booked and Cancelled Deals at 13:37):
 
 | Tab | Difference | Count | Cause | Code mechanism |
 |---|---|---:|---|---|
@@ -179,6 +178,9 @@ Differences at 13:08 (after the 592-row cleanup, before the later fixes):
 | Duplicate Forms | on tab, not expected | 2 | Mongo ID in no collection (June 10 and 12) | Same as above. |
 | Duplicate Forms | on tab, not expected | 1 | `legacy_unknown` non-duplicate Form, also on Forms | A non-bad Form whose `duplicate` flips keeps its old primary row (`leadReportingTargets.ts:staleFormTargetKeys` L42–L46, pinned by `jobPlanner.test.ts`). Its pair ID is one of the deleted May 28 Forms. |
 | Bad Form Leads | on tab, not expected | 5 | Non-bad Forms: the 3 above, plus 2 also on Forms | Hand copies or moves; no server write. |
+| Booked Deals | expected, absent | 3 | August replica-test fixtures (job "U29 … REEVALUATE", boolean `cancelled: true`, no timestamps, empty `sheet_sync`, `domain_revision` 0) | Never delivered. |
+| Booked Deals | on tab, not expected | 1 | Booking created by `createBookingFromLead` 2026-09-06 23:12 UTC on a manually created Call; both records later removed | No `deleteBookedLead`/`deleteCallLead` change and no tombstone: removed outside the canonical delete paths, so the row stays. |
+| Cancelled Deals | expected, absent | 4 | August 19–20 replica-test fixtures: 3 Cancellations whose Form Lead and Booking never existed in production and never synced, plus 1 with no Lead link (37 fixture Cancellations in all, 33 of them with rows) | Never delivered. |
 
 The 212 excluded Calls hold 209 rows (203 Calls, 6 Duplicate Calls); 3 hold none. The coordinator's independent sheet-to-Mongo scan at 12:38 New York found the same 209 rows and the same anomalies (before the bad-Form cleanup, which removed the 592 bad Forms' Forms rows).
 
@@ -248,7 +250,7 @@ Each finding quotes the locked rule, says what code does at `9955430d`, and prop
 - Production WordPress resubmissions are not deduplicated by receipt (receipts are written only in test mode); the duplicate rule usually catches them.
 - Two unwired writers (`syncCallLeadEnrichment`, `syncBookedCallLeadReconciliation`) still write Call fields outside canonical commands. Fence or delete them in a code change.
 - `backfillDeskReceiverFromGranot` (9 production rows, October 5) has no tracked code at any commit.
-- Production residue: 3 certification fixture Bookings, 28 orphan August Cancellations, 5 Form rows and 1 Booked Deals row whose records no longer exist.
+- The August replica-test fixtures and orphan rows found in production were removed on November 20 with Owner approval (see [Fixes during the session](#fixes-during-the-session)). How replica-test fixtures reached the production database in August is not explained by the pack and is worth a separate check.
 
 ## Service doc corrections
 

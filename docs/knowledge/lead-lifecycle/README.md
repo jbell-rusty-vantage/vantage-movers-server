@@ -127,14 +127,14 @@ Booked Leads always plan Booked Deals; Cancelled Leads always plan Cancelled Dea
 
 ## Production snapshot, November 20
 
-Read-only, 12:44–12:51 New York. Full reconciliation with every difference explained: [COVERAGE.md](COVERAGE.md#production-reconciliation).
+Read-only, 13:50–13:51 New York, after the session's Owner-approved Form-tab fixes and test-fixture purge. Full reconciliation with every difference explained: [COVERAGE.md](COVERAGE.md#production-reconciliation).
 
 | Lead type | Total | By disposition |
 |---|---:|---|
-| Form Leads | 9,044 | Forms 7,816 · Duplicate Forms 192 · Bad Form Leads 1,035 · no_sync 1 |
+| Form Leads | 9,045 | Forms 7,817 · Duplicate Forms 192 · Bad Form Leads 1,035 · no_sync 1 |
 | Call Leads | 2,118 | Calls 1,457 · Duplicate Calls 430 · Bad Call Leads 19 · excluded 212 |
-| Booked Leads | 1,075 | 930 linked to a Lead, 145 leadless |
-| Cancelled Leads | 51 | 37 linked to a Lead, 14 leadless |
+| Booked Leads | 1,072 | 930 linked to a Lead, 142 without a Lead |
+| Cancelled Leads | 14 | 9 linked to a Lead, 5 without a Lead |
 
 ## Track A
 
