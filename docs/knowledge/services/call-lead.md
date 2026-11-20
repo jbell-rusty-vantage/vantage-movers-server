@@ -14,7 +14,6 @@ applies_to:
   - src/services/leads/callLeadAdmission.ts
   - src/services/leads/legacyBestRelocationCalls.ts
   - src/services/leads/callLeadReportingDisposition.ts
-  - src/services/domainCommands/bestRelocationFinalCall.ts
   - src/routes/v1.routes.ts
   - src/services/ringcentral/ringcentral-call-lead-ingest.service.ts
 owners: [team:main-server]
@@ -37,13 +36,15 @@ generated:
 
 # Call Lead Service
 
+> **Lifecycle reference:** the complete, code-cited Call lifecycle at `9955430d` is in [`../lead-lifecycle/call-leads.md`](../lead-lifecycle/call-leads.md); start at [`../lead-lifecycle/README.md`](../lead-lifecycle/README.md). Where this page and the pack disagree, the pack was verified against code.
+
 **Owner amendment, October 15, 2026:** optional `CallLead.move_date` now persists the date supplied by full accepted Granot synchronization, and the Outreach Desk displays/sorts it. A valid full Call Lead match may update this one date at any valid priority; broad contact/quote enrichment still follows its existing 1/5 policy. Priority-only identities and stale/invalid observations do not gain move-write authority. Missing dates retain any stored date. Legacy CSV Follow Up enrichment is unchanged. Historical missing dates on open desk Call Leads are recovered only from their own stamped accepted Granot observations through the audited [Outreach date repair](sales-outreach-desk.md#queue-loading-performance--october-15-2026); this adds no manual API field, Sheet column, provider call, receiver/source/money change or new index.
 
 **System of Record:** MongoDB `call_leads`. Owner reporting via **Sheet Sync** → **Master Sheets**.
 
 **Owner billing rule, November 3, 2026:** Ordinary Call capture requires a finished inbound RingCentral call to a mapped queue. Webhook and cron both use final Detailed Call Log qualification: total elapsed time of at least 120 seconds, with answer optional. See [qualification](ringcentral-call-lead-qualification.md) and [billing eligibility and release checks](../../call-lead-billing.md).
 
-Manual/API creation, scheduled external Call creation, Granot Call creation and booking-placeholder creation remain retired. The owner separately authorized a bounded final Best Relocation source exception through `admitBestRelocationFinalCallV1` / `beginFinalBestRelocationCallLeadIngestion`; it uses protected source admission rather than RingCentral qualification. **The Owner-return final reconciliation is complete: 43 exception Calls were created, zero new normal Calls were created, and delivery/replay proof passed.** The old 125-normal-Call preview was never applied. Existing history is retained. The Source Company stays active for separate Owner deactivation; external ingestion and Granot creation remain retired. See the [final report](../../lead-reporting-retirement/FINAL-RECONCILIATION-2026-11-03.md) and [owner clarification](../../lead-reporting-retirement/OWNER-CLARIFICATION.md).
+Manual/API creation, scheduled external Call creation, Granot Call creation and booking-placeholder creation remain retired. The owner separately authorized a bounded final Best Relocation source exception through `admitBestRelocationFinalCallV1` / `beginFinalBestRelocationCallLeadIngestion`; it used protected source admission rather than RingCentral qualification. Both were removed from the code with the external ingestion in `226dba24` (2026-11-18); the 43 admitted Calls keep their immutable `external_call_admission`, which `callLeadAdmission.ts` still reads. **The Owner-return final reconciliation is complete: 43 exception Calls were created, zero new normal Calls were created, and delivery/replay proof passed.** The old 125-normal-Call preview was never applied. Existing history is retained. The Source Company stays active for separate Owner deactivation; external ingestion and Granot creation remain retired. See the [final report](../../lead-reporting-retirement/FINAL-RECONCILIATION-2026-11-03.md) and [owner clarification](../../lead-reporting-retirement/OWNER-CLARIFICATION.md).
 
 ## Call Lead Ingestion — Ring Central (`ingestRingCentralCallLead` / `beginRingCentralCallLeadIngestion`)
 
@@ -59,7 +60,7 @@ Manual/API creation, scheduled external Call creation, Granot Call creation and 
 
 Per glossary and `ringcentral-duplicate-guard.ts`:
 
-- Same exact **Source Granularity** + normalized phone as an earlier reporting-eligible **non-duplicate** Call Lead in the inclusive prior 90-day window.
+- Same exact **Source Granularity** + normalized phone as an earlier reporting-eligible **non-duplicate** Call Lead in the earlier-only 90-day window (`timestamp >= t - 90 days` and `< t`: the lower bound is inclusive, the current instant is excluded).
 - Excludes the current `telephony_session_id`.
 - Call Log sync ingests one run oldest-first so same-batch callbacks classify against the earlier call. The window itself stays earlier-only.
 - Duplicate Call Leads still persist and **Sheet Sync**; they are **never CRM-posted** (Call Lead Enrichment is separate).
@@ -86,14 +87,14 @@ Ordinary No-Sync suppresses normal Calls delivery only. Effective duplicate/bad 
 
 | Direction | Behavior |
 |-----------|----------|
-| At Call Lead create | `hasFormFillForCallLead` reads existing non-duplicate Form Leads in the source scope (company, or company `$or` Lead Source Company) with the normalized phone |
-| At Form Lead create | Non-duplicate Form Leads call `markMatchingCallLeadsWithFormFill`, which reads reporting-eligible Call Leads and excludes ones already marked `form_fill` ([`form-lead.md`](./form-lead.md)) |
+| At Call Lead create | `hasFormFillForCallLead` reads existing non-duplicate Form Leads in the source scope with the normalized phone. Scope: the canonical `lead_source_company`, or a candidate with no canonical company and the same legacy `source_company` slug; the slug alone when the Call has no canonical company. No time window; Bad Forms are not excluded |
+| At Form Lead create | Non-duplicate Form Leads call `markMatchingCallLeadsWithFormFill`, which reads reporting-eligible Call Leads and excludes ones already marked `form_fill` ([`form-lead.md`](./form-lead.md)). The `form_fill_work` drain (`drainFormFillWork.ts`, run by `/api/cron/sheet-sync-drain` in queued mode) repeats both directions after any phone, source, duplicate or RingCentral change. `form_fill` is never cleared |
 
 Form Fill excludes Call Lead billing and routes to Duplicate Calls. It does not rewrite the canonical repeat-call `duplicate` field or invent a sibling.
 
 ## Correction (`correctCallLead`)
 
-- Strips forbidden lifecycle fields. Optional location (including explicit `local`); re-derives states/local only when zip/state/`local` is in the patch. Optional `receiver_agent` via Operations Registry (missing agent → 404). The source enum includes `granot_username_match`; existing extension writes still store `extension_crm_username_match`, which remains readable. S6-AGENT adds `ringcentral_answered` (the one reviewed rep who answered the Call Lead's creating call, written only into an empty field; the API schema does not accept it). `ringcentral_rep_call` is the Sales Outreach Desk's answered-inbound receiver (the reviewed rep who answered an inbound on an unassigned desk Lead with an empty receiver; an outbound attempt does not write it, [desk](./sales-outreach-desk.md)); also never accepted from the API, and replaced by any matching Granot rep.
+- Strips forbidden lifecycle fields. Optional location (including explicit `local`); re-derives states/local only when zip/state/`local` is in the patch. Optional `receiver_agent` via Operations Registry (missing agent → 404). The source enum includes `granot_username_match`; existing extension writes still store `extension_crm_username_match`, which remains readable. S6-AGENT added `ringcentral_answered` (the one reviewed rep who answered the Call Lead's creating call, written only into an empty field; the API schema does not accept it). Its writer (`fillReceiverAgentFromAnsweredCall`) was removed in the October 4 slimming (`9007f43f`); 52 Calls still carry the source and Granot treats it as always replaceable. `ringcentral_rep_call` is the Sales Outreach Desk's answered-inbound receiver (the reviewed rep who answered an inbound on an unassigned desk Lead with an empty receiver; an outbound attempt does not write it, [desk](./sales-outreach-desk.md)); also never accepted from the API, and replaced by any matching Granot rep.
 - **Blocked:** `duplicate === true` when the Call Lead is already Booked (ConflictError). Does not re-run the 90-day Duplicate Lead guard.
 - Recomputes the **CPL** snapshot only when source-affecting fields change, `lead_source_company` is missing, `timestamp` is patched, or `duplicate` is patched (`resolveLeadCplSnapshot` receives current `lead.duplicate`).
 - No field changes → return the lead and skip Sheet Sync. Otherwise `persistTheCorrectionAndRefreshTheBookingChain` saves + refreshes attached **Booking Chain** (`call_lead.update`). Missing CPL after save emits `lead.cpl.missing_rate` even on the in-transaction command path (before command commit). Move that report only as a separate, tested change.
@@ -116,7 +117,7 @@ Form Fill excludes Call Lead billing and routes to Duplicate Calls. It does not 
 | Rule | Detail |
 |------|--------|
 | Manual/API creates | No public Call Lead creation route; ordinary capture requires qualified RingCentral evidence. The bounded operator-only Best Relocation final exception has completed and its connection is retired. |
-| Idempotency vs Duplicate Lead | Same telephony session ≠ business duplicate (different calls, same caller within ±90 days) |
+| Idempotency vs Duplicate Lead | Same telephony session ≠ business duplicate (different calls, same caller and Source Granularity within the prior 90 days) |
 | CRM | Call leads not CRM-posted at create; **Call Lead Enrichment** is separate |
 | Helpers | Do not bypass phone normalization, Form Fill, Source Company parsing, or Sheet Sync scheduling |
 | Granot synchronize | Operational phone stays the ingested caller; snapshot coalesces by Job. Not a live-contact upsert |
