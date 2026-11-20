@@ -10,6 +10,7 @@ import { enqueueCallLogRefreshJob, callLogRefreshDedupeKey } from "../../src/ser
 import { applyInteractionObservation } from "../../src/services/numberActivity/persistInteraction";
 import { inboundConnectedCallLog, outboundMissedCallLog, syntheticDirectory, voicemailCallLog, SYNTHETIC_ACCOUNT_ID } from "../../src/services/numberActivity/fixtures";
 import { commandNumberLead, listAllNumbers, readNumberDetail, searchLeadsForLink } from "../../src/services/numberActivity/allNumbers";
+import { loadLeadCandidates } from "../../src/services/numberActivity/leadLink";
 import { drainLeadLinkJobs, scanLeadChangesForLeadLinks } from "../../src/services/numberActivity/leadLinkJobs";
 import { commandAccountAgent, readAccounts } from "../../src/services/salesIntelligence/repIdentity/accounts";
 import { csiOperatorActor, CsiError } from "../../src/services/salesIntelligence/auth";
@@ -383,6 +384,27 @@ test("All Numbers v2: migration, capture summary, lead link, reads, Owner comman
   assert.equal(String(ned.lead.id), String(L14), "and linked it in the same job");
 
   // A pre-upgrade refresh keeps its identity while another account reuses both provider identifiers.
+  // A fresh recording changes the real interaction revision without re-reading counted calls.
+  // Changing final duration must still run the recount and publish the corrected contribution.
+  let recounts = 0;
+  mongoose.set("debug", (collection: string, method: string, query: Record<string, unknown>) => {
+    if (collection === "call_interactions" && method === "find" && query.terminal === true && query.contact_number_id) recounts++;
+  });
+  try {
+    const base = voicemailCallLog("s-actual-summary-reads");
+    const apply = (record: Record<string, unknown>) => applyInteractionObservation(SYNTHETIC_ACCOUNT_ID,
+      { kind: "call_log", record, proof_ref: "summary-reads" }, capture);
+    const first = await apply(base);
+    assert.equal(recounts, 1);
+    const recorded = { ...base, recording: { id: "new-recording" } };
+    const metadata = await apply(recorded);
+    assert.equal(metadata.projection_revision, first.projection_revision + 1);
+    assert.equal(recounts, 1);
+    await apply({ ...recorded, duration: 90, durationMs: 90000 });
+    assert.equal(recounts, 2);
+  } finally {
+    mongoose.set("debug", false);
+  }
   const shared = "s-overlap";
   const captureIn = (account: string) => applyInteractionObservation(account, { kind: "call_log",
     record: { ...voicemailCallLog(shared), uri: `/restapi/v1.0/account/${account}/call-log/shared` },
@@ -399,4 +421,13 @@ test("All Numbers v2: migration, capture summary, lead link, reads, Owner comman
   const other = await refresh("800000000009", b.interaction_id);
   assert.notEqual(other.job_id, original.job_id);
   assert.equal((await refresh("800000000009", b.interaction_id)).job_id, other.job_id);
+
+  process.env.RINGCENTRAL_ACCOUNT_ID = SYNTHETIC_ACCOUNT_ID;
+  const foreignNumber = oid(), legacyLead = oid();
+  await db.collection("call_interactions").updateOne({ _id: new mongoose.Types.ObjectId(b.interaction_id) }, { $set: { contact_number_id: foreignNumber } });
+  await db.collection("call_leads").insertOne({ _id: legacyLead, ringcentral: { telephony_session_id: shared } });
+  const sessionMatches = async (numberId: unknown) =>
+    (await loadLeadCandidates({ _id: numberId }, [])).some(candidate => String(candidate.id) === String(legacyLead));
+  assert.equal(await sessionMatches(a.contact_number_id), true);
+  assert.equal(await sessionMatches(foreignNumber), false);
 });

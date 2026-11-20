@@ -1,0 +1,46 @@
+{
+  "start": "2026-11-18T05:00:00+00:00",
+  "end": "2026-11-19T05:00:00+00:00",
+  "events": {
+    "sales_intelligence.call_log_isync_lane.completed": {
+      "runs": 610,
+      "sum": {
+        "requests": 610,
+        "records": 567,
+        "applied": 512,
+        "failures": 0
+      }
+    },
+    "sales_intelligence.call_log_reconcile.completed": {
+      "runs": 289,
+      "sum": {
+        "pages": 578,
+        "records": 10630,
+        "upserts": 207,
+        "noops": 10415,
+        "failures": 0,
+        "throttledCount": 0,
+        "stragglerReads": 0
+      }
+    },
+    "sales_intelligence.call_log_reconcile.failed": {
+      "runs": 0,
+      "sum": {}
+    },
+    "sales_intelligence.call_log_sweep.completed": {
+      "runs": 1,
+      "sum": {
+        "failures": 0,
+        "providerRecords": 1071
+      }
+    },
+    "sales_outreach.rep_sms_sync.completed": {
+      "runs": 1515,
+      "sum": {
+        "requests": 1515,
+        "records": 263,
+        "failures": 0
+      }
+    }
+  }
+}

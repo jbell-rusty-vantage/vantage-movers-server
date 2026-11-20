@@ -119,6 +119,7 @@ export type SubjectFacts = Readonly<{
 export type RestrictionInterval = Readonly<{ channels: readonly ("call" | "text")[]; from: Date; to: Date | null }>;
 
 export type DerivationContext = Readonly<{
+  qualification_account_id?: string | null;
   links: readonly TemporalRepLink[];
   /** Contact number id → the number's current Lead (`contact_numbers.lead`; at most one per number). */
   linked_leads: ReadonlyMap<string, readonly DeskLeadKey[]>;
@@ -488,6 +489,7 @@ export function deriveCallContactEvent(row: CallSourceRow, context: DerivationCo
       classified.verification === "confirmed" &&
       association.subject !== null &&
       association.subject.originating_session_id !== null &&
+      (!context.qualification_account_id || context.qualification_account_id === row.provider_account_id) &&
       row.telephony_session_id === association.subject.originating_session_id,
   });
 }

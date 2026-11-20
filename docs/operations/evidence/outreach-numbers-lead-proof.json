@@ -1,0 +1,30 @@
+{
+  "leadRevisions": 247,
+  "matched": 240,
+  "caughtUp": 240,
+  "agentAgree": 240,
+  "periodAgree": 240,
+  "priority": 102,
+  "priorityCurrentWorkflows": {
+    "new": 25,
+    "closed": 53,
+    "quoted": 18,
+    "daily": 4,
+    "none": 2
+  },
+  "revisionToCompletedMs": {
+    "n": 240,
+    "p50": 37406,
+    "p95": 119271
+  },
+  "priorityToCompletedMs": {
+    "n": 102,
+    "p50": 41091,
+    "p95": 137361
+  },
+  "freshWebhook": {
+    "cutoff": "2026-11-20T00:10:00.000Z",
+    "fresh": 0,
+    "oldShape": 0
+  }
+}

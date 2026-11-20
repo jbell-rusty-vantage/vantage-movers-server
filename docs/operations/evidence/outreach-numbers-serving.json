@@ -1,0 +1,68 @@
+{
+  "at": "2026-11-20T00:14:47.543Z",
+  "cases": {
+    "qualified": {
+      "date": "2026-11-19",
+      "accountReceipt": true,
+      "providerSources": [
+        "call_log_reconcile",
+        "webhook"
+      ],
+      "direction": "Inbound",
+      "aliasCount": 3,
+      "storedRevision": 24,
+      "contactSourceRevision": 24,
+      "reportedNumberCounts": {
+        "inbound": 1,
+        "outbound": 10,
+        "missed": 0
+      },
+      "leadQualification": "call_log_inbound_target_elapsed_at_least_120s",
+      "numberLeadAgrees": true,
+      "contact": "inbound_answered",
+      "contactCredit": "none",
+      "originating": true,
+      "repDayRecount": null,
+      "deskDetailAgrees": true,
+      "deskWorkflow": "quoted",
+      "assignmentAgrees": true,
+      "currentPeriodExists": true
+    },
+    "ordinary": {
+      "date": "2026-11-19",
+      "accountReceipt": true,
+      "providerSources": [
+        "call_log_reconcile",
+        "webhook"
+      ],
+      "direction": "Outbound",
+      "aliasCount": 3,
+      "storedRevision": 8,
+      "contactSourceRevision": 8,
+      "reportedNumberCounts": {
+        "inbound": 0,
+        "outbound": 1,
+        "missed": 0
+      },
+      "leadQualification": null,
+      "numberLeadAgrees": true,
+      "contact": "outbound_attempt",
+      "contactCredit": "confirmed",
+      "originating": false,
+      "repDayRecount": 45,
+      "deskDetailAgrees": true,
+      "deskWorkflow": "new",
+      "assignmentAgrees": true,
+      "currentPeriodExists": true
+    }
+  },
+  "queue": {
+    "rows": 60,
+    "matching": 60
+  },
+  "worker": {
+    "deployment_commit": "ed8db9b5601a3263a409173b7f684399e595a5d6",
+    "recorded_at": "2026-11-20T00:11:00.380Z",
+    "vercel_deployment_id": "dpl_GCAhALnA5VXgwRo9ETmc1MCtceCP"
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "at": "2026-11-19T23:51:12.202Z",
+  "stageMs": {
+    "call_log_refresh": {
+      "n": 580,
+      "p50": 309,
+      "p95": 488
+    },
+    "capture_projection": {
+      "n": 4916,
+      "p50": 185,
+      "p95": 428
+    },
+    "lead_link": {
+      "n": 732,
+      "p50": 26654,
+      "p95": 56269
+    },
+    "outreach_contact_change": {
+      "n": 5836,
+      "p50": 170,
+      "p95": 341
+    },
+    "outreach_evaluate": {
+      "n": 42268,
+      "p50": 42179,
+      "p95": 71545
+    },
+    "outreach_lead_change": {
+      "n": 26530,
+      "p50": 46909,
+      "p95": 129768
+    },
+    "outreach_rep_day": {
+      "n": 748,
+      "p50": 206,
+      "p95": 415
+    },
+    "rep_sms_sync": {
+      "n": 246,
+      "p50": 1158,
+      "p95": 1780
+    }
+  },
+  "dayPreviewSavings": {
+    "_id": null,
+    "bytes": 2868102,
+    "rows": 5162
+  },
+  "aging": {
+    "cutoff": "2024-11-19T23:51:22.071Z",
+    "call_interactions": 0,
+    "contact_numbers": 0
+  },
+  "refreshPending": [],
+  "jobPending": [],
+  "chain": {
+    "evidenceCount": 580,
+    "receiptToCallMs": {
+      "n": 580,
+      "p50": 193,
+      "p95": 462
+    },
+    "receiptToContactMs": {
+      "n": 580,
+      "p50": 378,
+      "p95": 681
+    },
+    "examples": {
+      "ordinary": {
+        "direction": "Outbound",
+        "aliases": 3,
+        "interactionRevision": 8,
+        "eventRevision": 8,
+        "numberCalls": {
+          "inbound": 0,
+          "outbound": 1,
+          "missed": 0
+        },
+        "verified": "confirmed",
+        "kind": "outbound_attempt",
+        "credit": "confirmed",
+        "associated": true,
+        "repDay": 75,
+        "queueKeys": {
+          "urgency_due": "9999-12-31T00:00:00.000Z",
+          "urgency_next": "9999-12-31T00:00:00.000Z",
+          "call_due": "9999-12-31T00:00:00.000Z",
+          "sms_due": "9999-12-31T00:00:00.000Z",
+          "received_asc": "2026-11-18T12:53:57.608Z",
+          "received_desc": "2026-11-18T12:53:57.608Z",
+          "last_interaction": "2026-11-18T13:48:43.000Z"
+        },
+        "subjectVisible": true
+      },
+      "qualified": {
+        "direction": "Inbound",
+        "aliases": 3,
+        "interactionRevision": 22,
+        "eventRevision": 22,
+        "numberCalls": {
+          "inbound": 1,
+          "outbound": 0,
+          "missed": 0
+        },
+        "leadReason": "call_log_inbound_target_elapsed_at_least_120s",
+        "verified": "excluded",
+        "kind": "other",
+        "credit": "none",
+        "associated": false,
+        "subjectVisible": false
+      }
+    }
+  }
+}

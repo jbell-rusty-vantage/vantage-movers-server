@@ -1,3 +1,4 @@
+import { configuredRingCentralAccountId } from "../../numberActivity/accountIdentity";
 import { enqueueOutreachWork } from "../evaluation/refreshRequests";
 import { retainSmsVolume } from "../performance/evidence";
 import mongoose, { type ClientSession } from "mongoose";
@@ -317,6 +318,7 @@ export const mongoContactEventStore: ContactEventStore = {
       }
     }
     return {
+      qualification_account_id: configuredRingCentralAccountId(),
       links,
       linked_leads: linked,
       subjects,

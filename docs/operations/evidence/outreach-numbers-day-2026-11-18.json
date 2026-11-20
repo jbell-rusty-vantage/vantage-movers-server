@@ -1,0 +1,1031 @@
+{
+  "start": "2026-11-18T05:00:00.000Z",
+  "end": "2026-11-19T05:00:00.000Z",
+  "at": "2026-11-19T23:44:40.915Z",
+  "collections": {
+    "ringcentral_webhook_events": {
+      "field": "receivedAt",
+      "count": 34821,
+      "logical": 159824072,
+      "allocated": 62193664,
+      "index": 6213632,
+      "groups": [
+        {
+          "_id": 17,
+          "rows": 120,
+          "bytes": 559549
+        },
+        {
+          "_id": 8,
+          "rows": 74,
+          "bytes": 341426
+        },
+        {
+          "_id": 15,
+          "rows": 524,
+          "bytes": 2405809
+        },
+        {
+          "_id": 12,
+          "rows": 827,
+          "bytes": 3756526
+        },
+        {
+          "_id": 14,
+          "rows": 637,
+          "bytes": 2939446
+        },
+        {
+          "_id": 20,
+          "rows": 26,
+          "bytes": 122653
+        },
+        {
+          "_id": 23,
+          "rows": 6,
+          "bytes": 26417
+        },
+        {
+          "_id": 16,
+          "rows": 460,
+          "bytes": 2131145
+        },
+        {
+          "_id": 6,
+          "rows": 74,
+          "bytes": 357170
+        },
+        {
+          "_id": 9,
+          "rows": 279,
+          "bytes": 1281982
+        },
+        {
+          "_id": 7,
+          "rows": 3,
+          "bytes": 11671
+        },
+        {
+          "_id": 19,
+          "rows": 272,
+          "bytes": 1313422
+        },
+        {
+          "_id": 10,
+          "rows": 705,
+          "bytes": 3197323
+        },
+        {
+          "_id": 11,
+          "rows": 530,
+          "bytes": 2418107
+        },
+        {
+          "_id": 18,
+          "rows": 134,
+          "bytes": 623500
+        },
+        {
+          "_id": 13,
+          "rows": 491,
+          "bytes": 2236283
+        }
+      ]
+    },
+    "call_interactions": {
+      "field": "createdAt",
+      "count": 37493,
+      "logical": 116998929,
+      "allocated": 23175168,
+      "index": 11481088,
+      "groups": [
+        {
+          "_id": 8,
+          "rows": 7,
+          "bytes": 24590
+        },
+        {
+          "_id": 15,
+          "rows": 68,
+          "bytes": 197883
+        },
+        {
+          "_id": 20,
+          "rows": 2,
+          "bytes": 8176
+        },
+        {
+          "_id": 12,
+          "rows": 107,
+          "bytes": 273711
+        },
+        {
+          "_id": 23,
+          "rows": 1,
+          "bytes": 2432
+        },
+        {
+          "_id": 14,
+          "rows": 66,
+          "bytes": 208010
+        },
+        {
+          "_id": 16,
+          "rows": 55,
+          "bytes": 163617
+        },
+        {
+          "_id": 6,
+          "rows": 1,
+          "bytes": 23156
+        },
+        {
+          "_id": 9,
+          "rows": 28,
+          "bytes": 94775
+        },
+        {
+          "_id": 19,
+          "rows": 6,
+          "bytes": 76911
+        },
+        {
+          "_id": 11,
+          "rows": 63,
+          "bytes": 176766
+        },
+        {
+          "_id": 10,
+          "rows": 88,
+          "bytes": 222741
+        },
+        {
+          "_id": 13,
+          "rows": 66,
+          "bytes": 173012
+        },
+        {
+          "_id": 18,
+          "rows": 12,
+          "bytes": 39466
+        },
+        {
+          "_id": 17,
+          "rows": 12,
+          "bytes": 47561
+        }
+      ]
+    },
+    "call_interaction_aliases": {
+      "field": "createdAt",
+      "count": 112489,
+      "logical": 29246062,
+      "allocated": 7892992,
+      "index": 5885952,
+      "groups": [
+        {
+          "_id": 8,
+          "rows": 21,
+          "bytes": 5451
+        },
+        {
+          "_id": 15,
+          "rows": 205,
+          "bytes": 53255
+        },
+        {
+          "_id": 20,
+          "rows": 6,
+          "bytes": 1560
+        },
+        {
+          "_id": 12,
+          "rows": 320,
+          "bytes": 83183
+        },
+        {
+          "_id": 23,
+          "rows": 3,
+          "bytes": 780
+        },
+        {
+          "_id": 14,
+          "rows": 198,
+          "bytes": 51464
+        },
+        {
+          "_id": 16,
+          "rows": 166,
+          "bytes": 43141
+        },
+        {
+          "_id": 6,
+          "rows": 3,
+          "bytes": 778
+        },
+        {
+          "_id": 9,
+          "rows": 80,
+          "bytes": 20806
+        },
+        {
+          "_id": 19,
+          "rows": 18,
+          "bytes": 4680
+        },
+        {
+          "_id": 11,
+          "rows": 186,
+          "bytes": 48381
+        },
+        {
+          "_id": 10,
+          "rows": 267,
+          "bytes": 69356
+        },
+        {
+          "_id": 13,
+          "rows": 201,
+          "bytes": 52211
+        },
+        {
+          "_id": 18,
+          "rows": 39,
+          "bytes": 10103
+        },
+        {
+          "_id": 17,
+          "rows": 33,
+          "bytes": 8611
+        }
+      ]
+    },
+    "contact_numbers": {
+      "field": "createdAt",
+      "count": 11231,
+      "logical": 8946020,
+      "allocated": 3928064,
+      "index": 4292608,
+      "groups": [
+        {
+          "_id": 2,
+          "rows": 2,
+          "bytes": 2001
+        },
+        {
+          "_id": 11,
+          "rows": 7,
+          "bytes": 6013
+        },
+        {
+          "_id": 12,
+          "rows": 3,
+          "bytes": 2203
+        },
+        {
+          "_id": 13,
+          "rows": 1,
+          "bytes": 987
+        },
+        {
+          "_id": 14,
+          "rows": 11,
+          "bytes": 8862
+        },
+        {
+          "_id": 8,
+          "rows": 13,
+          "bytes": 11985
+        },
+        {
+          "_id": 15,
+          "rows": 7,
+          "bytes": 5855
+        },
+        {
+          "_id": 19,
+          "rows": 2,
+          "bytes": 2007
+        },
+        {
+          "_id": 20,
+          "rows": 1,
+          "bytes": 953
+        },
+        {
+          "_id": 9,
+          "rows": 3,
+          "bytes": 2895
+        },
+        {
+          "_id": 23,
+          "rows": 2,
+          "bytes": 1950
+        },
+        {
+          "_id": 22,
+          "rows": 25,
+          "bytes": 24333
+        },
+        {
+          "_id": 6,
+          "rows": 1,
+          "bytes": 746
+        },
+        {
+          "_id": 16,
+          "rows": 3,
+          "bytes": 2250
+        },
+        {
+          "_id": 3,
+          "rows": 1,
+          "bytes": 961
+        },
+        {
+          "_id": 7,
+          "rows": 5,
+          "bytes": 4872
+        },
+        {
+          "_id": 17,
+          "rows": 7,
+          "bytes": 6258
+        },
+        {
+          "_id": 18,
+          "rows": 1,
+          "bytes": 967
+        },
+        {
+          "_id": 1,
+          "rows": 1,
+          "bytes": 975
+        },
+        {
+          "_id": 0,
+          "rows": 1,
+          "bytes": 1005
+        },
+        {
+          "_id": 10,
+          "rows": 2,
+          "bytes": 1697
+        }
+      ]
+    },
+    "sales_intelligence_jobs": {
+      "field": "createdAt",
+      "count": 352235,
+      "logical": 246627461,
+      "allocated": 326991872,
+      "index": 231469056,
+      "groups": [
+        {
+          "_id": "outreach_lead_change",
+          "rows": 26530,
+          "bytes": 19808057
+        },
+        {
+          "_id": "outreach_rep_day",
+          "rows": 748,
+          "bytes": 409904
+        },
+        {
+          "_id": "outreach_evaluate",
+          "rows": 42268,
+          "bytes": 25630913
+        },
+        {
+          "_id": "lead_link",
+          "rows": 732,
+          "bytes": 477215
+        },
+        {
+          "_id": "outreach_contact_change",
+          "rows": 5836,
+          "bytes": 3067532
+        },
+        {
+          "_id": "capture_projection",
+          "rows": 4916,
+          "bytes": 4728655
+        },
+        {
+          "_id": "rep_sms_sync",
+          "rows": 246,
+          "bytes": 224274
+        },
+        {
+          "_id": "call_log_refresh",
+          "rows": 580,
+          "bytes": 449356
+        }
+      ]
+    },
+    "entity_changes": {
+      "field": "applied_at",
+      "count": 178769,
+      "logical": 226167385,
+      "allocated": 35446784,
+      "index": 36884480,
+      "groups": [
+        {
+          "_id": 8,
+          "rows": 36,
+          "bytes": 89736
+        },
+        {
+          "_id": 15,
+          "rows": 14,
+          "bytes": 29694
+        },
+        {
+          "_id": 18,
+          "rows": 19,
+          "bytes": 32192
+        },
+        {
+          "_id": 17,
+          "rows": 14,
+          "bytes": 30840
+        },
+        {
+          "_id": 19,
+          "rows": 7,
+          "bytes": 13041
+        },
+        {
+          "_id": 2,
+          "rows": 12,
+          "bytes": 20759
+        },
+        {
+          "_id": 10,
+          "rows": 29,
+          "bytes": 45066
+        },
+        {
+          "_id": 0,
+          "rows": 9,
+          "bytes": 13893
+        },
+        {
+          "_id": 11,
+          "rows": 31,
+          "bytes": 54700
+        },
+        {
+          "_id": 13,
+          "rows": 17,
+          "bytes": 24930
+        },
+        {
+          "_id": 1,
+          "rows": 1,
+          "bytes": 4439
+        },
+        {
+          "_id": 23,
+          "rows": 6,
+          "bytes": 13673
+        },
+        {
+          "_id": 7,
+          "rows": 11,
+          "bytes": 34669
+        },
+        {
+          "_id": 3,
+          "rows": 3,
+          "bytes": 6841
+        },
+        {
+          "_id": 9,
+          "rows": 34,
+          "bytes": 51214
+        },
+        {
+          "_id": 16,
+          "rows": 23,
+          "bytes": 33754
+        },
+        {
+          "_id": 22,
+          "rows": 50,
+          "bytes": 164100
+        },
+        {
+          "_id": 6,
+          "rows": 6,
+          "bytes": 7056
+        },
+        {
+          "_id": 12,
+          "rows": 28,
+          "bytes": 38916
+        },
+        {
+          "_id": 20,
+          "rows": 8,
+          "bytes": 18936
+        },
+        {
+          "_id": 14,
+          "rows": 16,
+          "bytes": 30284
+        }
+      ]
+    },
+    "sales_outreach_contact_events": {
+      "field": "createdAt",
+      "count": 50656,
+      "logical": 34103199,
+      "allocated": 9273344,
+      "index": 5545984,
+      "groups": [
+        {
+          "_id": 8,
+          "rows": 11,
+          "bytes": 7438
+        },
+        {
+          "_id": 15,
+          "rows": 83,
+          "bytes": 57587
+        },
+        {
+          "_id": 18,
+          "rows": 14,
+          "bytes": 9692
+        },
+        {
+          "_id": 17,
+          "rows": 14,
+          "bytes": 9545
+        },
+        {
+          "_id": 19,
+          "rows": 8,
+          "bytes": 5472
+        },
+        {
+          "_id": 23,
+          "rows": 2,
+          "bytes": 1346
+        },
+        {
+          "_id": 10,
+          "rows": 134,
+          "bytes": 92826
+        },
+        {
+          "_id": 11,
+          "rows": 94,
+          "bytes": 64755
+        },
+        {
+          "_id": 13,
+          "rows": 85,
+          "bytes": 59060
+        },
+        {
+          "_id": 7,
+          "rows": 2,
+          "bytes": 1355
+        },
+        {
+          "_id": 9,
+          "rows": 49,
+          "bytes": 33343
+        },
+        {
+          "_id": 16,
+          "rows": 56,
+          "bytes": 38900
+        },
+        {
+          "_id": 6,
+          "rows": 1,
+          "bytes": 667
+        },
+        {
+          "_id": 12,
+          "rows": 142,
+          "bytes": 98501
+        },
+        {
+          "_id": 20,
+          "rows": 2,
+          "bytes": 1363
+        },
+        {
+          "_id": 14,
+          "rows": 96,
+          "bytes": 65794
+        }
+      ]
+    },
+    "sales_outreach_refresh_requests": {
+      "field": "createdAt",
+      "count": 1801,
+      "logical": 1973138,
+      "allocated": 1359872,
+      "index": 581632,
+      "groups": [
+        {
+          "_id": 20,
+          "rows": 2,
+          "bytes": 2092
+        },
+        {
+          "_id": 15,
+          "rows": 4,
+          "bytes": 4952
+        },
+        {
+          "_id": 18,
+          "rows": 1,
+          "bytes": 992
+        },
+        {
+          "_id": 23,
+          "rows": 2,
+          "bytes": 1984
+        },
+        {
+          "_id": 17,
+          "rows": 29,
+          "bytes": 31474
+        },
+        {
+          "_id": 19,
+          "rows": 1,
+          "bytes": 1100
+        },
+        {
+          "_id": 16,
+          "rows": 1723,
+          "bytes": 1891470
+        },
+        {
+          "_id": 22,
+          "rows": 25,
+          "bytes": 24908
+        }
+      ]
+    },
+    "sales_outreach_projections": {
+      "field": "createdAt",
+      "count": 3813,
+      "logical": 29893548,
+      "allocated": 7204864,
+      "index": 2412544,
+      "groups": [
+        {
+          "_id": 8,
+          "rows": 11,
+          "bytes": 36184
+        },
+        {
+          "_id": 15,
+          "rows": 2,
+          "bytes": 6233
+        },
+        {
+          "_id": 18,
+          "rows": 1,
+          "bytes": 2962
+        },
+        {
+          "_id": 17,
+          "rows": 4,
+          "bytes": 12916
+        },
+        {
+          "_id": 19,
+          "rows": 1,
+          "bytes": 3261
+        },
+        {
+          "_id": 2,
+          "rows": 2,
+          "bytes": 5932
+        },
+        {
+          "_id": 1,
+          "rows": 1,
+          "bytes": 3385
+        },
+        {
+          "_id": 0,
+          "rows": 1,
+          "bytes": 2965
+        },
+        {
+          "_id": 10,
+          "rows": 1,
+          "bytes": 3267
+        },
+        {
+          "_id": 11,
+          "rows": 3,
+          "bytes": 9567
+        },
+        {
+          "_id": 13,
+          "rows": 1,
+          "bytes": 3240
+        },
+        {
+          "_id": 23,
+          "rows": 2,
+          "bytes": 6556
+        },
+        {
+          "_id": 7,
+          "rows": 4,
+          "bytes": 12178
+        },
+        {
+          "_id": 3,
+          "rows": 1,
+          "bytes": 3256
+        },
+        {
+          "_id": 9,
+          "rows": 3,
+          "bytes": 9917
+        },
+        {
+          "_id": 16,
+          "rows": 2,
+          "bytes": 6140
+        },
+        {
+          "_id": 22,
+          "rows": 25,
+          "bytes": 81532
+        },
+        {
+          "_id": 20,
+          "rows": 2,
+          "bytes": 6460
+        },
+        {
+          "_id": 14,
+          "rows": 3,
+          "bytes": 9258
+        }
+      ]
+    },
+    "sales_outreach_subjects": {
+      "field": "createdAt",
+      "count": 3813,
+      "logical": 3594956,
+      "allocated": 1675264,
+      "index": 905216,
+      "groups": [
+        {
+          "_id": 18,
+          "rows": 1,
+          "bytes": 934
+        },
+        {
+          "_id": 8,
+          "rows": 11,
+          "bytes": 10203
+        },
+        {
+          "_id": 15,
+          "rows": 2,
+          "bytes": 1851
+        },
+        {
+          "_id": 19,
+          "rows": 1,
+          "bytes": 928
+        },
+        {
+          "_id": 14,
+          "rows": 3,
+          "bytes": 2775
+        },
+        {
+          "_id": 23,
+          "rows": 2,
+          "bytes": 1867
+        },
+        {
+          "_id": 20,
+          "rows": 2,
+          "bytes": 1841
+        },
+        {
+          "_id": 22,
+          "rows": 25,
+          "bytes": 23211
+        },
+        {
+          "_id": 16,
+          "rows": 2,
+          "bytes": 1830
+        },
+        {
+          "_id": 9,
+          "rows": 3,
+          "bytes": 2791
+        },
+        {
+          "_id": 3,
+          "rows": 1,
+          "bytes": 928
+        },
+        {
+          "_id": 7,
+          "rows": 4,
+          "bytes": 3710
+        },
+        {
+          "_id": 1,
+          "rows": 1,
+          "bytes": 929
+        },
+        {
+          "_id": 0,
+          "rows": 1,
+          "bytes": 933
+        },
+        {
+          "_id": 10,
+          "rows": 1,
+          "bytes": 936
+        },
+        {
+          "_id": 2,
+          "rows": 2,
+          "bytes": 1868
+        },
+        {
+          "_id": 11,
+          "rows": 3,
+          "bytes": 2795
+        },
+        {
+          "_id": 17,
+          "rows": 4,
+          "bytes": 3732
+        },
+        {
+          "_id": 13,
+          "rows": 1,
+          "bytes": 914
+        }
+      ]
+    },
+    "sales_outreach_rep_day_projections": {
+      "field": "createdAt",
+      "count": 514,
+      "logical": 510285,
+      "allocated": 167936,
+      "index": 151552,
+      "groups": [
+        {
+          "_id": 11,
+          "rows": 1,
+          "bytes": 994
+        },
+        {
+          "_id": 9,
+          "rows": 1,
+          "bytes": 993
+        },
+        {
+          "_id": 10,
+          "rows": 4,
+          "bytes": 3968
+        },
+        {
+          "_id": 8,
+          "rows": 2,
+          "bytes": 1986
+        },
+        {
+          "_id": 0,
+          "rows": 1,
+          "bytes": 994
+        }
+      ]
+    },
+    "sales_outreach_policy_periods": {
+      "field": "createdAt",
+      "count": 7106,
+      "logical": 4088117,
+      "allocated": 880640,
+      "index": 1060864,
+      "groups": [
+        {
+          "_id": 18,
+          "rows": 4,
+          "bytes": 2284
+        },
+        {
+          "_id": 8,
+          "rows": 13,
+          "bytes": 6873
+        },
+        {
+          "_id": 15,
+          "rows": 7,
+          "bytes": 4029
+        },
+        {
+          "_id": 19,
+          "rows": 1,
+          "bytes": 514
+        },
+        {
+          "_id": 14,
+          "rows": 7,
+          "bytes": 4035
+        },
+        {
+          "_id": 23,
+          "rows": 2,
+          "bytes": 1030
+        },
+        {
+          "_id": 12,
+          "rows": 8,
+          "bytes": 4761
+        },
+        {
+          "_id": 20,
+          "rows": 2,
+          "bytes": 1115
+        },
+        {
+          "_id": 22,
+          "rows": 25,
+          "bytes": 12958
+        },
+        {
+          "_id": 16,
+          "rows": 6,
+          "bytes": 3583
+        },
+        {
+          "_id": 9,
+          "rows": 6,
+          "bytes": 3376
+        },
+        {
+          "_id": 3,
+          "rows": 1,
+          "bytes": 515
+        },
+        {
+          "_id": 7,
+          "rows": 5,
+          "bytes": 2713
+        },
+        {
+          "_id": 1,
+          "rows": 1,
+          "bytes": 543
+        },
+        {
+          "_id": 0,
+          "rows": 1,
+          "bytes": 543
+        },
+        {
+          "_id": 10,
+          "rows": 9,
+          "bytes": 5275
+        },
+        {
+          "_id": 2,
+          "rows": 2,
+          "bytes": 1070
+        },
+        {
+          "_id": 11,
+          "rows": 13,
+          "bytes": 7524
+        },
+        {
+          "_id": 13,
+          "rows": 6,
+          "bytes": 3556
+        },
+        {
+          "_id": 17,
+          "rows": 6,
+          "bytes": 3302
+        }
+      ]
+    }
+  },
+  "pending": []
+}

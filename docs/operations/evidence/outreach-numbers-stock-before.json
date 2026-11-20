@@ -1,0 +1,222 @@
+{
+  "at": "2026-11-19T23:59:38.540Z",
+  "start": "2026-11-18T23:07:02.727Z",
+  "primary": "01",
+  "election": "7fffffff0000000000000011",
+  "collections": {
+    "ringcentral_webhook_events": {
+      "logical": 159607634,
+      "allocated": 62193664,
+      "indexes": 6213632,
+      "free": 31678464,
+      "n": 34775,
+      "reads": 16153,
+      "writes": 6268,
+      "at": "2026-11-19T23:59:37.758Z",
+      "delta": {
+        "n": -747,
+        "logical": -3177190,
+        "allocated": -372736,
+        "reads": 11921,
+        "writes": 5583
+      }
+    },
+    "call_interactions": {
+      "logical": 117001327,
+      "allocated": 23195648,
+      "indexes": 11481088,
+      "free": 622592,
+      "n": 37494,
+      "reads": 27546,
+      "writes": 7357,
+      "at": "2026-11-19T23:59:37.870Z",
+      "delta": {
+        "n": 607,
+        "logical": 1880053,
+        "allocated": 430080,
+        "reads": 24722,
+        "writes": 6527
+      }
+    },
+    "call_interaction_aliases": {
+      "logical": 29246842,
+      "allocated": 7892992,
+      "indexes": 5885952,
+      "free": 458752,
+      "n": 112492,
+      "reads": 9384,
+      "writes": 1372,
+      "at": "2026-11-19T23:59:37.914Z",
+      "delta": {
+        "n": 1821,
+        "logical": 473316,
+        "allocated": 159744,
+        "reads": 8362,
+        "writes": 1214
+      }
+    },
+    "contact_numbers": {
+      "logical": 8946205,
+      "allocated": 3928064,
+      "indexes": 4292608,
+      "free": 991232,
+      "n": 11231,
+      "reads": 44609,
+      "writes": 2324,
+      "at": "2026-11-19T23:59:37.950Z",
+      "delta": {
+        "n": 75,
+        "logical": 70088,
+        "allocated": 131072,
+        "reads": 35783,
+        "writes": 2073
+      }
+    },
+    "sales_intelligence_jobs": {
+      "logical": 246621149,
+      "allocated": 326991872,
+      "indexes": 231469056,
+      "free": 249221120,
+      "n": 352215,
+      "reads": 107790,
+      "writes": 354080,
+      "at": "2026-11-19T23:59:37.990Z",
+      "delta": {
+        "n": -210114,
+        "logical": -190986874,
+        "allocated": 5873664,
+        "reads": 94571,
+        "writes": 330629
+      }
+    },
+    "entity_changes": {
+      "logical": 226167385,
+      "allocated": 35446784,
+      "indexes": 36884480,
+      "free": 1241088,
+      "n": 178769,
+      "reads": 91739,
+      "writes": 333,
+      "at": "2026-11-19T23:59:38.030Z",
+      "delta": {
+        "n": 294,
+        "logical": 554334,
+        "allocated": 405504,
+        "reads": 71860,
+        "writes": 294
+      }
+    },
+    "sales_outreach_contact_events": {
+      "logical": 34105255,
+      "allocated": 9273344,
+      "indexes": 5562368,
+      "free": 536576,
+      "n": 50659,
+      "reads": 72412,
+      "writes": 5189,
+      "at": "2026-11-19T23:59:38.070Z",
+      "delta": {
+        "n": 812,
+        "logical": 561028,
+        "allocated": -81920,
+        "reads": 59286,
+        "writes": 4617
+      }
+    },
+    "sales_outreach_refresh_requests": {
+      "logical": 1973138,
+      "allocated": 1359872,
+      "indexes": 581632,
+      "free": 524288,
+      "n": 1801,
+      "reads": 450,
+      "writes": 130899,
+      "at": "2026-11-19T23:59:38.106Z",
+      "delta": {
+        "n": 45,
+        "logical": 41957,
+        "allocated": -65536,
+        "reads": 326,
+        "writes": 99468
+      }
+    },
+    "sales_outreach_projections": {
+      "logical": 29893634,
+      "allocated": 7204864,
+      "indexes": 2412544,
+      "free": 2187264,
+      "n": 3813,
+      "reads": 63973,
+      "writes": 7522,
+      "at": "2026-11-19T23:59:38.142Z",
+      "delta": {
+        "n": 45,
+        "logical": 330113,
+        "allocated": 90112,
+        "reads": 47646,
+        "writes": 7450
+      }
+    },
+    "sales_outreach_subjects": {
+      "logical": 3594956,
+      "allocated": 1675264,
+      "indexes": 905216,
+      "free": 811008,
+      "n": 3813,
+      "reads": 267344,
+      "writes": 15356,
+      "at": "2026-11-19T23:59:38.186Z",
+      "delta": {
+        "n": 45,
+        "logical": 41845,
+        "allocated": 114688,
+        "reads": 204909,
+        "writes": 11545
+      }
+    },
+    "sales_outreach_rep_day_projections": {
+      "logical": 510285,
+      "allocated": 167936,
+      "indexes": 151552,
+      "free": 36864,
+      "n": 514,
+      "reads": 14201,
+      "writes": 750,
+      "at": "2026-11-19T23:59:38.226Z",
+      "delta": {
+        "n": 7,
+        "logical": 7024,
+        "allocated": -24576,
+        "reads": 9169,
+        "writes": 668
+      }
+    },
+    "sales_outreach_policy_periods": {
+      "logical": 4088117,
+      "allocated": 880640,
+      "indexes": 1060864,
+      "free": 122880,
+      "n": 7106,
+      "reads": 62024,
+      "writes": 156,
+      "at": "2026-11-19T23:59:38.262Z",
+      "delta": {
+        "n": 91,
+        "logical": 51848,
+        "allocated": -8192,
+        "reads": 49552,
+        "writes": 137
+      }
+    }
+  },
+  "generations": [
+    {
+      "_id": "active",
+      "n": 1801,
+      "requested": 47197,
+      "consumed": 47197,
+      "active": 47197,
+      "pending": 0
+    }
+  ]
+}

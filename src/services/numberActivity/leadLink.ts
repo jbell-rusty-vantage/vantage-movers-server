@@ -7,6 +7,7 @@ import { leadPhoneMatchClauses } from "../../models/leadContactPhoneIndexes";
 
 import { CsiError } from "../salesIntelligence/auth";
 import { enqueueDeskWakeForLeadLink } from "../salesOutreach/capture/leadLinkWake";
+import { configuredRingCentralAccountId } from "./accountIdentity";
 import { stableJson } from "./callSummary";
 import { toE164 } from "./phone";
 import { boundSearchTerms, leadLinkSearchTerms } from "./searchTerms";
@@ -170,8 +171,12 @@ export async function loadLeadCandidates(
   session?: ClientSession | null,
 ): Promise<NumberLeadSnapshot[]> {
   const digits = numberLookupDigits(number);
+  // Historical Call Leads have a session identifier from the installation's inbound queue.
+  // A foreign account can reuse that identifier. Phone and Owner links keep their own evidence.
+  const qualificationAccount = configuredRingCentralAccountId();
   const sessions = (await getCallInteractionModel()
-    .find({ contact_number_id: oid(number._id), merged_into_id: null, telephony_session_id: { $ne: null } }, { telephony_session_id: 1 })
+    .find({ contact_number_id: oid(number._id), merged_into_id: null, telephony_session_id: { $ne: null },
+      ...(qualificationAccount ? { provider_account_id: qualificationAccount } : {}) }, { telephony_session_id: 1 })
     .sort({ started_at: -1, _id: -1 })
     .limit(SESSION_PAGE)
     .session(session ?? null)

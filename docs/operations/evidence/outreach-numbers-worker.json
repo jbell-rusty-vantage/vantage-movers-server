@@ -1,0 +1,84 @@
+{
+  "at": "2026-11-20T00:12:15.699Z",
+  "expected": "ed8db9b5601a3263a409173b7f684399e595a5d6",
+  "probes": {
+    "/health": {
+      "status": 200,
+      "elapsedMs": 233,
+      "tail": {},
+      "drain": {},
+      "sweep": {},
+      "recovery": {}
+    },
+    "/db": {
+      "status": 200,
+      "elapsedMs": 136,
+      "ok": true,
+      "readyState": 1,
+      "tail": {},
+      "drain": {},
+      "sweep": {},
+      "recovery": {}
+    },
+    "/api/cron/sales-intelligence-job-recovery": {
+      "status": 200,
+      "elapsedMs": 192,
+      "ok": true,
+      "skipped": false,
+      "tail": {},
+      "drain": {},
+      "sweep": {},
+      "recovery": {}
+    },
+    "/api/cron/sales-outreach-lead-changes": {
+      "status": 200,
+      "elapsedMs": 191,
+      "ok": true,
+      "skipped": false,
+      "tail": {
+        "skipped": false,
+        "passes": 1,
+        "scanned": 1,
+        "nominated": 1,
+        "conflicts": 0,
+        "caught_up": true,
+        "max_passes": 10,
+        "budget_seconds": 15
+      },
+      "drain": {},
+      "sweep": {},
+      "recovery": {}
+    },
+    "/api/cron/sales-outreach-contact-events": {
+      "status": 200,
+      "elapsedMs": 321,
+      "ok": true,
+      "tail": {},
+      "drain": {},
+      "sweep": {},
+      "recovery": {}
+    },
+    "/api/cron/sales-outreach-evaluate": {
+      "status": 200,
+      "elapsedMs": 209,
+      "ok": true,
+      "skipped": false,
+      "tail": {},
+      "drain": {
+        "jobs": 0,
+        "ms_total": 25
+      },
+      "sweep": {
+        "skipped": false
+      },
+      "recovery": {}
+    }
+  },
+  "worker": {
+    "deployment_commit": "ed8db9b5601a3263a409173b7f684399e595a5d6",
+    "recorded_at": "2026-11-20T00:11:00.380Z",
+    "vercel_deployment_id": "dpl_GCAhALnA5VXgwRo9ETmc1MCtceCP"
+  },
+  "pending": [],
+  "refreshPending": 0
+}

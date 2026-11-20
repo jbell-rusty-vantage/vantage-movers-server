@@ -21,7 +21,7 @@ process.env.SHEET_SYNC_MODE = "disabled";
 async function main() {
   const { connectMongo, withTransaction } = await import("../src/db.js");
   const { getSalesIntelligenceJobModel } = await import("../src/models/SalesIntelligenceJob.js");
-  const { enqueueCsiJob, claimCsiJob, renewCsiJob, completeCsiJob, failCsiJob, continueCsiJob } = await import("../src/services/salesIntelligence/jobs.js");
+  const { existingJobMatches, enqueueCsiJob, claimCsiJob, renewCsiJob, completeCsiJob, failCsiJob, continueCsiJob } = await import("../src/services/salesIntelligence/jobs.js");
   await connectMongo();
   assert.equal(mongoose.connection.name, database);
   const Model = getSalesIntelligenceJobModel();
@@ -36,6 +36,12 @@ async function main() {
   assert.equal(String(duplicate._id), String(first._id)); assert.equal(duplicate.priority, first.priority);
   assert.deepEqual(await bytes(), original);
   await assert.rejects(withTransaction(session => enqueueCsiJob({ ...input, input_revision: 2 }, session)), /IDEMPOTENCY_CONFLICT/);
+  assert.deepEqual(await bytes(), original);
+  const overlap = await withTransaction(s => existingJobMatches([input, { ...input, dedupe_key: "missing" }], s));
+  assert.equal(overlap.get(input.dedupe_key), true);
+  assert.equal(overlap.has("missing"), false);
+  const conflict = await withTransaction(s => existingJobMatches([{ ...input, input_revision: 2 }], s));
+  assert.equal(conflict.get(input.dedupe_key), false);
   assert.deepEqual(await bytes(), original);
   const session = await mongoose.startSession();
   try { await assert.rejects(enqueueCsiJob(input, session), /INVALID_INPUT/); } finally { await session.endSession(); }
@@ -107,7 +113,7 @@ async function proveRetiredStageFence(
   Model: Awaited<typeof import("../src/models/SalesIntelligenceJob.js")>["getSalesIntelligenceJobModel"] extends () => infer M ? M : never,
   withTransaction: Awaited<typeof import("../src/db.js")>["withTransaction"],
 ) {
-  const { enqueueCsiJob, claimCsiJob, completeCsiJob, retireLegacyCsiJobs } = await import("../src/services/salesIntelligence/jobs.js");
+  const { existingJobMatches, enqueueCsiJob, claimCsiJob, completeCsiJob, retireLegacyCsiJobs } = await import("../src/services/salesIntelligence/jobs.js");
   const { dispatchCsiWakeup } = await import("../src/services/numberActivity/jobDispatch.js");
   const collections = async () => (await mongoose.connection.db!.listCollections().toArray()).map(c => c.name).sort();
   // Importing the dispatcher registers retained models whose `autoCreate` runs in the background; settle every

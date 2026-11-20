@@ -1,0 +1,81 @@
+{
+  "start": "2026-11-18T05:00:00.000Z",
+  "end": "2026-11-19T05:00:00.000Z",
+  "firstContactVersionToDesk": {
+    "matchingEvalJobs": 876,
+    "fromNominationMs": {
+      "n": 124,
+      "median": 245,
+      "p95": 480
+    },
+    "fromFirstAccountReceiptMs": {
+      "n": 124,
+      "median": 584,
+      "p95": 995
+    },
+    "explicitProjectionWritesMs": {
+      "n": 0
+    }
+  },
+  "targetedCalls": [
+    {
+      "_id": "already_settled",
+      "n": 580,
+      "attempts": 580
+    }
+  ],
+  "repDayChecks": [
+    {
+      "published": 45,
+      "recount": 45,
+      "equal": true
+    },
+    {
+      "published": 30,
+      "recount": 30,
+      "equal": true
+    },
+    {
+      "published": 138,
+      "recount": 138,
+      "equal": true
+    },
+    {
+      "published": 76,
+      "recount": 76,
+      "equal": true
+    },
+    {
+      "published": 0,
+      "recount": 0,
+      "equal": true
+    },
+    {
+      "published": 27,
+      "recount": 27,
+      "equal": true
+    },
+    {
+      "published": 75,
+      "recount": 75,
+      "equal": true
+    },
+    {
+      "published": 12,
+      "recount": 12,
+      "equal": true
+    },
+    {
+      "published": 53,
+      "recount": 53,
+      "equal": true
+    }
+  ],
+  "preview": [
+    {
+      "_id": null,
+      "rawBytes": 29744072,
+      "rows": 34780
+    }
+  ]
+}

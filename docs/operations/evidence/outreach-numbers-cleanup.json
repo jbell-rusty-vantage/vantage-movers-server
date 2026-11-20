@@ -1,0 +1,86 @@
+[
+  {
+    "elapsedMs": 17219.0,
+    "result": {
+      "collection": "ringcentral_webhook_events",
+      "mode": "preview",
+      "cutoff": "2026-11-20T00:10:00Z",
+      "eligible": 34747,
+      "bytes": 19361444,
+      "held": 0,
+      "holdReason": "raw evidence missing or preview differs",
+      "modified": 0
+    },
+    "began": "2026-11-20T00:11:47.1587525Z",
+    "operator": "compact-webhook-previews"
+  },
+  {
+    "elapsedMs": 2910.0,
+    "result": {
+      "collection": "ringcentral_webhook_events",
+      "mode": "preview",
+      "cutoff": "2026-11-20T00:10:00Z",
+      "rows": 34747,
+      "bytes": 48541559,
+      "modified": 0
+    },
+    "began": "2026-11-20T00:12:04.4200006Z",
+    "operator": "trim-webhook-headers"
+  },
+  {
+    "elapsedMs": 58312.0,
+    "result": {
+      "collection": "ringcentral_webhook_events",
+      "mode": "apply",
+      "cutoff": "2026-11-20T00:10:00Z",
+      "eligible": 34747,
+      "bytes": 19361444,
+      "held": 0,
+      "holdReason": "raw evidence missing or preview differs",
+      "modified": 34747
+    },
+    "began": "2026-11-20T00:12:07.3368588Z",
+    "operator": "compact-webhook-previews"
+  },
+  {
+    "elapsedMs": 26799.0,
+    "result": {
+      "collection": "ringcentral_webhook_events",
+      "mode": "apply",
+      "cutoff": "2026-11-20T00:10:00Z",
+      "rows": 34747,
+      "bytes": 48541559,
+      "modified": 34747
+    },
+    "began": "2026-11-20T00:13:05.6508673Z",
+    "operator": "trim-webhook-headers"
+  },
+  {
+    "elapsedMs": 1736.0,
+    "result": {
+      "collection": "ringcentral_webhook_events",
+      "mode": "preview",
+      "cutoff": "2026-11-20T00:10:00Z",
+      "eligible": 0,
+      "bytes": 0,
+      "held": 0,
+      "holdReason": "raw evidence missing or preview differs",
+      "modified": 0
+    },
+    "began": "2026-11-20T00:13:32.4523126Z",
+    "operator": "compact-webhook-previews"
+  },
+  {
+    "elapsedMs": 2576.0,
+    "result": {
+      "collection": "ringcentral_webhook_events",
+      "mode": "preview",
+      "cutoff": "2026-11-20T00:10:00Z",
+      "rows": 0,
+      "bytes": 0,
+      "modified": 0
+    },
+    "began": "2026-11-20T00:13:34.1910037Z",
+    "operator": "trim-webhook-headers"
+  }
+]

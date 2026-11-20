@@ -118,6 +118,7 @@ describe("p07c inbound handling", () => {
     own.lead(NUMBER, subjectFacts({ originating_session_id: row.telephony_session_id }));
     const draft = deriveCallContactEvent(row, own.build());
     assert.equal(draft.originating_inbound, true);
+    assert.equal(deriveCallContactEvent(row, { ...own.build(), qualification_account_id: "another-account" }).originating_inbound, false);
     assert.equal(draft.goal_credit, "none");
     assert.equal(deriveCallContactEvent(inboundCall("101", NUMBER, T0), own.build()).originating_inbound, false, "another session is not the originating call");
     assert.equal(deriveCallContactEvent({ ...row, call_log_state: null }, own.build()).originating_inbound, false, "awaiting confirmation is not yet the originating inbound");

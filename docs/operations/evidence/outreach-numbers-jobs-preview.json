@@ -1,0 +1,59 @@
+{
+  "cutoff": "2026-11-19T23:42:00Z",
+  "collection": "sales_intelligence_jobs",
+  "previews": [
+    {
+      "mode": "plan",
+      "scanned": 20506,
+      "eligible": {},
+      "held": {
+        "outreach_evaluate:unclassified": {
+          "rows": 19973,
+          "bytes": 16196073
+        },
+        "outreach_contact_change:unclassified": {
+          "rows": 533,
+          "bytes": 353370
+        }
+      }
+    },
+    {
+      "mode": "plan-leads",
+      "scanned": 68957,
+      "eligible": {},
+      "held": {
+        "outreach_lead_change:unclassified": {
+          "rows": 68957,
+          "bytes": 51776825
+        }
+      }
+    },
+    {
+      "mode": "plan-recent",
+      "scanned": 58392,
+      "eligible": {},
+      "held": {
+        "outreach_contact_change:unclassified": {
+          "rows": 877,
+          "bytes": 581408
+        },
+        "outreach_lead_change:unclassified": {
+          "rows": 33609,
+          "bytes": 25991339
+        },
+        "outreach_evaluate:unclassified": {
+          "rows": 20306,
+          "bytes": 16463532
+        },
+        "outreach_lead_change": {
+          "rows": 3598,
+          "bytes": 2957556
+        },
+        "outreach_rep_day:unclassified": {
+          "rows": 2,
+          "bytes": 1338
+        }
+      }
+    }
+  ]
+}

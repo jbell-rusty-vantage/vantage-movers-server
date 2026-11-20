@@ -24,7 +24,7 @@ sources:
 
 # Number Activity capture
 
-**2026-10 All Numbers phase B.** The Contact Number rollups, the attachment refresh job and the rollup rebuild are gone: capture recomputes each touched number's [call summary](#all-numbers-call-summary) from its calls in the observation's transaction and nominates a `lead_link` job ([number-activity-reads.md](number-activity-reads.md#lead-link-leadlinkts)).
+**2026-10 All Numbers phase B.** The Contact Number rollups, the attachment refresh job and the rollup rebuild are gone: after a contribution changes, capture recomputes each touched number's [call summary](#all-numbers-call-summary) from its calls in the observation's transaction and nominates a `lead_link` job ([number-activity-reads.md](number-activity-reads.md#lead-link-leadlinkts)).
 
 **2026-10 server/admin slimming.** Capture is retained. It no longer nominates `outreach_ensure` or `recording_discovery` work, the ContactNumber rollups lost their Outreach and analysis counters, and the old capture-recovery repair tooling was removed ([slimming specification](../../server-admin-slimming/SPECIFICATION.md) §7.3–7.4). Provider recording metadata stays on `call_interactions.recordings[]`; the server never downloads audio.
 
@@ -39,7 +39,7 @@ sources:
 | Module | Responsibility |
 | --- | --- |
 | `interactionProjection.ts` | Pure. `fromWebhookParties`, `fromCallLogRecord`, `mergeProjections`, `sameProjection`, identity/alias helpers, `classifyCallLogRecordState` / `provisionalCallLogRule` (CC-04). No I/O. |
-| `persistInteraction.ts` | One Mongo transaction per observation: alias reservation, insert or revision-CAS update, merge-with-proof tombstones, the Contact Number observation (caller-ID names, search-term addition, activity window), the call summary of every touched number (`callSummary.ts`), the `lead_link` job intent. No audit row (disk trim). Bounded retry on duplicate key / revision conflict / transient transaction error. |
+| `persistInteraction.ts` | One Mongo transaction per observation: alias reservation, insert or revision-CAS update, merge-with-proof tombstones, the Contact Number observation (caller-ID names, search-term addition, activity window), the call summary when the counted contribution changes (`callSummary.ts`), the `lead_link` job intent. No audit row (disk trim). Bounded retry on duplicate key / revision conflict / transient transaction error. |
 | `observeWebhookEvents.ts` | `normalizeWebhookPartyObservations(payload, receivedAt)` and `observeRingCentralWebhookEvents(observations, deps)`. Interface CSI-03 calls from its durable capture-projection job. |
 | `reconcileCallLog.ts` | `runCallLogReconcileOnce(deps)`: fenced lease, Call Log Sync step, start-time window with settle horizon, per-row skip, oldest-first projection, quarantine retries, straggler settles, gaps, gap repair, cursor and `known_complete_through`. |
 | `callLogApplier.ts` | The reconcile's per-record half, shared with the minute ISync lane: account/directory/route context once per run, CC-02 per-row skip (`unchangedRecords`), oldest-first apply, CC-01 quarantine counting, and the `call_interactions` rows a batch changed (for the Sales Outreach Desk wake). |
@@ -132,7 +132,7 @@ Records held in the reconcile's `quarantined_records` are skipped: neither measu
 - **Result**: `answered` when `provider_connected`; `voicemail` when `contact_type: voicemail` or the provider result matches /voicemail/i; else `missed`. Only an inbound call counts as missed (voicemail included); an unanswered outbound call keeps result `missed` but never counts and never opens a wait.
 - **Waiting on us**: handled = any outbound call (connected or not) or an answered inbound call; `waiting_since` = the start of the **earliest** missed/voicemail inbound call after the **latest** handled call, else null. An outbound text does not clear it (v1).
 - `last_call.rc_extension_id` is our side (the answering, else first, user party); reads resolve the Agent at the call time (`callRep.ts`).
-- **Writers**: capture, for every number an observation touched (the number it is on, the one it left, merged losers' numbers), inside the observation's transaction; retention after purging a call; the v2 migration. The write sets the summary paths only, without a `revision` bump (the revision fences the Owner's lead-link command), and only when something changed.
+- **Writers**: capture inside the observation transaction when the counted contribution changes or the Number summary needs initialization. Moves and merges recount every affected Number; retention after purging a call; the v2 migration. The write sets the summary paths only, without a `revision` bump (the revision fences the Owner's lead-link command), and only when something changed.
 - Capture's own number write (`observeOnNumber`) adds caller-ID names and a search term and widens `first_observed_at`/`last_activity_at`; it no longer bumps `revision` — concurrent writers of the row all run in transactions, where a write conflict aborts and retries.
 - Retention's Number activity purge clears the v2 fields with the identity (`lead: null`, zero `calls`, no `last_call`, no wait).
 

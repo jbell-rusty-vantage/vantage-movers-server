@@ -1,0 +1,968 @@
+[
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 0
+    },
+    "n": 2
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 0
+    },
+    "n": 5429
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 0
+    },
+    "n": 1789
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 1
+    },
+    "n": 1
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 1
+    },
+    "n": 1
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 1
+    },
+    "n": 1
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 2
+    },
+    "n": 1793
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 2
+    },
+    "n": 3577
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 2
+    },
+    "n": 5
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 3
+    },
+    "n": 2
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 3
+    },
+    "n": 2
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 3
+    },
+    "n": 2
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 4
+    },
+    "n": 336
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 4
+    },
+    "n": 672
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 6
+    },
+    "n": 1
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 6
+    },
+    "n": 5314
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 6
+    },
+    "n": 1
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 6
+    },
+    "n": 2660
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 6
+    },
+    "n": 74
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 6
+    },
+    "n": 74
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 7
+    },
+    "n": 2
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 7
+    },
+    "n": 3
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 7
+    },
+    "n": 5
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 7
+    },
+    "n": 7
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 7
+    },
+    "n": 6
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 8
+    },
+    "n": 4533
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 8
+    },
+    "n": 4
+  },
+  {
+    "_id": {
+      "stage": "outreach_rep_day",
+      "hour": 8
+    },
+    "n": 3
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 8
+    },
+    "n": 87
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 8
+    },
+    "n": 4
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 8
+    },
+    "n": 70
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 8
+    },
+    "n": 1814
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 8
+    },
+    "n": 20
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 9
+    },
+    "n": 24
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 9
+    },
+    "n": 27
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 9
+    },
+    "n": 308
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 9
+    },
+    "n": 1822
+  },
+  {
+    "_id": {
+      "stage": "outreach_rep_day",
+      "hour": 9
+    },
+    "n": 13
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 9
+    },
+    "n": 36
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 9
+    },
+    "n": 3656
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 9
+    },
+    "n": 255
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 10
+    },
+    "n": 89
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 10
+    },
+    "n": 3788
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 10
+    },
+    "n": 800
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 10
+    },
+    "n": 52
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 10
+    },
+    "n": 653
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 10
+    },
+    "n": 1826
+  },
+  {
+    "_id": {
+      "stage": "outreach_rep_day",
+      "hour": 10
+    },
+    "n": 134
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 10
+    },
+    "n": 100
+  },
+  {
+    "_id": {
+      "stage": "outreach_rep_day",
+      "hour": 11
+    },
+    "n": 80
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 11
+    },
+    "n": 496
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 11
+    },
+    "n": 51
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 11
+    },
+    "n": 1828
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 11
+    },
+    "n": 591
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 11
+    },
+    "n": 34
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 11
+    },
+    "n": 3699
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 11
+    },
+    "n": 77
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 12
+    },
+    "n": 3921
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 12
+    },
+    "n": 940
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 12
+    },
+    "n": 1817
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 12
+    },
+    "n": 112
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 12
+    },
+    "n": 118
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 12
+    },
+    "n": 43
+  },
+  {
+    "_id": {
+      "stage": "outreach_rep_day",
+      "hour": 12
+    },
+    "n": 159
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 12
+    },
+    "n": 784
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 13
+    },
+    "n": 468
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 13
+    },
+    "n": 71
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 13
+    },
+    "n": 23
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 13
+    },
+    "n": 70
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 13
+    },
+    "n": 3711
+  },
+  {
+    "_id": {
+      "stage": "outreach_rep_day",
+      "hour": 13
+    },
+    "n": 101
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 13
+    },
+    "n": 1809
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 13
+    },
+    "n": 560
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 14
+    },
+    "n": 10
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 14
+    },
+    "n": 85
+  },
+  {
+    "_id": {
+      "stage": "outreach_rep_day",
+      "hour": 14
+    },
+    "n": 63
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 14
+    },
+    "n": 719
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 14
+    },
+    "n": 34
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 14
+    },
+    "n": 603
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 14
+    },
+    "n": 66
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 14
+    },
+    "n": 72
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 15
+    },
+    "n": 73
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 15
+    },
+    "n": 66
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 15
+    },
+    "n": 12
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 15
+    },
+    "n": 19
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 15
+    },
+    "n": 598
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 15
+    },
+    "n": 88
+  },
+  {
+    "_id": {
+      "stage": "outreach_rep_day",
+      "hour": 15
+    },
+    "n": 79
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 15
+    },
+    "n": 505
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 16
+    },
+    "n": 62
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 16
+    },
+    "n": 99
+  },
+  {
+    "_id": {
+      "stage": "outreach_rep_day",
+      "hour": 16
+    },
+    "n": 86
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 16
+    },
+    "n": 60
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 16
+    },
+    "n": 538
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 16
+    },
+    "n": 2
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 16
+    },
+    "n": 1784
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 16
+    },
+    "n": 458
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 17
+    },
+    "n": 8
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 17
+    },
+    "n": 133
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 17
+    },
+    "n": 2
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 17
+    },
+    "n": 1807
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 17
+    },
+    "n": 8
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 17
+    },
+    "n": 20
+  },
+  {
+    "_id": {
+      "stage": "outreach_rep_day",
+      "hour": 17
+    },
+    "n": 6
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 17
+    },
+    "n": 118
+  },
+  {
+    "_id": {
+      "stage": "outreach_rep_day",
+      "hour": 18
+    },
+    "n": 15
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 18
+    },
+    "n": 1799
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 18
+    },
+    "n": 159
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 18
+    },
+    "n": 22
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 18
+    },
+    "n": 20
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 18
+    },
+    "n": 17
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 18
+    },
+    "n": 2
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 18
+    },
+    "n": 132
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 19
+    },
+    "n": 269
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 19
+    },
+    "n": 6
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 19
+    },
+    "n": 280
+  },
+  {
+    "_id": {
+      "stage": "outreach_rep_day",
+      "hour": 19
+    },
+    "n": 6
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 19
+    },
+    "n": 1792
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 19
+    },
+    "n": 4
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 19
+    },
+    "n": 3
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 19
+    },
+    "n": 8
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 20
+    },
+    "n": 26
+  },
+  {
+    "_id": {
+      "stage": "outreach_rep_day",
+      "hour": 20
+    },
+    "n": 3
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 20
+    },
+    "n": 2
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 20
+    },
+    "n": 1794
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 20
+    },
+    "n": 40
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 20
+    },
+    "n": 3647
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 20
+    },
+    "n": 6
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 22
+    },
+    "n": 25
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 22
+    },
+    "n": 26
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 22
+    },
+    "n": 6
+  },
+  {
+    "_id": {
+      "stage": "rep_sms_sync",
+      "hour": 23
+    },
+    "n": 1
+  },
+  {
+    "_id": {
+      "stage": "outreach_lead_change",
+      "hour": 23
+    },
+    "n": 4
+  },
+  {
+    "_id": {
+      "stage": "outreach_evaluate",
+      "hour": 23
+    },
+    "n": 1
+  },
+  {
+    "_id": {
+      "stage": "call_log_refresh",
+      "hour": 23
+    },
+    "n": 1
+  },
+  {
+    "_id": {
+      "stage": "lead_link",
+      "hour": 23
+    },
+    "n": 5
+  },
+  {
+    "_id": {
+      "stage": "outreach_contact_change",
+      "hour": 23
+    },
+    "n": 7
+  },
+  {
+    "_id": {
+      "stage": "capture_projection",
+      "hour": 23
+    },
+    "n": 5
+  }
+]
