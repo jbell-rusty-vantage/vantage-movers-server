@@ -10,7 +10,7 @@ import {
 /**
  * Store a free-text value as text. Writes use USER_ENTERED, and Sheets parses a value
  * that starts with "=", "+", "-" or "@" as a formula or number. An E.164 phone such as
- * "+15628418170" loses its "+", and "+44 (0)20 3314 8208" shows #ERROR!. A leading
+ * "+15555550123" loses its "+", and "+44 (0)20 7946 0018" shows #ERROR!. A leading
  * apostrophe stores the value as typed and is not displayed.
  */
 export function textCell(value: string | null | undefined): string {

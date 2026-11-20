@@ -2,7 +2,7 @@
  * Re-deliver Master Leads rows whose Phone Number cell Google stored as a formula.
  *
  * Before the November 20 projection fix (`textCell`), a phone written with USER_ENTERED and a
- * leading "+" became a formula: "+15628418170" showed as a number and "+44 (0)20 3314 8208"
+ * leading "+" became a formula: "+15555550123" showed as a number and "+44 (0)20 7946 0018"
  * showed #ERROR!. The fix writes those values as text. This tool queues the ordinary Sheet Sync
  * re-delivery for each affected Lead, so the drainer rewrites the row from current canonical
  * state. It never writes a cell itself.

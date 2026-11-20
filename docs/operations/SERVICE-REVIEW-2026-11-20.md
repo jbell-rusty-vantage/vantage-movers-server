@@ -38,7 +38,7 @@ A read-only scan of all eight tabs found formula-stored managed cells on these r
 
 No row with content but no Mongo ID existed yet, so nothing needs repair. The fix treats formulas in managed columns as managed values, because every upsert overwrites those columns anyway. The fixture now models formula storage, and two regression tests fail on the old code. All 90 Sheet Sync and Google Sheets unit tests pass. [PR #237](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/237)
 
-**Fixed November 20: phone numbers stored as formulas.** The Owner reported `#ERROR!` phone cells on Bad Call Leads and Duplicate Calls. Rows are written with `USER_ENTERED`, so Sheets parsed a leading `+` as a formula. `+15628418170` showed as the number `15628418170`, and `+44 (0)20 3314 8208` showed `#ERROR!`.
+**Fixed November 20: phone numbers stored as formulas.** The Owner reported `#ERROR!` phone cells on Bad Call Leads and Duplicate Calls. Rows are written with `USER_ENTERED`, so Sheets parsed a leading `+` as a formula. `+15555550123` showed as the number `15555550123`, and `+44 (0)20 7946 0018` showed `#ERROR!`.
 
 **Fix.** PR #240 (`70581961`) writes Form and Call phone cells through `textCell`, which adds the same leading apostrophe the Form bad-reason cell uses.
 

@@ -299,7 +299,7 @@ test("duplicate repair removes only managed values from an operator-annotated ex
 });
 
 test("removing a row whose managed phone cell is stored as a formula deletes the whole row", async () => {
-  const f = statefulWorkbook({ Calls: [headers, ["A", "+15628418170"], ["B", "neighbor"]] });
+  const f = statefulWorkbook({ Calls: [headers, ["A", "+15555550123"], ["B", "neighbor"]] });
   const outcomes = await writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("delete")], quota: grant, ensureHeaders: false });
   assert.ok(outcomes.every(outcome => outcome.status === "synced"));
   assert.equal(f.count("delete"), 1);
@@ -307,7 +307,7 @@ test("removing a row whose managed phone cell is stored as a formula deletes the
 });
 
 test("an annotated row clears its formula-stored managed phone and keeps the operator cell", async () => {
-  const f = statefulWorkbook({ Calls: [[...headers, "Owner"], ["A", "+15628418170", "keep"], ["B", "neighbor"]] });
+  const f = statefulWorkbook({ Calls: [[...headers, "Owner"], ["A", "+15555550123", "keep"], ["B", "neighbor"]] });
   const outcomes = await writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("delete")], quota: grant, ensureHeaders: false });
   assert.ok(outcomes.every(outcome => outcome.status === "synced"));
   assert.deepEqual(f.rows.get("Calls")?.slice(1), [["", "", "keep"], ["B", "neighbor"]]);
