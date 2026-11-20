@@ -344,7 +344,7 @@ async function rowRemovalRequests(
   const { data } = await sheets.spreadsheets.get({
     spreadsheetId: group.spreadsheetId,
     ranges: chunk.map(({ rowNumber }) => `${escapeSheetTitleForRange(group.tabName)}!${rowNumber}:${rowNumber}`),
-    fields: "sheets(properties(sheetId,title),data(startRow,rowData(values(userEnteredValue,note,textFormatRuns,dataValidation))),protectedRanges(range))",
+    fields: "sheets(properties(sheetId,title),data(startRow,rowData(values(userEnteredValue,note,textFormatRuns,dataValidation))),protectedRanges(range,warningOnly,requestingUserCanEdit))",
   });
   const tab = data.sheets?.find(sheet => sheet.properties?.sheetId === sheetId);
   const rows = new Map(tab?.data?.map(grid => [grid.startRow, grid.rowData?.[0]?.values]));
@@ -360,7 +360,11 @@ async function rowRemovalRequests(
     // columns. Only a value outside the managed columns, a note, rich text or validation is operator content.
     const hasOwnerContent = cells.some((cell, column) => cell.note || cell.textFormatRuns?.length ||
       cell.dataValidation || (!managed(column) && cell.userEnteredValue));
-    const protectedRow = tab?.protectedRanges?.some(({ range }) => range &&
+    // A protection blocks the removal only when it is enforced and this service account is not one of its
+    // editors. Google reports `requestingUserCanEdit` for the caller; a warning-only protection lets API
+    // edits through (the warning is shown only in the Sheets UI).
+    const protectedRow = tab?.protectedRanges?.some(({ range, warningOnly, requestingUserCanEdit }) => range &&
+      warningOnly !== true && requestingUserCanEdit !== true &&
       (range.startRowIndex ?? 0) <= index && (range.endRowIndex ?? Infinity) > index);
     if (protectedRow) throw new Error("sheet_delete_protected_row");
     if (!hasOwnerContent) return [deleteRequest(sheetId, rowNumber)];

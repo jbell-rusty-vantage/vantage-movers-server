@@ -144,6 +144,7 @@ export async function retrySheetSyncJobs(
         status: "pending",
         due_at: new Date(),
         attempts: 0,
+        stale_reclaims: 0,
         created_by: "admin",
       },
       $unset: { leased_until: "", lease_owner: "", last_error: "", last_error_at: "" },

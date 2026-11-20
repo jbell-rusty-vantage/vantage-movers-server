@@ -67,6 +67,8 @@ const SheetSyncJobSchema = new Schema(
     leased_until: { type: Date },
     lease_owner: { type: String, trim: true },
     attempts: { type: Number, required: true, default: 0 },
+    /** Times a stale `processing` lease was reclaimed; capped so a job that keeps killing its worker fails visibly. */
+    stale_reclaims: { type: Number, default: 0 },
     last_error: { type: String, trim: true },
     last_error_at: { type: Date },
     created_by: {

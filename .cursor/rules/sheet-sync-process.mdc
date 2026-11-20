@@ -39,7 +39,7 @@ Owner invariants (tabs, projections, outbox, drain): [`sheet-sync.md`](../../doc
 
 - Before manually changing jobs, count/group by `status`, `run_id`, `operation`, `resource`, `entity_model`, and creation window.
 - Prefer `cancelled` plus a clear `last_error` over `failed` when abandoning verified backfill work.
-- Never reset stuck `processing` jobs to `pending` until the underlying failure is fixed. The drainer may release leftover claims to `pending` on run timeout by design.
+- Never reset stuck `processing` jobs to `pending` by hand until the underlying failure is fixed. The drainer may release leftover claims to `pending` on run timeout by design, and it returns abandoned claims (lease expired more than one lease period) to `retrying` at the start of a drain.
 - After cleanup, confirm `processing` is zero and live statuses are expected.
 
 ## Files

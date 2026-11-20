@@ -134,6 +134,13 @@ export async function runSheetSyncDrain(
   const deadline = Date.now() + guardrails.maxRunDurationMs;
 
   try {
+    await requireActiveLease();
+    // Housekeeping never fails the drain: a bad row is logged and the drain still claims due work.
+    const reclaimed = await reclaimStaleProcessingJobs(new Date(), guardrails.leaseDurationMs).catch((error: unknown) => {
+      logger.error({ msg: "sheet_sync.drain.stale_lease_reclaim_failed", runId: runId.toString(), error: error instanceof Error ? error.message : String(error) });
+      return 0;
+    });
+    if (reclaimed) logger.warn({ msg: "sheet_sync.drain.stale_leases_reclaimed", runId: runId.toString(), reclaimed });
     const claimed = await claimDueJobs(
       owner,
       runId,
@@ -352,6 +359,36 @@ export async function runSheetSyncDrain(
     await heartbeatWork;
     await releaseLease(activeLease);
   }
+}
+
+/** A job whose worker died this many times stops being reclaimed and fails for operator review. */
+export const MAX_STALE_LEASE_RECLAIMS = 3;
+
+/**
+ * A worker killed outright leaves its jobs in `processing` with a lease nobody renews. Only the holder of the
+ * drain lease runs this, and only for job leases expired longer than one more lease period, so a live worker
+ * that is merely slow has already lost its job fence (every finalization checks `leased_until > now`). The job
+ * returns to `retrying`, due now, with the reason recorded; its next delivery is the normal idempotent
+ * canonical rewrite (rows are matched by Mongo ID, and a committed write with a lost response is recovered).
+ * Each reclaim is counted in `stale_reclaims`; at `MAX_STALE_LEASE_RECLAIMS` the job fails for operator review.
+ */
+export async function reclaimStaleProcessingJobs(now: Date, leaseMs: number): Promise<number> {
+  const expiredBefore = new Date(now.getTime() - leaseMs);
+  const exhausted = await SheetSyncJob.updateMany(
+    { status: "processing", leased_until: { $lte: expiredBefore }, stale_reclaims: { $gte: MAX_STALE_LEASE_RECLAIMS } },
+    { $set: { status: "failed", leased_until: new Date(0),
+      last_error: "stale processing lease reclaim limit reached", last_error_at: now } },
+  );
+  if (exhausted.modifiedCount) {
+    logger.error({ msg: "sheet_sync.drain.stale_lease_reclaim_limit", failed: exhausted.modifiedCount });
+  }
+  const result = await SheetSyncJob.updateMany(
+    { status: "processing", leased_until: { $lte: expiredBefore }, stale_reclaims: { $not: { $gte: MAX_STALE_LEASE_RECLAIMS } } },
+    { $set: { status: "retrying", due_at: now, leased_until: new Date(0),
+      last_error: "stale processing lease reclaimed", last_error_at: now },
+      $inc: { stale_reclaims: 1 } },
+  );
+  return result.modifiedCount;
 }
 
 async function claimDueJobs(

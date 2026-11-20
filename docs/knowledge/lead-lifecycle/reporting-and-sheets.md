@@ -225,7 +225,7 @@ Stale-row removal is the delete half of a re-delivery. It happens **only after t
 The removal step reads the row before deleting it (`rowRemovalRequests`):
 
 - The Mongo ID cell must still equal the Lead's ID, or the delete fails with `sheet_delete_identity_changed`.
-- If any protected range covers the row, the delete fails with `sheet_delete_protected_row`. The check ignores editors and warning-only protections, so a whole-tab or whole-column protection blocks every removal on that tab. No tab had a protected range on November 20.
+- A protected range blocks the delete (`sheet_delete_protected_row`) only when Google reports that the service account cannot edit it (`requestingUserCanEdit` false, or missing, which fails closed). Warning-only protections and protections that list the service account as an editor no longer block. A workbook the service account owns therefore never blocks a removal. No tab had a protected range on November 20. (PR #247; this sentence previously described the pre-#247 check.)
 - If the row has **operator content**, the row stays and only its managed cells are cleared, including the Mongo ID. Otherwise the row is deleted. See [Managed and operator cells](#managed-and-operator-cells).
 
 ## Tombstones
