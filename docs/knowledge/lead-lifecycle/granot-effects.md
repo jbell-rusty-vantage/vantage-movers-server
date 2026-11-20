@@ -145,7 +145,7 @@ Production (read 2026-11-20 17:37 UTC): 2,078 Form Lead creations, latest 2026-1
 
 ## 5. The Form→Call sibling mirror (`mirrorFormLeadToCallSibling`)
 
-**Source:** `granotLifecycle/callLeadFormSibling.ts`: `eligibleSibling` L121, `planFormSiblingUpdate` L127–L173, `loadFormSiblingCandidates` L176–L193, `findFormsNeedingSiblingUpdate` L207–L243, `hasSyncedCallsRow` L245–L249, `mirrorFormLeadToCallSibling` L282–L324, all @ `25aecf5e` (L1–L193 are unchanged from `9955430d`). Owner directive 2026-10-28/29 (workspace `AGENTS.md`).
+**Source:** `granotLifecycle/callLeadFormSibling.ts`: `eligibleSibling` L121, `planFormSiblingUpdate` L127–L173, `loadFormSiblingCandidates` L176–L193, `findFormsNeedingSiblingUpdate` L207–L243, `hasSyncedCallsRow` L245–L249, `mirrorFormLeadToCallSibling` L282–L324, all @ `25aecf5e` (L1–L193 are unchanged in behavior from `9955430d`; only the L28 import added `jobNumberDigitCore`). Owner directive 2026-10-28/29 (workspace `AGENTS.md`).
 
 ### Eligibility gate
 
@@ -210,12 +210,12 @@ The November 20 review found three gaps in the scheduled path introduced by `513
 
 Bounds (constants at L35–L39):
 - **Cap:** at most `FOLLOW_UP_PROMOTION_CAP` = 50 promoted rows per plan; the rest count as `follow_up_deferred` and drain in later slots. Promoted rows are placed after the plan's real updates (L340–L342).
-- **Form backoff:** a Form whose scheduled sibling catch-up committed within `FORM_SIBLING_RETRY_AFTER_MS` = 6 hours is not promoted again (`follow_up_form_sibling_backoff`). Only scheduled `already_current` Decisions count, not webhook ones (`findRecentScheduledSiblingCatchUps` L65–L79).
+- **Form backoff:** a Form whose scheduled sibling catch-up committed within `FORM_SIBLING_RETRY_AFTER_MS` = 6 hours loses its `form_sibling` follow-up (`follow_up_form_sibling_backoff`, L322–L327). If the same Form also owes a `record_link`, it is still promoted for that, and its `linked` commit then runs the sibling update after commit anyway (`scheduledLeadChange.ts` L292). Only scheduled `already_current` Decisions count, not webhook ones (`findRecentScheduledSiblingCatchUps` L65–L79).
 - **Read bound:** each batched read has `maxTimeMS` 5,000 (`FOLLOW_UP_READ_MAX_TIME_MS`). A failed read promotes nothing for that plan (`follow_up_unavailable`) and every other unchanged row still writes no per-Lead history.
 
 **Apply rechecks inside the transaction.** `granotHttpCollector/scheduledLeadChange.ts:applyScheduledLeadChange` L80–L314 @ `25aecf5e`:
 - A real change commits `applied` as before.
-- An `already_current` row whose gates all pass (L194–L196) commits `linked` when a link is owed: no active Record Link on the exact job (`findExactActiveRecordLink`), the ladder did not use one, and the Lead is a Form or an admitted Call (`admittedCallLead` L317–L320: `hasReportingEligibleCall` and not `created_on_unmatched`) (L197–L204).
+- An `already_current` row whose gates all pass (L194–L196) commits `linked` when a link is owed: the Observation carries a job, the ladder did not use a Record Link, the exact job has no active link (`findExactActiveRecordLink`) or its active link has no `lead_ref` (the attach case), and the Lead is a Form or an admitted Call (`admittedCallLead` L317–L320: `hasReportingEligibleCall` and not `created_on_unmatched`) (L197–L204).
 - Otherwise, for a Form whose sibling update would write (`loadFormSiblingCandidates` + `planFormSiblingUpdate`), it commits only the Observation and an `already_current` Decision that the sibling update cites; the Form Lead itself is unchanged (L205–L215).
 - A Record Link conflict found while applying a change now commits `conflict` once, keeping the dispute the Lead command recorded (`dispute_recorded`); an already-disputed link leaves no new history (L252–L257).
 - Anything else rolls back with no per-Lead history (`SkippedChange`). Committed outcomes: `applied`, `linked`, `already_current`, `conflict` (L57–L58). An idempotent replay reads the committed Decision to know what it did (`committedOutcome` L322–L325).

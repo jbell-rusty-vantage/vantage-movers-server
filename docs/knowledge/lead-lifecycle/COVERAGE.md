@@ -2,7 +2,7 @@
 okf_version: "0.2"
 type: Reference
 title: Lead lifecycle coverage
-description: Completeness proof for the Lead lifecycle pack at main 9955430d — every entry point, command, lifecycle field writer and routing reader classified, the rule tests and gaps, the read-only production reconciliation, and the findings for the Owner.
+description: Completeness proof for the Lead lifecycle pack at main 9955430d, re-verified at 25aecf5e for Track A (PR #243) and PR #245 — every entry point, command, lifecycle field writer and routing reader classified, the rule tests and gaps, the read-only production reconciliation, and the findings for the Owner.
 tags: [lead-lifecycle, coverage]
 status: current
 stale_after: 2027-01-20
@@ -25,7 +25,7 @@ sources:
 
 # Lead lifecycle coverage
 
-This page proves the pack is complete at `main` = `9955430d`. The brief's rule is that Track B is complete only when all four inventories have zero unclassified rows. They do.
+This page proves the pack is complete at `main` = `9955430d`, with the sections changed by Track A (PR #243, `15987e9c`) and PR #245 re-verified at `main` = `25aecf5e`. The brief's rule is that Track B is complete only when all four inventories have zero unclassified rows. They do.
 
 ## Status
 
@@ -37,7 +37,7 @@ This page proves the pack is complete at `main` = `9955430d`. The brief's rule i
 | `form-lead.md`, `call-lead.md`, `ringcentral-call-lead-qualification.md` corrected and pointing to the pack; `docs/index.md` links it | **Met.** Corrections are listed under [Service doc corrections](#service-doc-corrections). |
 | Every Owner-directive conflict listed, no code changes | **Met.** See [Owner-directive findings](#owner-directive-findings). |
 | Merged through a PR with a docs-only diff | **Approved, not yet merged.** The Owner approved merging PR #244 on November 20. The session coordinator merges it after the Track A re-verification below. |
-| Track A re-verification of `granot-effects.md` and `duplicates-and-form-fill.md` | **Open.** Sections marked "Pending re-verification against the Track A merge" describe `9955430d`. The replica lifecycle suites run after Track A merges. |
+| Track A re-verification of `granot-effects.md` and `duplicates-and-form-fill.md` | **Met** at `25aecf5e`: the scheduled follow-ups, sibling gate and Form Fill in-place updates were re-derived from code, PR #245's Form exclusivity and update identity recheck were folded in, changed rules re-cited, and the verifier re-checked the changed sections. Lifecycle replica suites pass at `25aecf5e` (below). |
 
 ## Totals
 
@@ -45,7 +45,7 @@ This page proves the pack is complete at `main` = `9955430d`. The brief's rule i
 |---|---:|---:|---|
 | Entry points | 164 | 0 | documented 77, not-lifecycle 87 |
 | Commands | 57 | 0 | current 45, historical-only 11, retired 1 |
-| Field writers (field × file) | 934 | 0 | reader-only 364, historical-script 20, test-harness 178, schema-or-validation 99, writer-documented 162, not-lifecycle 111 |
+| Field writers (field × file) | 936 | 0 | reader-only 366, historical-script 20, test-harness 178, schema-or-validation 99, writer-documented 162, not-lifecycle 111 |
 | Routing and money readers | 161 | 0 | documented 161 |
 | Rule tests | 148 | 0 | pass 104, gap 31, not-run 13 |
 
@@ -62,7 +62,7 @@ Classes: `writer-documented` (a write the pack documents), `reader-only` (filter
 | `cancelled` | 3 | 33 | 6 | 5 | 0 | 8 | 55 |
 | `cpl` | 9 | 6 | 3 | 8 | 0 | 2 | 28 |
 | `cpl_resolution_status` | 7 | 1 | 2 | 2 | 0 | 1 | 13 |
-| `created_on_unmatched` | 0 | 19 | 2 | 0 | 2 | 3 | 26 |
+| `created_on_unmatched` | 0 | 20 | 2 | 0 | 2 | 3 | 27 |
 | `domain_revision` | 11 | 18 | 2 | 1 | 1 | 16 | 49 |
 | `duplicate` | 9 | 50 | 6 | 15 | 2 | 17 | 99 |
 | `external_call_admission` | 0 | 7 | 1 | 0 | 2 | 0 | 10 |
@@ -75,7 +75,7 @@ Classes: `writer-documented` (a write the pack documents), `reader-only` (filter
 | `local` | 18 | 16 | 7 | 21 | 0 | 3 | 65 |
 | `move_date` | 11 | 17 | 11 | 7 | 0 | 14 | 60 |
 | `no_sync` | 4 | 12 | 4 | 0 | 1 | 11 | 32 |
-| `normalized_job_no` | 14 | 31 | 9 | 20 | 2 | 25 | 101 |
+| `normalized_job_no` | 14 | 32 | 9 | 20 | 2 | 25 | 102 |
 | `qualification_reason` | 4 | 1 | 1 | 0 | 1 | 3 | 10 |
 | `receiver_agent` | 15 | 16 | 5 | 1 | 0 | 11 | 48 |
 | `receiver_agent_source` | 15 | 4 | 4 | 1 | 0 | 7 | 31 |
@@ -176,7 +176,7 @@ Differences before these fixes (Forms at 13:08, after the 592-row cleanup; Booke
 | Forms | expected, absent | 2 | `wordpress_form` non-bad Forms on no tab | `sheet_sync` records a synced Forms row; no tombstone or delete job exists. Removed by hand. |
 | Forms | on tab, not expected | 3 | Mongo ID in no collection (ObjectIds from May 28–June 12) | No `entity_changes`, no Sheet job. Deleted before canonical history started (August 20) without a tombstone, so nothing removes the row. |
 | Duplicate Forms | on tab, not expected | 2 | Mongo ID in no collection (June 10 and 12) | Same as above. |
-| Duplicate Forms | on tab, not expected | 1 | `legacy_unknown` non-duplicate Form, also on Forms | A non-bad Form whose `duplicate` flips keeps its old primary row (`leadReportingTargets.ts:staleFormTargetKeys` L42–L46, pinned by `jobPlanner.test.ts`). Its pair ID is one of the deleted May 28 Forms. |
+| Duplicate Forms | on tab, not expected | 1 | `legacy_unknown` non-duplicate Form, also on Forms | Under the rule before PR #245, a non-bad Form whose `duplicate` flipped kept its old primary row (`leadReportingTargets.ts:staleFormTargetKeys` L42–L46 @ `9955430d`; exclusive since `25aecf5e`, pinned by `jobPlanner.test.ts`). Its pair ID is one of the deleted May 28 Forms. |
 | Bad Form Leads | on tab, not expected | 5 | Non-bad Forms: the 3 above, plus 2 also on Forms | Hand copies or moves; no server write. |
 | Booked Deals | expected, absent | 3 | August replica-test fixtures (job "U29 … REEVALUATE", boolean `cancelled: true`, no timestamps, empty `sheet_sync`, `domain_revision` 0) | Never delivered. |
 | Booked Deals | on tab, not expected | 1 | Booking created by `createBookingFromLead` 2026-09-06 23:12 UTC on a manually created Call; both records later removed | No `deleteBookedLead`/`deleteCallLead` change and no tombstone: removed outside the canonical delete paths, so the row stays. |
@@ -210,15 +210,26 @@ PII scan of all 13 files, appendices included: no email addresses, no person nam
 
 Offline unit tests run in the worktree at `9955430d` with `node --import tsx --import ./ops/test-setup.ts --test <files>`. All cited unit files pass: R1 14 files; R2 23 files; R3 41 files (162 tests); R4 35 files (128 tests, 126 pass, 2 loopback-Mongo agreement tests skipped offline). R4's throwaway truth-table script found 0 mismatches between the filters and the decision functions over 4,800 Call combinations. Replica suites (`*.replica.test.ts`, `pnpm test:granot-lifecycle:replica`) are **not run yet**: the shared replica belongs to Track A until its release merges.
 
+### Re-verification at `25aecf5e` (November 20, after Track A and PR #245)
+
+- **Offline unit tests** for the changed code, in the rebased worktree: `jobPlanner.test.ts`, `deliveryRecovery.test.ts`, `googleSheets.service.test.ts`, `estimatesIdentityPlanning.test.ts`, `callLeadFormSibling.test.ts`, `runWorkflow.test.ts`, `estimatesInProcess.test.ts`: 76 tests, 76 pass.
+- **Lifecycle replica sweep** `TEST_MODE=true TEST_MONGO_DATABASE_NAME=testvantagemovers_trackb pnpm test:granot-lifecycle:replica` on the loopback `csi01` replica: 108 tests, 108 pass, 0 skipped (83 in the disabled Sheet pass, 25 in the queued pass).
+- **Other lifecycle replica files** (`granotHttpCollector/*.replica.test.ts`, `bookings/*.replica.test.ts`, `employeeBookings/*.replica.test.ts`, `leads/leadChangeEmission.replica.test.ts`), run with the sweep's environment and a separate suffixed database, both Sheet modes, then again with `LP03_REPLICA_TESTS=true`. Passing, among others:
+  - `scheduledFollowUp.replica.test.ts`, 5 of 5: an already-current Form catches up its later qualified Call, the Form Fill Call stays on Duplicate Calls, ineligible Calls are never written and Best Relocation is reached; an unlinked current Lead gets its Record Link once and a contested link records its dispute once; a failing sibling update is recorded and the run completes; an admitted current Call is linked and an excluded Call is not; a failing catch-up backs off.
+  - `leads/leadChangeEmission.replica.test.ts`: one `createCallLead` change per RingCentral Call (non-duplicate and duplicate), and a matching Form marks the qualified Call once and leaves an unqualified Call untouched.
+  - `employeeBookings/leadChangeEmission.replica.test.ts` (LP-03 attach, reassign, cascade delete, source resolver), `dashboardDeleteLiveClaims.replica.test.ts`, `estimatesInProcess`, `estimatesOutreachRefresh`, `pendingApply`.
+- **Not run against their own fixtures (environment, not code):** `poolScheduling.replica.test.ts` (requires a `testvantagemovers_poolcollector<n>` database), `runRecovery.replica.test.ts` (requires the `capacityp1` replica set) and `bookings/indexedJobLookup.replica.test.ts` (requires a replica on port 27961). They failed only on those fixture assertions or connection.
+- Not run: the Sheet Sync replica suite (`pnpm vantage -- test sheet-sync --suite replica`), which needs its own `sheetRecoveryProof` replica on port 27129.
+
 ### Rules without a test (gaps)
 
 **Form Leads (R1):** Form duplicate with an equal timestamp, or a Bad or Booked predecessor; mixed New York wall-clock versus UTC ordering against a Granot predecessor; the mark-bad guard (set and clear) on duplicate, Booked or Cancelled Forms; `noSyncOnCreate` ignoring a client `true`; a duplicate Form keeping its full CPL; a CPL correction leaving Forms at full rate with no EntityChange; clearing a bad flag without a `sheet_sync` entry; the `create_and_attach` Form's missing provenance; the `createLeadFromGranot` Form mint fields.
 
 **Call Leads (R2):** `form_fill` never clearing after the Form is deleted, duplicate or bad; Bad Call reversal by a later final result; `fillReceiverFromRepCall` compare-and-set on an empty receiver; a manual `duplicate: false` PATCH repricing; webhook wake gating (age ≥ 120 s, ending status) in `processSessionsAndIngest`.
 
-**Granot and Bookings (R3):** the processor mirroring only after `applied`/`linked`/`created`/`already_current`; scheduled sibling catch-up after an already-current Form; bounded never-throw scheduled post-commit steps; scheduled Record Link conflict persistence; `createBookingFromLead` re-book upsert; the cancellation mirror helpers.
+**Granot and Bookings (R3):** the processor mirroring only after `applied`/`linked`/`created`/`already_current`; (scheduled sibling catch-up, bounded post-commit steps and scheduled conflict persistence are now covered by `estimatesIdentityPlanning.test.ts` and `scheduledFollowUp.replica.test.ts` at `25aecf5e`); `createBookingFromLead` re-book upsert; the cancellation mirror helpers.
 
-**Routing and downstream (R4):** Desk ignoring RingCentral qualification; the assignment Sheet effect; the `account_agent` Desk re-sync (replica only); the Daily Operations rebuild counting unqualified or Form Fill Calls; a Bad Form priced at full CPL; the receiver-performance billable expression offline; legacy `getSummary` counting all Calls; header refusal (`sheet_identity_header_rewrite_unsafe`); an excluded Call's row left in place; a hand-removed row re-appended; formula escaping of Form Name, Email and Booked Customer Name.
+**Routing and downstream (R4):** Desk ignoring RingCentral qualification; the assignment Sheet effect; the `account_agent` Desk re-sync (replica only); the Daily Operations rebuild counting unqualified or Form Fill Calls; a Bad Form priced at full CPL; the receiver-performance billable expression offline; legacy `getSummary` counting all Calls; header refusal (`sheet_identity_header_rewrite_unsafe`); an excluded Call's row left in place; a hand-removed row re-appended (the update identity recheck is covered by `deliveryRecovery.test.ts` at `25aecf5e`); formula escaping of Form Name, Email and Booked Customer Name.
 
 ## Owner-directive findings
 
@@ -226,7 +237,7 @@ Each finding quotes the locked rule, says what code does at `9955430d`, and prop
 
 1. **Excluded Calls keep their Master Leads rows.** Rule (2026-11-03): only RingCentral inbound queue qualification may make a Call eligible for Calls reporting and billing; an old sheet row never qualifies it. Rule (2026-11-20): no backfill or major change on the Calls tab; the Owner handles removals there. Code: server reporting and billing exclude the 212 unadmitted Calls with no date cutoff (`callLeadReportingDisposition.ts` L18–L24); the planner plans nothing for them, so 209 pre-November-3 rows stay (203 on Calls). Consistent with both directives; listed so the Owner knows the rows are there. [call-leads.md](call-leads.md), [reporting-and-sheets.md](reporting-and-sheets.md).
 2. **A hand-removed row of a billable Call comes back.** Rule (2026-11-20): the Owner handles Calls-tab removals manually. Code: `batchWriter.ts` L145–L154 appends when the Mongo ID is missing, so a removed row of a Call that still routes to Calls returns on its next Granot update, booking, cancellation, Form Fill change, receiver fill or final result. 55 billable Calls and 4 Form Fill Calls are in that state now. Manual removal sticks only for excluded Calls.
-3. **Scheduled Granot runs do not catch a Call up from an already-current Form.** Rule (2026-10-28/29): a Granot update to a Form Lead mirrors job, priority and receiver onto the same customer's qualified Call. Code: `granotHttpCollector/scheduledLeadChange.ts` L153–L162 and L227–L235 mirror only after an applied Form change; the webhook processor also mirrors after `already_current` (`granotLifecycle/processor.ts` L240–L258). Zero current impact (42 eligible jobless Calls in 30 days, none waiting). **Track A is fixing this.**
+3. **Resolved by Track A (PR #243, `15987e9c`).** At `9955430d` scheduled Granot runs did not catch a Call up from an already-current Form and did not link an already-current Lead. At `25aecf5e` planning promotes those rows as follow-ups (at most 50 per plan, a 6-hour Form backoff, Record Links only for Leads with no link and only admitted Calls), apply commits them inside the transaction, and the post-commit steps are bounded to 2 s and never throw (`granotHttpCollector/estimatesIdentityPlanning.ts:promoteFollowUps` L288–L343, `scheduledLeadChange.ts:applyScheduledLeadChange` L80–L314). The sibling gate is unchanged. See [granot-effects.md §6](granot-effects.md#6-scheduled-estimates-runs-follow-ups-for-already-current-leads).
 4. **The retired Best Relocation sheet path is still reachable for Bookings.** Rule (2026-11-03): external ingestion remains retired. Code: `POST /api/v1/booked-leads/from-source` accepts `ingestion_source: "best_relocation_sheet"` (`validation/v1/bookings.validation.ts` L87) and `existingWrites.ts:runExistingCreateBookedLeadFromSource` L639–L677 does not strip it, unlike Form create, leadless Booking and cancellation. The resolver then matches a Best Relocation Call by job or phone and rewrites its phone and job with no eligibility check (`bookings/bookingSourceResolver.ts` L39–L98). It creates no Call.
 5. **"Booking intake prefers the Form Lead" is skipped by the main production booking path.** Rule (2026-10-29). Code: `employeeBookings/leadMatchEvaluator.ts:preferFormLeadForSharedJob` L292–L313, through `evaluateEmployeeBookingMatch`, applies it to Employee Booking Submissions, the Owner `POST /booked-leads/from-source` Call path, the `autoAttachBookingLead` rematch cron and the Owner refresh, pending-edit and reopen actions. `confirmGranotBooking`, which made 374 of the Lead booking revisions in production, attaches the Granot identity target with no Form-over-Call check (`granotLifecycle/confirmAttachment.ts` L34–L57); the Owner resolve action and `connectBookingToLead` apply none either. No current instance measured.
 6. **Desk eligibility does not read Call admission.** Rule (2026-11-03): only qualified Calls take part in the lifecycle (restated 2026-11-20). Code: `salesOutreach/subjects/eligibility.ts` L39–L53 and `leadFacts.ts` L56–L86 never check `hasReportingEligibleCall`. Latent: 0 affected subjects at 12:47 New York. The Daily Operations rebuild and legacy Analytics summary/source/geographic reports also count unqualified Calls (`dailyOperations/rebuild.ts` L226–L252 and L399–L438; `analytics/summary.service.ts` L15; `analyticsFilters.ts` L91–L110). [downstream-consumers.md](downstream-consumers.md).
@@ -242,7 +253,7 @@ Each finding quotes the locked rule, says what code does at `9955430d`, and prop
 - The overnight rule matches only a `Missed` final result. Overnight `Voicemail` Calls of 120 s or more stay billable. Should they count as Bad Calls? (No production Call is bad by the overnight rule today: 1,693 of 1,794 qualified Calls predate stored start times and final results.)
 - Form Fill and Bad Calls still start a 90-day repeat window for the caller's next Call. Confirm.
 - Admin `PATCH /api/v1/call-leads/:id` can set or clear the 90-day `duplicate` flag by hand (one production use, September 3). Keep?
-- A Form whose `duplicate` flag flips keeps its old Forms or Duplicate Forms row. Keep that asymmetry?
+- (Resolved by PR #245, `25aecf5e`: Forms and Duplicate Forms are now exclusive on re-delivery.)
 - A Bad Form that is later booked or cancelled can never be unmarked; a trusted Best Relocation review has no reversal path.
 - CPL Corrections write no EntityChange and no revision, so Outreach and the Job timeline cannot see them.
 - `createBookingFromLead` has no Lead state guard and re-booking upserts the old Booking in place, leaving `cancelled` set. `confirmGranotBooking` does not check `created_on_unmatched`.
@@ -258,7 +269,7 @@ Each finding quotes the locked rule, says what code does at `9955430d`, and prop
 - **`docs/knowledge/services/call-lead.md`** (7 edits, R2): removed `bestRelocationFinalCall.ts` from `applies_to`; the final-import command is past tense; the 90-day window is `[t − 90 d, t)` and earlier-only within the Source Granularity; the Form Fill scope and that Bad Forms count; the durable `form_fill_work` drain and that `form_fill` never clears; `fillReceiverAgentFromAnsweredCall` was removed in `9007f43f`.
 - **`docs/knowledge/services/ringcentral-call-lead-qualification.md`** (6 edits and 1 annotation, R2): an already-processed call in create mode first records a newer final result; Granot Call creation is historical; the final Best Relocation command and `generalCallRun.ts` are removed; the real log event names; the watermark-only update is a plain transactional `updateOne` outside the canonical command.
 
-Other stale docs found but not edited (outside the brief's correction list): `granot-lifecycle/identity.md` L49 (mirror gate omits reporting eligibility), `granot-lifecycle/automation-apply.md` L37, `employee-bookings.md` L60 (Form preference), `cancellation-mirror.md` L33/L80, `bookings.md` L224, `google-sheets.md` L73/L82–L88 and `sheet-sync.md` L191–L210 (formula cells are managed since PR #237; duplicate flips keep the old primary row), `sales-outreach-lifecycle.md` L51/L95, `insights.md` L45–L49.
+Other stale docs found but not edited (outside the brief's correction list): `granot-lifecycle/identity.md` L49 (mirror gate omits reporting eligibility), `employee-bookings.md` L60 (Form preference), `cancellation-mirror.md` L33/L80, `bookings.md` L224, `google-sheets.md` L73/L82–L88 and `sheet-sync.md` L191–L210 (formula cells are managed since PR #237), `sales-outreach-lifecycle.md` L51/L95, `insights.md` L45–L49.
 
 ## Regenerating this page
 
@@ -337,7 +348,7 @@ The reader TSVs and the build script live outside the repository. To re-check at
 | POST /api/v1/call-leads/booked-reconciliation/preview | route | src/routes/v1.routes.ts:handleBookedCallLeadReconciliationPreview | none | not-lifecycle | read-only preview; syncBookedCallLeadReconciliation unwired (bookings-and-cancellations.md#4-employee-bookings-and-booking-lead-reconciliation) | R3 Granot/Bookings |
 | /api/cron/granot-estimates-in-process (hourly 0 * * * *) | cron | src/routes/granot-automation-cron.routes.ts -> granotHttpCollector createEstimatesSchedule/dispatchEstimatesSchedule | both | documented | granot-effects.md#1-entry-points | R3 Granot/Bookings |
 | /api/cron/granot-automation-heartbeat (*/5) | cron | src/routes/granot-automation-cron.routes.ts (run recovery) | both | documented | granot-effects.md#1-entry-points (resumes the same apply loop) | R3 Granot/Bookings |
-| api/queues/granot-automation-consumer.ts (topic granot-automation-events*) | queue | runWorkflow.ts:runGranotWorker -> scheduledLeadChange.ts:applyScheduledLeadChange or automationApply.ts:resumeCapturedAutomationAction | both | documented | granot-effects.md#6-scheduled-run-findings-current-main-behavior | R3 Granot/Bookings |
+| api/queues/granot-automation-consumer.ts (topic granot-automation-events*) | queue | runWorkflow.ts:runGranotWorker -> scheduledLeadChange.ts:applyScheduledLeadChange or automationApply.ts:resumeCapturedAutomationAction | both | documented | granot-effects.md#6-scheduled-estimates-runs-follow-ups-for-already-current-leads | R3 Granot/Bookings |
 | GET /api/v1/admin/granot-automation/runs/freshness | route | src/routes/granot-automation.routes.ts | none | not-lifecycle | read-only run freshness | R3 Granot/Bookings |
 | POST /api/v1/admin/granot-lifecycle/discrepancies/:id/re-evaluate | route | granot-lifecycle-admin.routes.ts -> discrepancyOwnerCommands.ts:reEvaluateGranotDiscrepancy | none | documented | granot-effects.md#discrepancy-owner-commands-not-lead-mutating | R3 Granot/Bookings |
 | POST /api/v1/admin/granot-lifecycle/discrepancies/:id/correct-record-link | route | granot-lifecycle-admin.routes.ts -> discrepancyOwnerCommands.ts:correctGranotRecordLink | none | documented | granot-effects.md#discrepancy-owner-commands-not-lead-mutating | R3 Granot/Bookings |
@@ -692,6 +703,7 @@ One row per lifecycle field and file hit by the write-shaped grep, plus writers 
 | created_on_unmatched | src/services/analytics/leadCost.service.ts | 36 | reader-only | legacy Analytics lead-cost filter (billableCallLeadFilter + duplicate/unmatched); see downstream-consumers.md#insights-and-analytics-lead-spend | R4 Routing/Downstream |
 | created_on_unmatched | src/services/bookings/bookingMirror.service.ts | 174 | reader-only | claim guard filter in claimAvailableLeadForBooking | R3 Granot/Bookings |
 | created_on_unmatched | src/services/googleSheets/sheetContains.ts | 267 | reader-only | Owner Sheet contains check passes flags to planExpectedSheetTabs; see reporting-and-sheets.md#routing-table | R4 Routing/Downstream |
+| created_on_unmatched | src/services/granotHttpCollector/estimatesIdentityPlanning.ts | 29,62 | reader-only | Filter in findEligibleCallLeads (admitted Calls only, @25aecf5e); granot-effects.md#6-scheduled-estimates-runs-follow-ups-for-already-current-leads | Coordinator |
 | created_on_unmatched | src/services/granotLifecycle/callLeadFormSibling.ts | 109 | reader-only | SIBLING_CALL_PROJECTION projection | R3 Granot/Bookings |
 | created_on_unmatched | src/services/granotLifecycle/callLeadMoveDateRepair.ts | 45 | reader-only | query filter in inspectCallMoveDateRecovery | R3 Granot/Bookings |
 | created_on_unmatched | src/services/granotLifecycle/connectBookingToLead.ts | 242 | reader-only | guard filter on the connectBookingToLead Lead write | R3 Granot/Bookings |
@@ -1262,6 +1274,7 @@ One row per lifecycle field and file hit by the write-shaped grep, plus writers 
 | normalized_job_no | src/services/employeeBookings/leadCandidateQueries.ts | 31,35 | reader-only | candidate queries | R3 Granot/Bookings |
 | normalized_job_no | src/services/employeeBookings/submitEmployeeBooking.service.ts | 73,82,111,150,289,357,385 | writer-documented | bookings-and-cancellations.md#4-employee-bookings-and-booking-lead-reconciliation — submitEmployeeBooking BookedLead normalized_job_no L150; other lines are lookups, case snapshot (L289) and Daily Operations payloads | R3 Granot/Bookings |
 | normalized_job_no | src/services/granotHistory/prepareClosedRun.ts | 93,98 | not-lifecycle | history replay verification query (Observation and Record Link) | R3 Granot/Bookings |
+| normalized_job_no | src/services/granotHttpCollector/estimatesIdentityPlanning.ts | 43,54,56 | reader-only | Record Link lookup filter in findActiveLinks and its projection (@25aecf5e); granot-effects.md#6-scheduled-estimates-runs-follow-ups-for-already-current-leads | Coordinator |
 | normalized_job_no | src/services/granotLifecycle/acceptedLeadEvidence.ts | 41 | not-lifecycle | accepted-evidence proof sub-document (last_accepted_granot_observation.evidence), not the Lead job | R3 Granot/Bookings |
 | normalized_job_no | src/services/granotLifecycle/bookingConfirmation.ts | 231,234,585 | writer-documented | bookings-and-cancellations.md#22-confirmgranotbooking — persistLink creates the Record Link with normalized_job_no (L585); L231/L234 lookups | R3 Granot/Bookings |
 | normalized_job_no | src/services/granotLifecycle/bookingOwnerCommands.ts | 276,462,656 | reader-only | CAS filter, pass-through and link lookup | R3 Granot/Bookings |
@@ -1444,8 +1457,8 @@ One row per lifecycle field and file hit by the write-shaped grep, plus writers 
 | decideWhetherToPostToGranot | src/services/leads/formLead.service.ts:412-417 | other | duplicates-and-form-fill.md#what-a-duplicate-flag-changes-at-minting (CRM Posting) | R1 Form |
 | hasFormBadProjection | src/services/googleSheets/leadReportingTargets.ts:25-27 | tab | bad-leads.md#bad-form-leads | R1 Form |
 | formLeadTargets | src/services/googleSheets/leadReportingTargets.ts:32-39 | tab | form-leads.md#sheet-sync-for-a-form | R1 Form |
-| staleFormTargetKeys / staleFormTargets | src/services/googleSheets/leadReportingTargets.ts:42-51 | tab | form-leads.md#sheet-sync-for-a-form | R1 Form |
-| allFormLeadTargets | src/services/googleSheets/leadReportingTargets.ts:54-62 | tab | form-leads.md#sheet-sync-for-a-form (tombstone and No-Sync delete set) | R1 Form |
+| staleFormTargetKeys / staleFormTargets | src/services/googleSheets/leadReportingTargets.ts:48-58 @25aecf5e | tab | form-leads.md#sheet-sync-for-a-form | R1 Form |
+| allFormLeadTargets | src/services/googleSheets/leadReportingTargets.ts:61-69 @25aecf5e | tab | form-leads.md#sheet-sync-for-a-form (tombstone and No-Sync delete set) | R1 Form |
 | noSyncAppliesToNormalTabs | src/services/sheetSync/noSyncLead.ts:13-34 | tab | form-leads.md#sheet-sync-for-a-form | R1 Form |
 | planSourceLead (Form branch) | src/services/sheetSync/drainer/jobPlanner.ts:128-182 | tab | form-leads.md#sheet-sync-for-a-form | R1 Form |
 | planTombstone (Form) | src/services/sheetSync/drainer/jobPlanner.ts:277-337 | tab | form-leads.md#deleteformlead | R1 Form |
@@ -1490,11 +1503,11 @@ One row per lifecycle field and file hit by the write-shaped grep, plus writers 
 | recordCallLeadDailyOperationsFact (kind selection) | src/services/dailyOperations/recordDomainFacts.ts:230-262 | other | call-leads.md#1-mint-paths; downstream-consumers.md (R4) | R2 Call |
 | eligibleSibling (hasReportingEligibleCall + duplicate + created_on_unmatched) | src/services/granotLifecycle/callLeadFormSibling.ts:L121 | other (Form-to-Call mirror target eligibility; reuses Calls reporting admission) | granot-effects.md#eligibility-gate | R3 Granot/Bookings |
 | planFormSiblingUpdate | src/services/granotLifecycle/callLeadFormSibling.ts:L127-L173 | desk (granot_form_sibling marker makes the Call form_lead_holds_job) | granot-effects.md#target-selection-precedence | R3 Granot/Bookings |
-| hasSyncedCallsRow | src/services/granotLifecycle/callLeadFormSibling.ts:L198-L202 | tab (whether a mirror nominates a Calls/Duplicate Calls/Bad Call Leads re-delivery) | granot-effects.md#what-it-writes-on-the-call-lead | R3 Granot/Bookings |
+| hasSyncedCallsRow | src/services/granotLifecycle/callLeadFormSibling.ts:L245-L249 @25aecf5e | tab (whether a mirror nominates a Calls/Duplicate Calls/Bad Call Leads re-delivery) | granot-effects.md#what-it-writes-on-the-call-lead | R3 Granot/Bookings |
 | FORM_SIBLING_OUTCOMES + processor mirror gate | src/services/granotLifecycle/processor.ts:L240-L258,L274 | other (when the mirror runs) | granot-effects.md#when-it-runs | R3 Granot/Bookings |
-| applyScheduledLeadChange mirror/skip gate | src/services/granotHttpCollector/scheduledLeadChange.ts:L147-L162,L197-L198,L226-L235 | other (scheduled apply, mirror and Record Link only after applied) | granot-effects.md#6-scheduled-run-findings-current-main-behavior | R3 Granot/Bookings |
-| planEstimatesIdentities classification | src/services/granotHttpCollector/estimatesIdentityPlanning.ts:L159-L164 | other (update vs unchanged) | granot-effects.md#6-scheduled-run-findings-current-main-behavior | R3 Granot/Bookings |
-| sheetChanged (non-priority reportable paths) | src/services/granotLifecycle/synchronizeLeadFromGranot.ts:L187-L191,L299-L307 | tab (whether Granot sync re-delivers the Lead row) | granot-effects.md#3-synchronizeleadfromgranot | R3 Granot/Bookings |
+| applyScheduledLeadChange commit/skip and post-commit gate | src/services/granotHttpCollector/scheduledLeadChange.ts:L188-L278,L282-L313 @25aecf5e | other (commits applied, linked for an owed Record Link, already_current for an owed sibling catch-up, conflict once; bounded post-commit) | granot-effects.md#6-scheduled-estimates-runs-follow-ups-for-already-current-leads | R3 Granot/Bookings |
+| planEstimatesIdentities classification + promoteFollowUps | src/services/granotHttpCollector/estimatesIdentityPlanning.ts:L235,L288-L343 @25aecf5e | other (update vs unchanged; follow-up promotion, cap 50, 6 h Form backoff) | granot-effects.md#6-scheduled-estimates-runs-follow-ups-for-already-current-leads | R3 Granot/Bookings |
+| sheetChanged (non-priority reportable paths) | src/services/granotLifecycle/synchronizeLeadFromGranot.ts:L189-L193,L301-L309 @25aecf5e | tab (whether Granot sync re-delivers the Lead row) | granot-effects.md#3-synchronizeleadfromgranot | R3 Granot/Bookings |
 | planMatchedLead | src/services/granotLifecycle/leadDesiredState.ts:L316-L410 | other (which Granot fields change: job, priority, receiver, quoted, move) | granot-effects.md#2-what-granot-may-write-on-a-matched-lead | R3 Granot/Bookings |
 | receiverFillableByGranot / receiverReplaceableByGranot | src/services/granotLifecycle/leadDesiredState.ts:L126-L160 | desk (receiver_agent is the Desk assignment) | granot-effects.md#2-what-granot-may-write-on-a-matched-lead | R3 Granot/Bookings |
 | planNoMatch / evaluateMinimumCreationData / snapshotAllowsCreateRouteEventClass | src/services/granotLifecycle/leadDesiredState.ts:L216-L314; createLeadFromGranot.ts:L109-L115,L163 | other (Form-only Granot minting; never a Call) | granot-effects.md#4-createleadfromgranot-form-leads-only | R3 Granot/Bookings |
@@ -1574,9 +1587,9 @@ One row per lifecycle field and file hit by the write-shaped grep, plus writers 
 | staleCallTargetKeys | src/services/googleSheets/leadReportingTargets.ts:14-17 | tab | reporting-and-sheets.md#stale-row-removal | R4 Routing/Downstream |
 | hasFormBadProjection | src/services/googleSheets/leadReportingTargets.ts:25-27 | tab | reporting-and-sheets.md#form-leads | R4 Routing/Downstream |
 | formLeadTargets | src/services/googleSheets/leadReportingTargets.ts:32-39 | tab | reporting-and-sheets.md#form-leads | R4 Routing/Downstream |
-| staleFormTargetKeys | src/services/googleSheets/leadReportingTargets.ts:42-46 | tab | reporting-and-sheets.md#stale-row-removal | R4 Routing/Downstream |
-| staleFormTargets | src/services/googleSheets/leadReportingTargets.ts:48-51 | tab | reporting-and-sheets.md#stale-row-removal | R4 Routing/Downstream |
-| allFormLeadTargets | src/services/googleSheets/leadReportingTargets.ts:54-62 | tab | reporting-and-sheets.md#tombstones | R4 Routing/Downstream |
+| staleFormTargetKeys | src/services/googleSheets/leadReportingTargets.ts:48-53 @25aecf5e | tab | reporting-and-sheets.md#stale-row-removal | R4 Routing/Downstream |
+| staleFormTargets | src/services/googleSheets/leadReportingTargets.ts:55-58 @25aecf5e | tab | reporting-and-sheets.md#stale-row-removal | R4 Routing/Downstream |
+| allFormLeadTargets | src/services/googleSheets/leadReportingTargets.ts:61-69 @25aecf5e | tab | reporting-and-sheets.md#tombstones | R4 Routing/Downstream |
 | noSyncAppliesToNormalTabs | src/services/sheetSync/noSyncLead.ts:13-34 | tab | reporting-and-sheets.md#no-sync | R4 Routing/Downstream |
 | isNoSyncLead | src/services/sheetSync/noSyncLead.ts:9-11 | tab | reporting-and-sheets.md#no-sync | R4 Routing/Downstream |
 | planSourceLead | src/services/sheetSync/drainer/jobPlanner.ts:128-194 | tab | reporting-and-sheets.md#routing-table | R4 Routing/Downstream |
@@ -1584,13 +1597,13 @@ One row per lifecycle field and file hit by the write-shaped grep, plus writers 
 | planTombstone | src/services/sheetSync/drainer/jobPlanner.ts:277-337 | tab | reporting-and-sheets.md#tombstones | R4 Routing/Downstream |
 | getDeleteTargets | src/services/googleSheets/targets.ts:51-84 | tab | reporting-and-sheets.md#stale-row-removal | R4 Routing/Downstream |
 | writeBatchedTargets (delete fence) | src/services/sheetSync/drainer/batchWriter.ts:58-80 | tab | reporting-and-sheets.md#batch-writer | R4 Routing/Downstream |
-| rowRemovalRequests (operator content, protection) | src/services/sheetSync/drainer/batchWriter.ts:312-345 | tab | reporting-and-sheets.md#managed-and-operator-cells | R4 Routing/Downstream |
+| rowRemovalRequests (operator content, protection) | src/services/sheetSync/drainer/batchWriter.ts:341-374 @25aecf5e | tab | reporting-and-sheets.md#managed-and-operator-cells | R4 Routing/Downstream |
 | syncSourceLead (legacy) | src/services/sheetSync/sheetSyncSourceLookup.ts:119-159 | tab | reporting-and-sheets.md#delivery-pipeline | R4 Routing/Downstream |
 | syncFormLeadToSheets / syncCallLeadToSheets (legacy facade) | src/services/googleSheets/googleSheets.service.ts:38-74 | tab | reporting-and-sheets.md#delivery-pipeline | R4 Routing/Downstream |
 | resolveCompatibleSheetTitle | src/services/googleSheets/tabs.ts:37-51 | tab | reporting-and-sheets.md#the-eight-tabs | R4 Routing/Downstream |
 | runSheetContainsCheck | src/services/googleSheets/sheetContains.ts:127-230 | tab | reporting-and-sheets.md#sheet-sync-metadata-sheet_sync | R4 Routing/Downstream |
 | priceLead | src/services/insights/pricing.ts:33-42 | cpl | reporting-and-sheets.md#billable-value-and-the-cpl-used | R4 Routing/Downstream |
-| hasSyncedCallsRow | src/services/granotLifecycle/callLeadFormSibling.ts:198-202 | other | granot-effects.md#5-the-formcall-sibling-mirror-mirrorformleadtocallsibling | R4 Routing/Downstream |
+| hasSyncedCallsRow | src/services/granotLifecycle/callLeadFormSibling.ts:245-249 @25aecf5e | other | granot-effects.md#5-the-formcall-sibling-mirror-mirrorformleadtocallsibling | R4 Routing/Downstream |
 | eligibleSibling (mirror gate) | src/services/granotLifecycle/callLeadFormSibling.ts:121 | other | granot-effects.md#5-the-formcall-sibling-mirror-mirrorformleadtocallsibling | R4 Routing/Downstream |
 | sibling candidate query (reportingEligibleCallLeadFilter) | src/services/granotLifecycle/callLeadFormSibling.ts:182-190 | other | granot-effects.md#5-the-formcall-sibling-mirror-mirrorformleadtocallsibling | R4 Routing/Downstream |
 | form-fill backfill gate (hasReportingEligibleCall) | src/services/domainCommands/callFormFillBackfill.ts:24 | other | duplicates-and-form-fill.md | R4 Routing/Downstream |

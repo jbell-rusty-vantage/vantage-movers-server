@@ -210,8 +210,8 @@ The planner reloads the Lead and computes membership from current Mongo state (`
 |---|---|---|---|
 | `no_sync: true`, not duplicate, not bad | none | every Form destination, including the transitional titles "Duplicates" and "Bad Leads" | `noSyncLead.ts:noSyncAppliesToNormalTabs` L13–L34, `jobPlanner.ts` L141–L166 |
 | Bad (`bad_lead` set, or trusted `external_sheet_review.kind === "bad_form"`) | Bad Form Leads | Forms and Duplicate Forms (old and new titles) | `hasFormBadProjection` L25–L27, `formLeadTargets` L32–L39, `staleFormTargetKeys` L48–L53 @ `25aecf5e` |
-| Not bad, `duplicate: true` | Duplicate Forms | Bad Form Leads only | same |
-| Not bad, not duplicate | Forms | Bad Form Leads only | same |
+| Not bad, `duplicate: true` | Duplicate Forms | Forms, Bad Form Leads (Forms only since `25aecf5e`) | same |
+| Not bad, not duplicate | Forms | Duplicate Forms (old and new titles), Bad Form Leads (Duplicate Forms only since `25aecf5e`) | same |
 
 - **Deletes wait for upserts.** `batchWriter.ts:writeBatchedTargets` (L58–L79) runs every upsert first and defers a document's deletes while any of its upserts is not `synced` (`destination_upsert_pending`).
 - **Forms and Duplicate Forms are exclusive (since PR #245, `25aecf5e`).** When `duplicate` flips, the next delivery removes the opposite primary row after the destination upsert succeeds (`staleFormTargetKeys` L48–L53 @ `25aecf5e`; tests "Form that became a Duplicate upserts Duplicate Forms and removes its Forms row without metadata" and "Form that stopped being a Duplicate upserts Forms and removes old and new Duplicate Forms titles" in `jobPlanner.test.ts`). Before `25aecf5e` the old row stayed.
