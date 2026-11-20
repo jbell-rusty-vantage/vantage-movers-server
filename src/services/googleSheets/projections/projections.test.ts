@@ -280,8 +280,8 @@ test("cancelledLeadToRow projects cancellation fields", () => {
 });
 
 test("phone cells that Sheets would parse as a formula are stored as text", () => {
-  assert.equal(textCell("+15628418170"), "'+15628418170");
-  assert.equal(textCell("+44 (0)20 3314 8208"), "'+44 (0)20 3314 8208");
+  assert.equal(textCell("+15555550123"), "'+15555550123");
+  assert.equal(textCell("+44 (0)20 7946 0018"), "'+44 (0)20 7946 0018");
   assert.equal(textCell("=HYPERLINK(1)"), "'=HYPERLINK(1)");
   assert.equal(textCell("-5551234"), "'-5551234");
   assert.equal(textCell("@x"), "'@x");

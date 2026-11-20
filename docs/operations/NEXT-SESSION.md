@@ -45,7 +45,11 @@ Run both tracks in the same session, with separate agents.
 
 Release through a PR, then observe one natural ALL and Pool slot.
 
-**3. Sheet Sync follow-ups.** None of these is urgent in the current workbook.
+**3. Sheet Sync follow-ups.** None of these is urgent in the current workbook, except the first, which needs an Owner decision.
+
+- **Excluded legacy Calls on the Calls tab:** four rows on Calls and one on Duplicate Calls belong to excluded legacy Leads (`missing_call_reporting_admission`). Sheet Sync does not remove the rows of excluded Leads. Get the Owner's decision, then measure how many excluded Leads hold rows on any tab. [Details](SERVICE-REVIEW-2026-11-20.md#sheet-sync)
+- **Phone cells:** the formula-phone bug is fixed and repaired (PR #240, 1,711 rows).
+
 
 - **Header changes:** decide how a managed header change ships. Delivery now refuses a tab whose header row lacks the full managed list (`sheet_identity_header_rewrite_unsafe`). A release that adds a column must migrate tab headers first.
 - **Protection:** before anyone protects a tab, make the removal check honour protection editors and warning-only protections.

@@ -38,6 +38,32 @@ A read-only scan of all eight tabs found formula-stored managed cells on these r
 
 No row with content but no Mongo ID existed yet, so nothing needs repair. The fix treats formulas in managed columns as managed values, because every upsert overwrites those columns anyway. The fixture now models formula storage, and two regression tests fail on the old code. All 90 Sheet Sync and Google Sheets unit tests pass. [PR #237](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/237)
 
+**Fixed November 20: phone numbers stored as formulas.** The Owner reported `#ERROR!` phone cells on Bad Call Leads and Duplicate Calls. Rows are written with `USER_ENTERED`, so Sheets parsed a leading `+` as a formula. `+15555550123` showed as the number `15555550123`, and `+44 (0)20 7946 0018` showed `#ERROR!`.
+
+**Fix.** PR #240 (`70581961`) writes Form and Call phone cells through `textCell`, which adds the same leading apostrophe the Form bad-reason cell uses.
+
+**Repair.** `ops/capacity/repair-formula-phone-cells-2026-11-20.ts` queued the ordinary Sheet Sync re-delivery for every affected Lead, using `sheet_phone_text_repair` jobs created by `script`. The drainer rewrote each row from canonical state. Evidence is in `docs/operations/evidence/formula-phone-repair-*.json`.
+
+| Tab | Formula phones before | After |
+|---|---:|---:|
+| Calls | 1,412 | 4 |
+| Duplicate Calls | 287 | 1 |
+| Bad Call Leads | 3 | 0 |
+| Forms | 1 | 0 |
+
+- **Throughput:** 1,711 repair jobs synced between 10:32 and 10:55 New York, in batches of 291, 500, 500 and 420.
+- **Live traffic:** a live `form_lead.create` queued during the first Calls batch completed in the same drain.
+- **Sheet display:** after the repair, no tab shows `#ERROR!`. International numbers display as typed.
+
+**Owner decision needed: excluded legacy Calls on the Calls tab.** The five rows left over are not repair failures. Their Leads are excluded under the RingCentral-only rule: `getCallLeadReportingDecision` returns `excluded`, `billable: false`, reason `missing_call_reporting_admission`. They have no saved queue qualification and no preserved admission. All five are `ingestion_origin: legacy_unknown` and were created in one batch on June 9, 2026:
+
+- Calls rows 234, 235, 246 and 247 (`top10_leads`).
+- Duplicate Calls row 23 (`tbm_leads`).
+
+A re-delivery of an excluded Lead plans no destination and removes nothing, so these historical rows stay where they are. Four of them are on the Calls billing tab, where the Owner's rule allows only qualified Calls. Server reporting and billing filters already exclude them.
+
+The Owner should choose. Either remove these rows through the canonical delete path, or have Sheet Sync remove the rows of any Lead whose disposition is `excluded`. Also check whether other excluded Leads hold rows on any tab, because this scan only found the ones with formula phones.
+
 **Latent in the current workbook. Revisit before an operator edits tab layouts.**
 
 - **Protection:** a whole-tab or whole-column protected range makes every removal on that tab fail with `sheet_delete_protected_row`. The check ignores editors and warning-only protections. No tab has a protected range today.
