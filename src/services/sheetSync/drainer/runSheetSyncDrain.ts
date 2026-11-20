@@ -364,12 +364,25 @@ export async function runSheetSyncDrain(
  * returns to `retrying`, due now, with the reason recorded; its next delivery is the normal idempotent
  * canonical rewrite (rows are matched by Mongo ID, and a committed write with a lost response is recovered).
  */
+/** A job whose worker died this many times stops being reclaimed and fails for operator review. */
+export const MAX_STALE_LEASE_RECLAIMS = 3;
+
 export async function reclaimStaleProcessingJobs(now: Date, leaseMs: number): Promise<number> {
   const expiredBefore = new Date(now.getTime() - leaseMs);
+  const stale = { status: "processing", leased_until: { $lte: expiredBefore } };
+  const exhausted = await SheetSyncJob.updateMany(
+    { ...stale, stale_reclaims: { $gte: MAX_STALE_LEASE_RECLAIMS } },
+    { $set: { status: "failed", leased_until: new Date(0),
+      last_error: "stale processing lease reclaim limit reached", last_error_at: now } },
+  );
+  if (exhausted.modifiedCount) {
+    logger.error({ msg: "sheet_sync.drain.stale_lease_reclaim_limit", failed: exhausted.modifiedCount });
+  }
   const result = await SheetSyncJob.updateMany(
-    { status: "processing", leased_until: { $lte: expiredBefore } },
+    { ...stale, stale_reclaims: { $not: { $gte: MAX_STALE_LEASE_RECLAIMS } } },
     { $set: { status: "retrying", due_at: now, leased_until: new Date(0),
-      last_error: "stale processing lease reclaimed", last_error_at: now } },
+      last_error: "stale processing lease reclaimed", last_error_at: now },
+      $inc: { stale_reclaims: 1 } },
   );
   return result.modifiedCount;
 }
