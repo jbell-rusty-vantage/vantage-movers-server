@@ -22,6 +22,7 @@ import { getSheetsClient } from "../../src/services/googleSheets/auth";
 import { enqueueSheetSyncJob } from "../../src/services/sheetSync/sheetSyncOutbox.service";
 import { getFormLeadModel } from "../../src/models/FormLead";
 import { getCallLeadModel } from "../../src/models/CallLead";
+import { getMasterLeadsSheetContainerId } from "../../src/config/domain/runtime";
 
 const TABS: Record<string, "FormLead" | "CallLead"> = {
   Forms: "FormLead", "Duplicate Forms": "FormLead", "Bad Form Leads": "FormLead",
@@ -34,8 +35,8 @@ const limit = Number(arg("limit") ?? Infinity);
 const column = (i: number) => { let s = ""; for (let n = i + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s; return s; };
 
 async function main() {
-  const spreadsheetId = process.env.MASTER_LEADS_SHEET_ID;
-  if (!spreadsheetId) throw new Error("MASTER_LEADS_SHEET_ID is not set");
+  // TEST_MODE-aware, so the scanned workbook, Sheets credentials and Mongo database share one environment.
+  const spreadsheetId = getMasterLeadsSheetContainerId();
   for (const tab of onlyTabs ?? []) if (!TABS[tab]) throw new Error(`unknown tab ${tab}`);
   const sheets = getSheetsClient();
   const found: Array<{ tab: string; row: number; mongoId: string; model: "FormLead" | "CallLead" }> = [];
@@ -65,8 +66,9 @@ async function main() {
   if (apply) {
     await connectMongo();
     for (const f of selected) {
-      const Model = f.model === "FormLead" ? getFormLeadModel() : getCallLeadModel();
-      const exists = await Model.exists({ _id: f.mongoId });
+      const exists = f.model === "FormLead"
+        ? await getFormLeadModel().exists({ _id: f.mongoId })
+        : await getCallLeadModel().exists({ _id: f.mongoId });
       if (!exists) { queued.push({ tab: f.tab, row: f.row, mongoId: f.mongoId, skipped: "lead_missing" }); continue; }
       const job = await enqueueSheetSyncJob(
         { resource: "source_lead", operation: "sheet_phone_text_repair", leadModel: f.model, leadId: f.mongoId },
