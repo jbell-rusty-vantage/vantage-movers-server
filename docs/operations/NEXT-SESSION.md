@@ -1,5 +1,13 @@
 # Resume the server optimization sprint from main
 
+## Next session: two tracks (Owner, November 20)
+
+Run both tracks in the same session, with separate agents.
+
+- **Track A, engineering:** the "Start here" handoff below. Confirm the scheduled index drop, release the three Granot fixes, then take the Sheet Sync follow-ups and the index phase.
+- **Track B, Lead lifecycle documentation:** document completely, and from the current code, how Form Leads, Duplicate Forms, Bad Form Leads, Call Leads, Duplicate Calls and Bad Call Leads are created and move through their lifecycle. The [brief](LEAD-LIFECYCLE-DOCUMENTATION-BRIEF.md) sets the outputs, the four mandatory inventories and the verification. Track B is complete only when its coverage file has zero unclassified rows and an independent verifier signs off.
+- **Hand-off between tracks:** after Track A merges, Track B re-verifies its Granot sibling and Form Fill sections against the merged code. Track A's sibling fix must satisfy Track B's documented gate.
+
 ## Start here — November 20 handoff
 
 **State.** `main` is serving `25ae0026` in production. The November 20 review of Sales Outreach, Sheet Sync, Granot runs and Lead updates, and RingCentral found one critical defect, in Sheet Sync. It was fixed and deployed in [PR #237](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/237). Every queue was empty and healthy at review time. [Full review, evidence and verified behaviour](SERVICE-REVIEW-2026-11-20.md)
@@ -23,7 +31,7 @@
 
 **2. Fix the three Granot regressions from `5137f06f`.** Each one had zero measured production impact on November 20, so fix them as one bounded release. Details and file references are in the [review](SERVICE-REVIEW-2026-11-20.md#granot-runs-and-lead-updates).
 
-1. **Form→Call sibling catch-up.** Restore the Owner's October 28 sibling rule for a Call that qualifies after its Form already holds the job. Prefer mirroring when a scheduled row is `already_current` for a Form, or when the RingCentral queue creates the Call. Never create or qualify a Call outside the RingCentral queue.
+1. **Form→Call sibling catch-up.** Restore the Owner's October 28 sibling rule for a Call that qualifies after its Form already holds the job. Prefer mirroring when a scheduled row is `already_current` for a Form, or when the RingCentral queue creates the Call. Never create or qualify a Call outside the RingCentral queue. Keep the mirror's eligibility gate unchanged (`callLeadFormSibling.ts`). The target Call must already be reporting-eligible under `hasReportingEligibleCall` (`leads/callLeadAdmission.ts`). That means RingCentral inbound queue qualification, or a preserved historical or trusted final-import Best Relocation admission. It must not be a 90-day repeat `duplicate` or `created_on_unmatched`. New Calls are still created only by the RingCentral queue. The Form Fill rule matters here. A qualified Call whose phone matches a same-source Form gets `form_fill: true` (`detectFormFill`, `drainFormFillWork.ts`). `callLeadReportingDisposition.ts` routes it to **Duplicate Calls**, and it is not billable. The mirror does not exclude `form_fill`. The usual sibling is that Form Fill Call, so mirrored job, priority and receiver updates land on its Duplicate Calls row. The mirror never changes `form_fill`, `duplicate` or qualification, and the tab follows those flags, not the job, so the Call never moves to the Calls tab. Add tests showing that the catch-up updates a Form Fill Call in place on Duplicate Calls, never writes to a repeat-duplicate or non-eligible Call, and still reaches an eligible preserved Best Relocation Call.
 2. **Record Links.** Establish the Record Link for an `already_current` Lead without an active link, as the webhook processor does.
 3. **Post-commit retries.** Bound the scheduled path's post-commit Lead-link wake and sibling mirror. Use the webhook path's rule: 2 s, never throw, record the failure. A persistent error must no longer block the run until its 24-hour expiry.
 4. **Disputes.** Persist the Record Link dispute instead of discarding it on the skip path.
