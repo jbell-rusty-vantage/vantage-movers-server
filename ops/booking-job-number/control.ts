@@ -11,6 +11,7 @@
  * mode values read as `shadow` in the server, so deleting the document is also a rollback.
  */
 import { MongoClient } from "mongodb";
+import { getMongoDatabaseName } from "../../src/config/domain/runtime";
 import { BOOKING_JOB_NUMBER_RULE_VERSION } from "../../src/services/bookings/bookingJobNumber";
 import {
   BOOKING_JOB_NUMBER_CHECKS_COLLECTION,
@@ -22,7 +23,8 @@ const [command = "status", ...rest] = process.argv.slice(2);
 const flag = (name: string) => rest.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
 const uri = process.env.MONGO_URI;
 if (!uri) throw new Error("MONGO_URI is required");
-const database = process.env.TEST_MODE === "true" ? process.env.TEST_MONGO_DATABASE_NAME ?? "testvantagemovers" : "vantagemovers";
+// The server's own guarded selector: same TEST_MODE parsing and isolated-name check as the API.
+const database = getMongoDatabaseName();
 const client = new MongoClient(uri);
 
 async function main() {
