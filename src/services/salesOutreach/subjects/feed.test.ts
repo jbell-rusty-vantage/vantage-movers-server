@@ -110,6 +110,45 @@ describe("entity_changes tail (IMPL-05, outreach_lead_change)", () => {
   });
 });
 
+describe("overlap fast path (existingJobMatches)", () => {
+  class OverlapStore extends MemoryFeedStore {
+    matchReads: string[][] = [];
+    enqueued: string[] = [];
+    existing = new Map<string, boolean>();
+    async existingJobMatches(jobs: readonly JobInput[]) {
+      this.matchReads.push(jobs.map((job) => job.dedupe_key));
+      return new Map(jobs.flatMap((job) => this.existing.has(job.dedupe_key) ? [[job.dedupe_key, this.existing.get(job.dedupe_key)!] as const] : []));
+    }
+    override async enqueue(job: JobInput) { this.enqueued.push(job.dedupe_key); return super.enqueue(job); }
+  }
+
+  test("an overlap pass reads existing jobs once; a match skips enqueue, a payload mismatch is a conflict, an absent job enqueues", async () => {
+    const store = new OverlapStore();
+    const refs = [lead(), lead(), lead()];
+    for (const ref of refs) store.subjects.push({ id: objectId(), lead: ref, lead_revision_seen: 0 });
+    const deps = { store, transaction, loader: fixedConfigurationLoader(deskConfiguration() as never) };
+    // First pass: no stored cursor, so no overlap read.
+    refs.forEach((ref, i) => store.changes.push(change(ref, 1, `2026-10-04T14:04:0${i}Z`, String(i + 1).repeat(24))));
+    const first = await scanOutreachLeadChanges(at("2026-10-04T14:05:00Z"), deps);
+    assert.deepEqual(store.matchReads, [], "a pass without overlap never reads existing jobs");
+    assert.equal(first.nominated, 3);
+    const keys = refs.map((ref) => `sod:lead-change:FormLead:${ref.id}:r2`);
+    store.enqueued = [];
+    store.existing.set(keys[0]!, true);
+    store.existing.set(keys[1]!, false);
+    // The first two changes are re-read from the overlap (the cursor row itself is not); a new change for the
+    // third Lead arrives on the page and has no job yet.
+    store.changes.push(change(refs[2]!, 2, "2026-10-04T14:05:10Z", "4".repeat(24)));
+    const fresh = `sod:lead-change:FormLead:${refs[2]!.id}:r3`;
+    const second = await scanOutreachLeadChanges(at("2026-10-04T14:05:30Z"), deps);
+    assert.equal(store.matchReads.length, 1, "one batched read for the whole pass");
+    assert.deepEqual(new Set(store.matchReads[0]), new Set([keys[0], keys[1], fresh]));
+    assert.deepEqual(store.enqueued, [fresh], "only the absent job reaches enqueue");
+    assert.equal(second.conflicts, 1, "a payload mismatch counts as a conflict");
+    assert.equal(second.nominated, 2);
+  });
+});
+
 describe("revision reconcile (outreach_revision_reconcile)", () => {
   const deps = (store: MemoryFeedStore, acquired = true) => ({
     store,
