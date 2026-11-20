@@ -82,7 +82,7 @@ Write only when **all** of these hold:
 - `TEST_MODE` and the connected database matches `^testvantagemovers(?:_[a-z0-9]+)?$`
 - request supplied `wordpress_submission_key` (8–128). Never inferred from the Lead, `lid`, phone, email, payload, or **Tracking Reference**.
 
-Fail closed: capture failure aborts Lead create. Attach after Lead persist is also fail-closed: attach failure throws and does not leave a retry that can create a second Form Lead. Same key + existing unattached receipt (`lead_ref` null): refuse another Lead create. Same key + existing `lead_ref` whose Lead still exists: reuse that Lead. No second receipt, Lead, Sheet Sync job, CRM Post, or EntityChange. Authorized capture with a submission key forces the Form Lead write onto the same Mongo transaction so insert + Lead + attach abort together. Unauthorized / missing key / production DB: no receipt write; Lead create continues; Job Number timeline stays on `WORDPRESS_RECEIPT_UNAVAILABLE` ([`job-number-timeline.md`](./job-number-timeline.md)).
+Fail closed: capture failure aborts Lead create. Attach after Lead persist is also fail-closed: attach failure throws and does not leave a retry that can create a second Form Lead. Same key + existing unattached receipt (`lead_ref` null): refuse another Lead create. Same key + existing `lead_ref` whose Lead still exists: reuse that Lead. No second receipt, Lead, Sheet Sync job, CRM Post, or EntityChange. Authorized capture with a submission key forces the Form Lead write onto the same Mongo transaction so insert + Lead + attach abort together. Unauthorized / missing key / production DB: no receipt write; Lead create continues; the detailed Job Number timeline stays on `WORDPRESS_RECEIPT_UNAVAILABLE` ([`job-number-timeline.md`](./job-number-timeline.md)).
 
 Indexes are report-first: `pnpm migration:wordpress-form-submission-receipts`. Applied on `testvantagemovers` only. Production apply is refused in the CLI.
 
@@ -176,7 +176,7 @@ Structured logger `msg` keys; nothing is persisted to Mongo (the Operational Eve
 - [`operations-registry.md`](./operations-registry.md) — CPL periods + agent lookup
 - [`sheet-sync.md`](./sheet-sync.md) — outbox, drainer, job shapes
 - [`google-sheets.md`](./google-sheets.md) — tab routing, Master vs Source Company Sheet writes
-- [`job-number-timeline.md`](./job-number-timeline.md) — WordPress `source_received` when a receipt row is loaded; `WORDPRESS_RECEIPT_UNAVAILABLE` until WordPress ingress
+- [`job-number-timeline.md`](./job-number-timeline.md) — detailed assembly only: WordPress `source_received` when a receipt row is loaded; `WORDPRESS_RECEIPT_UNAVAILABLE` until WordPress ingress. The Owner HTTP read serves milestones and does not load WordPress receipts
 - [`capture.md`](../granot-lifecycle/capture.md) — webhook receipts (no Form Lead writes)
 - [`processor.md`](../granot-lifecycle/processor.md) — authorized Granot Form create and matched-Lead sync
 - [`identity.md`](../granot-lifecycle/identity.md) — source-scoped Form ladder reads `ref_no`, snapshots, Duplicate/Bad eligibility; no Form Lead writes

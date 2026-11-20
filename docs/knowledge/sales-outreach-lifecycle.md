@@ -5,7 +5,7 @@ title: Sales Outreach Desk lifecycle
 description: How the outreach lifecycle of the Sales Outreach Desk works as deployed on 2026-10-06 (server main@6b585f5b, configuration revision 10) — how a Lead enters, moves through and leaves the desk; the cadence clock, deadlines and the status ladder with verification and coverage_wait; how RingCentral calls and SMS become progress, with latencies, association reasons, count scopes and freshness; the words that confuse; every cron and job with its dedupe key; the daily operator checklist, repair and backfill commands, the Owner PATCH procedure and rollback; decisions and known limits.
 tags: [sales-outreach-desk, sales-intelligence]
 status: current
-stale_after: 2027-04-06
+stale_after: 2026-12-19
 resource: src/services/salesOutreach/
 applies_to:
   - src/services/salesOutreach/**
@@ -229,8 +229,8 @@ The lead-change, reconcile and evaluate crons answer `{ ok, skipped: true }` whi
 
 | Stage | Dedupe key patterns (`sales_intelligence_jobs.dedupe_key`) |
 | --- | --- |
-| `outreach_lead_change` | `sod:lead-change:<model>:<id>:r<lead revision>` (tail, reconcile, creation `:r1`); `…:decision:<fp16>:c<configuration revision>` (B2); `…:hold:<YYYYMMDDTHHmm>` (B8, UTC 15-min bucket); `…:admission:r<lead revision>` (B6); `…:link:<number id>:r<link revision>` (lead link); `…:<tag>` (Accounts re-sync, `numbers:desk-resync`, e.g. `lane-c-review-rule-r6`) |
-| `outreach_evaluate` | `sod:evaluate:<subject>:r<subject revision>`; `…:r<rev>:contacts:<digest>` (contact events moved); `…:due:<ms>` (clock repair); `…:coverage:<call\|sms>:<wait ms>:<5-min coverage bucket>` (coverage repair); `…:policy:<fp16>` (policy reconcile); `…:plan:r<plan revision>` (Quoted date / callback); `…:assignment:l<lead revision>`; `…:restriction:<id>:r<n>`; `…:repair:<period id>` (B1 script) |
+| `outreach_lead_change` | `sod:lead-change:<model>:<id>:r<lead revision>` (tail, reconcile, creation `:r1`); `…:estimates-refresh:<operation id>` (Granot Estimates receipt); `…:related:CallLead:<call>:change:<change>` (Form/Call pair, November 4); `…:decision:<fp16>:c<configuration revision>` (B2); `…:hold:<YYYYMMDDTHHmm>` (B8, UTC 15-min bucket); `…:admission:r<lead revision>` (B6); `…:link:<number id>:r<link revision>` (lead link); `…:<tag>` (Accounts re-sync, `numbers:desk-resync`, e.g. `lane-c-review-rule-r6`) |
+| `outreach_evaluate` | `sod:evaluate:<subject>:r<subject revision>`; `…:estimates-refresh:<Estimates lead-change key>`; `…:r<rev>:contacts:<digest>` (contact events moved); `…:due:<ms>` (clock repair); `…:coverage:<call\|sms>:<wait ms>:<5-min coverage bucket>` (coverage repair); `…:policy:<fp16>` (policy reconcile); `…:plan:r<plan revision>` (Quoted date / callback); `…:assignment:l<lead revision>`; `…:restriction:<id>:r<n>`; `…:repair:<period id>` (B1 script) |
 | `outreach_contact_change` | `sod:contact_change:<call\|sms>:<source id>:r<revision>` or `:m<winner>`; `…:admit:<subject>` (C4 create); `…:period:<subject>:<sha16(transition key)>` (C4 period); `…:link<revision>` (lead link); `…:repair:<period id>` (B1 script) |
 | `outreach_rep_day` | `sod:rep-day:<agent>:<YYYY-MM-DD>:<digest of event versions>` |
 | `rep_sms_sync` | `rc:rep_sms_sync:<extension>:<10-s bucket>` |
@@ -239,7 +239,9 @@ The lead-change, reconcile and evaluate crons answer `{ ok, skipped: true }` whi
 | `call_log_refresh` (shared) | `csi:call_log_refresh:session:<telephony session id>:1` |
 | `lead_link` (shared) | `csi:lead-link:<policy version>:lead:<model>:<id>:<fingerprint>` |
 
-Completed jobs are kept 14 days (`GET /enrollment/admissions` reads them). The configuration pointer is re-read at job admission and inside each job transaction; a moved pointer retries.
+Routine evaluation causes (`…:r<rev>` and `…:estimates-refresh:…`) go through `enqueueOutreachWork`. With `refresh_requests.mode: active` they advance one generation row per subject in `sales_outreach_refresh_requests` instead of inserting a job; the evaluate drain claims that row and consumes only the claimed generation. Every other key above is a CSI job.
+
+Retention of completed jobs ([release record](../operations/SALES-INTELLIGENCE-JOBS-RELEASE-2026-11-19.md), [classifier](../../src/services/salesIntelligence/routineJobExpiry.ts)): a proven routine result becomes a compact completion receipt under its original ID and expires three days after completion. Routine results are an Estimates lead-change refresh, an `r<rev>`, Estimates or `contacts` evaluation, a call `r<n>` contact change and a rep-day recount, each with a result of the expected shape, a matching subject and no earlier failure reason. Every other completion keeps its row and result for 14 days; `GET /enrollment/admissions` reads those. Pending, leased, retry, paused and dead-letter rows never expire. A retired stage is refused at enqueue and never claimed. The configuration pointer is re-read at job admission and inside each job transaction; a moved pointer retries.
 
 ## 6. Operating the desk
 
@@ -334,7 +336,7 @@ The packet record with approval references is [DECISIONS.md](../sales-outreach-d
 - **Unassigned work.** Leads whose Receiver agent is not a reviewed `sales_rep` are Unassigned; Jason's subjects stay Unassigned until his extension is known. An aging rule for untouched old New Leads is not approved (D2 option 3).
 - **Passed move dates** keep cadence (P05g, D6).
 - **B6 coverage.** Configuration-caused eligibility and Leads with no change are not admitted automatically (dated run or one-click Enroll). A Lead deferred to intake that intake then refuses for a reason expansion would accept is not re-nominated; it surfaces in `in_scope`. Every newer Granot observation of a non-subject Lead nominates an admission job: watch `outreach_lead_change` depth.
-- **B8 hold.** A priority-map closure (for example Priority 5 while held) does not bypass the hold; the subject stays in review until the hold clears or the official Booking arrives (nothing is owed). The admissions aggregation has no index on `completed_at`.
+- **B8 hold.** A priority-map closure (for example Priority 5 while held) does not bypass the hold; the subject stays in review until the hold clears or the official Booking arrives (nothing is owed). The admissions aggregation reads the `csi_job_claim` prefix or the single-field `csi_job_completed_ttl` index on `completed_at`.
 - **SMS coverage** is the worst current mailbox: one current mailbox that never syncs freezes SMS verdicts at its watermark (they read due + unverified, never a false miss).
 - **Subscriptions.** The daily cron rarely sees a refusal ≤ 30 min old, so a `deliveries_refused` subscription is healed by the operator `--apply` (`replace`) during staffed hours, not by the 06:15Z cron. A failed DELETE after a successful `replace` create leaves two subscriptions (delete the leftover).
 - **What the engine hard-codes or ignores** (FINDINGS T7): credit rules are code (`engine/credit.ts`); `evidence.*` labels; per-day open/close minutes must be uniform and `quoted_open_minute` must equal the opening; the P05f reentry thresholds reuse `late_arrival_rule`; the P10a Quoted activation cutoff reuses `quoted_same_day_cutoff_minute`; 400-day horizon and 30-date window history.

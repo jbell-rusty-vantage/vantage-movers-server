@@ -2,7 +2,7 @@
 okf_version: "0.2"
 type: Reference
 title: Estimates in Process update cycle
-description: Verified Follow-Up Estimates collection, canonical identity preview, durable 90-day refresh, receipt apply and freshness. Leads and Advertising remains available.
+description: Verified Follow-Up Estimates collection, canonical identity planning, durable 90-day refresh, direct Lead apply and freshness. The Leads and Advertising collector is retired.
 tags: [granot-lifecycle, sales-outreach-desk, automation]
 status: draft
 stale_after: 2027-01-13
@@ -16,7 +16,7 @@ applies_to:
   - src/services/granotHttpCollector/estimatesCron.ts
   - src/services/granotHttpCollector/runWorkflow.ts
   - src/services/granotHttpCollector/lifecycleStatement.ts
-  - src/services/granotHttpCollector/formWorkflow.ts
+  - src/services/granotHttpCollector/scheduledLeadChange.ts
   - src/routes/granot-automation.routes.ts
   - src/routes/granot-automation-cron.routes.ts
   - src/models/GranotAutomationRun.ts
@@ -35,7 +35,7 @@ sources:
     title: The Leads and Advertising automation this cycle leaves in place
   - id: apply
     resource: granot-lifecycle/automation-apply.md
-    title: Receipt apply the new rows must enter
+    title: Scheduled direct apply contract
 generated:
   by: process:owner-instructions
   at: 2026-10-13T18:10:00Z
@@ -43,51 +43,36 @@ generated:
 
 # Estimates in Process update cycle
 
-Owner request **13 October 2026**. Parse Granot **Estimates in Process → Follow-Up Estimates**, then update the matched lead and let outreach react. The running Leads & Advertising automation stays available for when that path is still needed.
+Owner request **13 October 2026**. Parse Granot **Estimates in Process → Follow-Up Estimates**, then update the matched lead and let outreach react. The Leads & Advertising automation was retired on November 18, 2026.
 
-This page is the build contract. The collector, the `estimates_in_process` operation, the New York hour cron, the priority 2 and 3 one-call-a-day workflow, and the stop on outbound-call assignment are in the code. Checked-in lifecycle effect flags stay off, and deployment changes are recorded separately in [release evidence](../granot-estimates-reliability/RELEASE.md). The proved read, the priority meanings, and the rep-desk presentation live in [granot-priorities-and-rep-desk.md](granot-priorities-and-rep-desk.md).
+This page is the build contract. The collector, the `estimates_in_process` operation, the New York hour cron, the priority 2 and 3 one-call-a-day workflow, and the stop on outbound-call assignment are in the code. Checked-in lifecycle effect flags stay off, and deployment changes are recorded separately in `docs/granot-estimates-reliability/RELEASE.md` (removed in `fc8166bf`; read it from git history). The proved read, the priority meanings, and the rep-desk presentation live in [granot-priorities-and-rep-desk.md](granot-priorities-and-rep-desk.md).
 
-## Leave the other automation in place
+## Retired Leads & Advertising automation
 
-`collectGranotReport` keeps walking Leads & Advertising: network login, user login, `mprep~repmenuwc`, the date filter, `adverlistwc` source links, then Booked Jobs and Follow Up Estimates **per source label**. `parseSection` keeps requiring headers `job_no` and `customer` and a numeric `no` column. `form_leads` and `call_leads` runs, the source catalog, run-groups, and `GRANOT_AUTOMATION_APPLY_ENABLED` stay on that path.
-
-Estimates in Process is a second collector and a third run operation. It shares the login, the account lease, the statement sealer, and `applyAutomationPlanAction`. It does not grow a mode flag inside `collectGranotReport`. A copied session URL is not a substitute for that function.
-
-| Stays | File |
-| --- | --- |
-| Leads & Advertising collect | `src/services/granotHttpCollector/index.ts` `collectGranotReport` |
-| Source-report parser and the numeric `no` row rule | `parseSection` / `parseGranotSourceReport` |
-| Form and Call planners | `formWorkflow.ts`, `planCallWorkflow` in `runWorkflow.ts` |
-| Source catalog and Registry compatibility | `sourceCatalog.ts` |
-| Admin create for `form_leads` and `call_leads`, which still require `source_ids` or `source_labels` | `granot-automation.routes.ts` |
-| Existing collector, workflow, catalog, statement, and route tests | the files named in [granot-http-collector.md](services/granot-http-collector.md) |
-
-Both collectors take the same account lease, `granot:automation:account`. One Granot login at a time.
+The November 18 release retired dashboard-initiated runs, `collectGranotReport`, the `form_leads` and `call_leads` planners, the source catalog and `GRANOT_AUTOMATION_APPLY_ENABLED` ([release record](../operations/GRANOT-SLIMMING-RELEASE-2026-11-18.md)). The `GranotAutomationRun.operation` enum still lists `form_leads` and `call_leads` for stored history. Estimates in Process is the only scheduled collector. It holds the account lease `granot:automation:account`, so there is one Granot login at a time.
 
 ## The cycle
 
-Same pipeline the HTTP automation already uses. Preview matches and writes nothing. A sealed plan is checksum-locked. Owner approval selects actions. Each selected action becomes one `granot_http_automation` receipt and enters `claimAndProcessOrPoll`. The lead write is `synchronizeLeadFromGranot`.
+Planning matches and classifies every row. A sealed plan is checksum-locked and contains only `update` actions: uniquely matched Leads whose canonical desired state has a real change. The cron actor's run is approved automatically. Each sealed action commits through `synchronizeLeadFromGranot` without a webhook receipt ([automation apply](granot-lifecycle/automation-apply.md)).
 
 ```
 collectEstimatesInProcess
   → verify scope, selectors, pagination and totals
-  → canonical normalization + Registry policy + identity preview
-  → seal complete statement and provider response time (schema v2, lead_snapshot_apply)
-  → awaiting_approval
-  → applyAutomationPlanAction
-  → claimAndProcessOrPoll
-  → synchronizeLeadFromGranot
+  → canonical normalization + Registry policy + identity planning
+  → seal changed actions with provider response time (plan schema v2, lead_snapshot_apply)
+  → applyScheduledLeadChange
+  → synchronizeLeadFromGranot (Observation, Decision, Lead revision)
   → EntityChange
-  → sales-outreach lead-change feed
+  → sales-outreach lead-change feed; a priority change also nominates a Desk refresh
 ```
 
-Apply still must not call `updateFormLead`, `syncCallLeadEnrichment`, or `syncBookedCallLeadReconciliation`. Preview still creates no receipt. `syncCallLeadEnrichment` remains the CSV writer. This cycle does not send rows there.
+Apply must not call `updateFormLead`, `syncCallLeadEnrichment`, or `syncBookedCallLeadReconciliation`. Unchanged, unmatched and ambiguous rows create no Observation, Decision or receipt.
 
 Checked-in lifecycle defaults stay processing and shadow true, and all eight effect flags false. Tests may pass live gates as arguments the way the existing lifecycle replica tests do. The checked-in defaults stay off.
 
 ## Read
 
-Reuse the two-page login already in `collectGranotReportOnce` (cookie jar plus the session id). After the user POST lands on `mv~mainmenuwc~{session}~LOGIN`, open Estimates in Process. Do not request `mprep` on this operation.
+Use the two-page login in `openGranotAuthenticatedSession` (cookie jar plus the session id). After the user POST lands on `mv~mainmenuwc~{session}~LOGIN`, open Estimates in Process. Do not request `mprep` on this operation.
 
 | Step | Request |
 | --- | --- |
@@ -171,9 +156,9 @@ A lead that has a phone and no job misses rungs 1 and 2, matches on rung 3, and 
 
 A unique job already stored on a different Call Lead in that granularity sticks to that lead and does not fall through to the phone lead. Leave that ladder as it is.
 
-Estimates preview and apply both use the canonical Source Granularity identity ladder. Phone-based attachment requires an eligible qualified non-duplicate Call Lead. Duplicate siblings do not create false competing eligible matches; genuine multiple eligible matches or a different established Job remain held. Legacy `previewCallLeadEnrichment` remains on the other collector path.
+Estimates preview and apply both use the canonical Source Granularity identity ladder. Phone-based attachment requires an eligible qualified non-duplicate Call Lead. Duplicate siblings do not create false competing eligible matches; genuine multiple eligible matches or a different established Job remain held.
 
-This cycle matches leads that already exist. `lead_snapshot_apply` receipts have no `route_event_class: "lead_created"`. The processor mints a lead only for that class. Estimates rows must not set `event_type` to `lead_created`, must not call `createLeadFromGranot`, and must not create a Call Lead for an unmatched phone. Unmatched rows finish `pending_match` or `unmatched` under the existing policy clock.
+This cycle matches leads that already exist. `lead_snapshot_apply` statements have no `route_event_class: "lead_created"`. The processor mints a lead only for that class. Estimates rows must not set `event_type` to `lead_created`, must not call `createLeadFromGranot`, and must not create a Call Lead for an unmatched phone. Unmatched rows are counted in the run and never sealed. A target that changes before apply records `unmatched`.
 
 Live phone, name, and email stay. Qualified contact is `granot_contact_snapshot` only, and only inside the gate in the next section. `ingested_contact_snapshot` is never planned.
 
@@ -208,21 +193,9 @@ FINAL-01 and the configuration fixtures map codes 2 and 3 to workflow `daily`: o
 
 ## Run shape
 
-Add operation `estimates_in_process` beside `form_leads` and `call_leads`.
+`estimates_in_process` is the only operation the scheduler creates. It takes no `source_ids` or `source_labels`; the page is the source list. Date windows use real `MM/DD/YYYY` dates.
 
-| | `form_leads` / `call_leads` | `estimates_in_process` |
-| --- | --- | --- |
-| Collector | `collectGranotReport` | `collectEstimatesInProcess` |
-| Sources on the create body | `source_ids` or `source_labels`, still required | Absent. The page is the source list. Sending either is a validation error. |
-| Date window | existing `from` / `to` | same `MM/DD/YYYY` rules |
-| Workflow | `preview` or `apply` | same |
-| Model enum | `GranotAutomationRun.operation` today | add this value. The two existing values stay. |
-
-`planRun` branches to the new collector only when the operation is `estimates_in_process`. The `form_leads` / `call_leads` branch keeps calling `collectGranotReport` and one planner.
-
-Preview runs complete with no approval. An Owner-created apply run with at least one approvable action stops at `awaiting_approval`, and `GRANOT_AUTOMATION_APPLY_ENABLED` remains that gate for `form_leads`, `call_leads`, and an Owner-created `estimates_in_process` apply.
-
-The cron is the exception. `ALL /api/cron/granot-estimates-in-process` is guarded by `CRON_SECRET` the same way the other cron routes are, and `vercel.json` schedules it `0 * * * *` (UTC). The handler returns `{ ok: true, skipped: true, reason: "outside_estimates_hours" }` unless the current America/New_York hour is one of 00/02/04/06/08-20/22. Each slot schedules Follow-Up Estimates for the trailing 90 inclusive Open Dates plus verified older provider-date months, all users and all priorities. Windows of at most seven days have deterministic slot-and-window run IDs; retries preserve the same immutable plan and lifecycle operation identities. The create body sets `request_snapshot.auto_apply`. `planRun` then writes status `applying` and an approval of every approvable action, with the system actor `granot-estimates-in-process-cron` (`actor_role` `system`, `origin` `vantage_admin`). That origin is what `granot_http_automation` capture requires. The same actor is the only extra initiator `assertGranotLifecycleContext` accepts, and only on channel `granot_http_automation`. The processor actor stays `granot-lifecycle-processor`. One worker invocation plans and, when the run is `applying`, applies in the same lease. That apply skips `GRANOT_AUTOMATION_APPLY_ENABLED`. It does not skip the lifecycle lead-write gates. When those gates are off, the processor persists the suppressed decision. A run with nothing approvable completes without an approval.
+`ALL /api/cron/granot-estimates-in-process` is guarded by `CRON_SECRET` the same way the other cron routes are, and `vercel.json` schedules it `0 * * * *` (UTC). The handler returns `{ ok: true, skipped: true, reason: "outside_estimates_hours" }` unless the current America/New_York hour is 08 through 20 (`ESTIMATES_RUN_HOURS`, 13 slots). Each slot schedules Follow-Up Estimates for the trailing 90 inclusive Open Dates plus verified older provider-date months, all users and all priorities. Windows of at most seven days have deterministic slot-and-window run IDs; retries preserve the same immutable plan and operation identities. The create body sets `request_snapshot.auto_apply`. Planning writes status `applying` and an approval of every sealed action, with the system actor `granot-estimates-in-process-cron`. The processor actor stays `granot-lifecycle-processor`. One worker invocation plans and, when the run is `applying`, applies in the same lease. The lifecycle processing, Lead-write and live-execution gates still apply; when they are off, each action records `policy_blocked`. A run with nothing sealed completes without an approval.
 
 ## Test database, then a live read
 
@@ -242,11 +215,12 @@ New:
 
 Edit:
 
-- `runWorkflow.ts` — verified Estimates collection, canonical identity preview, sealed capture time, fair bounded worker and freshness reads. The legacy operation branches stay.
-- `granot-automation.routes.ts` — create-body variant for `estimates_in_process`.
-- `GranotAutomationRun.ts` — operation enum gains `estimates_in_process`.
+- `runWorkflow.ts` — verified Estimates collection, canonical identity planning, sealed capture time, fair bounded worker and freshness reads.
+- `scheduledLeadChange.ts` — direct apply of one sealed change.
+- `granot-automation.routes.ts` — the Owner freshness read only.
+- `GranotAutomationRun.ts` — operation enum includes `estimates_in_process`.
 
-The canonical lifecycle remains the only write authority. Reliability changes make Call phone eligibility and preview agree with it and recheck qualification/non-duplicate authority at write time. Preserve quote/contact/move policy, manual assignment protection, immutable intake, booking/cancellation gates and `ADMISSION_DECISION_PATHS`. `collectGranotReport` and `parseSection` retain their separate report behavior. `receiverFill.ts` still excludes `outbound_attempt`; `inbound_answered` stays.
+The canonical lifecycle remains the only write authority. Reliability changes make Call phone eligibility and preview agree with it and recheck qualification/non-duplicate authority at write time. Preserve quote/contact/move policy, manual assignment protection, immutable intake, booking/cancellation gates and `ADMISSION_DECISION_PATHS`. `receiverFill.ts` still excludes `outbound_attempt`; `inbound_answered` stays.
 
 ## Tests that define done
 
@@ -254,7 +228,6 @@ Parser and HTTP mock:
 
 - Posted body is `STATUS=V9`, `TYPEDTE=OPEN`, the run’s `DATE1` / `DATE2`, `FUSTATUS=10`, empty `USER`, `DEPT=ALL`, `TYPE=V1`, `SORT=V6`.
 - The Estimates collector does not request `mprep`.
-- `collectGranotReport` still requests `mprep` and still does not request `estprocesswc`. The existing collector tests keep passing.
 - A row with `prior: 0` yields statement `priority` `"0"`, `phone` from `phone1`, `est_cf` from `cf`, `user` preserved, `from_city` equal to the city cell.
 - The totals row is absent.
 - A row with no `prior:` digit does not invent a priority.
@@ -262,8 +235,8 @@ Parser and HTTP mock:
 Call Lead on an isolated local replica database, flags only as test arguments:
 
 - Seed a Call Lead with a normalized phone, a source company that resolves to one Call route, no job number, and an empty receiver. Seed one active Agent whose Granot username matches the row `user`, with a reviewed `sales_rep` link.
-- Preview is `updateable` and creates no receipt.
-- Approved apply writes `job_no` / `normalized_job_no`, `granot_priority` from the cell, and `receiver_agent` with source `granot_username_match`.
+- Planning classifies the row `update` and creates no receipt.
+- Apply writes `job_no` / `normalized_job_no`, `granot_priority` from the cell, and `receiver_agent` with source `granot_username_match`.
 - Live phone, name, and email on that lead are unchanged.
 - `EntityChange.changed_paths` includes `granot_priority` and `normalized_job_no`. With expansion admission on, `nominateLeadChanges` nominates that lead. An existing subject’s `assigned_agent_id` becomes that Agent.
 - Priority `"0"` leaves `granot_contact_snapshot` and `cubic_feet` unset. Priority `"1"` sets `granot_contact_snapshot` and `cubic_feet`, and leaves Call Lead `move_date` unset.
@@ -285,18 +258,7 @@ Still not this implementation:
 - Patching the priority map stored on the deployed database, and turning lifecycle effect flags on. FINAL-01 and the fixtures already map codes 2 and 3 to `daily`. An `inbound_answered` can still write `ringcentral_rep_call`. Checked-in flag defaults stay off.
 
 
-## Reviewed bounded Estimates apply
-
-An Owner may POST `/api/v1/admin/granot-automation/runs/:runId/apply-reviewed-estimates`
-with `plan_checksum` and `selected_action_ids` after reviewing a completed Estimates
-preview. The stored Open Date window must contain 1–90 inclusive real calendar dates
-ending no later than today in America/New_York. The unexpired schema-v2 plan and checksum
-are reused without recollecting only when selected actions retain verified provider capture times. Only selected approvable actions are authorized;
-conflicts, unmatched rows, and unresolved sources cannot be selected. A fenced state
-change promotes the preview to `workflow: apply`, sets `request_snapshot.auto_apply: true`,
-and stores the signed Owner approval. The existing worker and lifecycle apply perform
-the effects. This narrow path skips the ordinary automation flag, retains every
-lifecycle gate, and cannot promote form/call runs. Ordinary `/approve` keeps its gate.
+## Scheduled identity
 
 The recurring cron schedules the full declared scope hourly from 08:00 through 20:00 America/New_York.
 A deterministic run `_id` keyed by slot plus date window makes retries and concurrent
@@ -307,10 +269,10 @@ The existing Mongo `_id` index enforces uniqueness; no index migration is requir
 
 `estimatesCollection.ts` verifies enabled form controls, required direct headers and row alignment, explicit emptiness, same-session pagination and rendered transaction counts. Repeated, unsafe, out-of-window or unreconciled results fail closed. Large/incomplete multi-day renderings split adaptively; an incomplete single-day result cannot claim complete refresh. Blank individual fields differ from absent columns. `open_date` normalizes to a real date and retains original evidence; optional phone2 stays evidence, never a match key. Split city/state fields are retained even when their companion is blank.
 
-Each row's actual provider response time is checksum-sealed as `collection_captured_at` and supplied as receipt `captured_at`. Delayed application never becomes a fresh observation. Existing pending lifecycle receipts are claimed directly with their stored operation/time; no recapture occurs. An already-approved legacy action without both an existing receipt and verified time finishes as `technical_failure` / `RUN_REPLAN_REQUIRED`; independent stored receipts still drain. New approval rejects missing-time selections and requires recollection.
+Each row's actual provider response time is checksum-sealed as `collection_captured_at` and supplied as the Observation `captured_at`. Delayed application never becomes a fresh observation. Pre-cutover pending lifecycle receipts are claimed directly with their stored operation/time; no recapture occurs. An already-approved legacy action without both an existing receipt and verified time finishes as `technical_failure` / `RUN_REPLAN_REQUIRED`; independent stored receipts still drain.
 
-Worker claims use one least-recent-attempt queue across fresh collection, approved actions and eligible retries. Apply yields after 25 actions or 120 seconds, preserving receipts; remaining fresh actions checkpoint `apply`, while pending-only runs use `waiting_match` and bounded one-minute readiness. The lifecycle receipt still owns its due clock. Terminal receipts never replay. Estimates collection/planning checks a shared 120-second budget, including login network hooks; a budget failure requests smaller windows and never claims complete coverage. Queue continuations have distinct delivery identities so repeated batches are not deduplicated away.
+Worker claims use one least-recent-attempt queue across fresh collection, sealed actions and eligible retries. Apply yields after 25 actions or 120 seconds, preserving recorded results; remaining fresh actions checkpoint `apply`, while pending-only runs use `waiting_match` and bounded one-minute readiness. The lifecycle receipt still owns its due clock. Terminal receipts never replay. Estimates collection/planning checks a shared 120-second budget, including login network hooks; a budget failure requests smaller windows and never claims complete coverage. Queue continuations have distinct delivery identities so repeated batches are not deduplicated away.
 
 `granot_estimates_open_dates` stores only verified observed provider dates, with first/last observation times. Scheduled scans conservatively include every older observed month, without asserting target ownership or inventing an active-Lead rule. Complete manual backfill snapshots also extend this inventory. Unknown older scope remains an explicit coverage limitation.
 
-Owner `GET /api/v1/admin/granot-automation/runs/freshness` returns `last_complete_coverage_at`, the latest expected New York slot, collected/completed/failed window counts, held rows and warnings. Collection completeness means every declared window collected successfully; `completed_windows` separately describes synchronization progress. Missing complete coverage for the latest scheduled slot at or before now minus 90 minutes produces `late_slot`; a newer complete scheduled slot can supersede an older miss; partial scans and held rows remain visible. Queued or collected does not mean all Lead state has converged. Release, backfill evidence and deployment flag changes belong in [release evidence](../granot-estimates-reliability/RELEASE.md). Josh's working-day goals remain a separate Owner configuration.
+Owner `GET /api/v1/admin/granot-automation/runs/freshness` returns `last_complete_coverage_at`, the latest expected New York slot, collected/completed/failed window counts, held rows and warnings. Collection completeness means every declared window collected successfully; `completed_windows` separately describes synchronization progress. Missing complete coverage for the latest scheduled slot at or before now minus 90 minutes produces `late_slot`; a newer complete scheduled slot can supersede an older miss; partial scans and held rows remain visible. Queued or collected does not mean all Lead state has converged. Release, backfill evidence and deployment flag changes were recorded in `docs/granot-estimates-reliability/RELEASE.md`, removed from the tree in `fc8166bf` (`git show fc8166bf^:docs/granot-estimates-reliability/RELEASE.md`). Josh's working-day goals remain a separate Owner configuration.

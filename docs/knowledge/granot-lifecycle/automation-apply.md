@@ -4,12 +4,15 @@ title: "Granot HTTP automation apply (`granotLifecycle/`)"
 description: Scheduled Estimates compare Granot fields with MongoDB and apply changes to uniquely matched Leads.
 tags: [granot-lifecycle]
 status: draft
-stale_after: 2026-11-19
+stale_after: 2026-12-19
 resource: src/services/granotLifecycle/automationApply.ts
 applies_to:
   - src/services/granotLifecycle/automationApply.ts
   - src/services/granotHttpCollector/lifecycleStatement.ts
   - src/services/granotHttpCollector/runWorkflow.ts
+  - src/services/granotHttpCollector/scheduledLeadChange.ts
+  - src/services/granotHttpCollector/estimatesOutreachRefresh.ts
+  - src/services/granotHistory/scheduledRunArchive.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -24,14 +27,16 @@ generated:
   at: 2026-09-04T20:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)
-**Primary code:** `src/services/granotLifecycle/automationApply.ts`, `src/services/granotHttpCollector/lifecycleStatement.ts`, `src/services/granotHttpCollector/runWorkflow.ts`
+**Primary code:** `src/services/granotHttpCollector/scheduledLeadChange.ts`, `src/services/granotHttpCollector/runWorkflow.ts`, `src/services/granotHttpCollector/lifecycleStatement.ts`, `src/services/granotLifecycle/automationApply.ts` (pre-cutover resume)
 **Domain terms used:** [Granot Observation Receipt](../../../../CONTEXT.md), [Observation Channel](../../../../CONTEXT.md), [Synchronization Decision](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md)
 
 # Granot HTTP automation apply (`granotLifecycle/`)
 
 Granot supplies the collected CRM fields. MongoDB owns the Lead, its field ownership rules and its accepted update time. Scheduled Estimates plan only real changes for uniquely matched Leads and recheck identity, source policy, temporal order and desired state inside the write transaction. Unchanged, ambiguous and unmatched rows create no per-Lead history. The run keeps aggregate counters for those rows.
 
-A committed change uses the existing Lead synchronization mutation and Sheet Sync outbox. Its embedded run result identifies the source for the Observation, Decision and Lead provenance. The scheduled worker requests an Outreach refresh when the committed change includes priority. New scheduled actions never enter webhook receipt capture. A pre-cutover action with a saved capture resumes by its original receipt ID. [Scheduled change command](../../../src/services/granotHttpCollector/scheduledLeadChange.ts)
+A committed change uses the existing Lead synchronization mutation and Sheet Sync outbox inside one canonical command (`synchronizeLeadFromGranot`, idempotency key `scheduled-estimate:<source id>`). The source, Observation and Decision IDs are deterministic hashes of the operation ID. The command inserts the Observation, writes the Decision through the Lead synchronization operation and certifies the winning Lead. Its embedded run result (`scheduled_direct: true`) identifies the source for the Observation, Decision and Lead provenance. When the committed change includes `granot_priority`, the same transaction refreshes Pool membership and nominates the Outreach `outreach_lead_change` stage for an open subject. After commit the worker wakes Lead links and mirrors a Form Lead change onto its qualified Call Lead sibling. New scheduled actions never enter webhook receipt capture. A pre-cutover action with a saved capture, or an action of a run below schema version 3, resumes by its original receipt ID. [Scheduled change command](../../../src/services/granotHttpCollector/scheduledLeadChange.ts)
+
+A skipped action records its outcome in the run without a Decision: `unmatched` for a missing or changed target, `policy_blocked` when processing, Lead writes or live execution is off, and otherwise the planned Decision outcome. Skipped actions are marked Outreach-complete. A transient failure yields the run and retries the same sealed action.
 
 ## Historical receipt-backed automation
 
@@ -50,8 +55,8 @@ Before checksum lock, `sealAutomationPlan` attaches:
 }
 ```
 
-- Follow Up Form and Call enrichment → `lead_snapshot_apply`
-- Every Booked Jobs row, including Form-plan Booked rows → `booking_action_apply` with raw `event_type: "Booked"`
+- Scheduled Estimates rows → `lead_snapshot_apply`. Only `update` classifications are sealed into the plan.
+- `booking_action_apply` remains a channel operation kind for the browser extension. The retired Leads & Advertising collector produced it for Booked Jobs rows.
 - `user` and `rep` stay separate; raw Priority stays canonicalizable
 - Schema-v1 approved plans fail closed as `RUN_REPLAN_REQUIRED`
 
@@ -82,30 +87,17 @@ Run action receipt:
 | receipt `dead_letter` | `technical_failure` + `error_code: "GRANOT_RECEIPT_DEAD_LETTER"` |
 | capture `GRANOT_OPERATION_IDEMPOTENCY_CONFLICT` | run maps to `technical_failure` |
 
-Nonterminal `accepted_for_processing` does not increment completed progress, yields the run lease, and resumes the same operation ID. Exact replay of a **terminal** stored receipt returns that receipt. Admin GET details redact `granot_statement` from the plan and never project receipt payloads.
+Nonterminal `accepted_for_processing` does not increment completed progress, yields the run lease, and resumes the same operation ID. Exact replay of a **terminal** stored receipt returns that receipt. The run detail and approval routes were retired on November 18; only `GET /api/v1/admin/granot-automation/runs/freshness` remains.
 
-## Flags
+## Scheduled identity
 
-Lifecycle defaults stay processing/shadow true and all eight effect flags false. `GRANOT_AUTOMATION_APPLY_ENABLED` remains the preexisting Owner apply gate and is not enabled by this unit. An `estimates_in_process` run with `request_snapshot.auto_apply` (the Estimates cron) skips that flag and still enters the same receipt and `synchronizeLeadFromGranot` path. When the lifecycle lead-write gates are off, the processor persists the suppressed decision. There is no bypass of those gates.
-
-
-## Reviewed bounded Estimates apply
-
-An Owner may POST `/api/v1/admin/granot-automation/runs/:runId/apply-reviewed-estimates`
-with `plan_checksum` and `selected_action_ids` after reviewing a completed Estimates
-preview. The stored Open Date window must contain 1–90 inclusive real calendar dates
-ending no later than today in America/New_York. The unexpired schema-v2 plan and checksum
-are reused without recollecting. Only selected approvable actions are authorized;
-conflicts, unmatched rows, and unresolved sources cannot be selected. A fenced state
-change promotes the preview to `workflow: apply`, sets `request_snapshot.auto_apply: true`,
-and stores the signed Owner approval. The existing worker and lifecycle apply perform
-the effects. This narrow path skips the ordinary automation flag, retains every
-lifecycle gate, and cannot promote form/call runs. Ordinary `/approve` keeps its gate.
+Lifecycle defaults stay processing/shadow true and all eight effect flags false. The scheduled worker requires processing, Lead writes and live execution; otherwise each changed action records `policy_blocked`. There is no bypass of those gates. Dashboard-initiated runs, Owner approval and `GRANOT_AUTOMATION_APPLY_ENABLED` were retired on November 18 ([release record](../../operations/GRANOT-SLIMMING-RELEASE-2026-11-18.md)).
 
 The recurring cron covers trailing 90 inclusive Open Dates plus verified older provider-date months hourly from 08:00 through 20:00 America/New_York.
-A deterministic run `_id` keyed by the New York date and scheduled hour makes retries
+A deterministic run `_id` keyed by the scheduled slot, date window and selection makes retries
 and concurrent invocations reuse the same run, plan, and lifecycle operation IDs.
-The existing Mongo `_id` index enforces uniqueness; no index migration is required.
+The existing Mongo `_id` index enforces uniqueness. Run creation first checks
+`granot_closed_automation_runs`, so an archived run is never recreated.
 
 
 Pending-match actions keep their lifecycle retry clock and operation identity.

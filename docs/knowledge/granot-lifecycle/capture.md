@@ -4,13 +4,15 @@ title: "Granot receipt capture (`granotLifecycle/`)"
 description: "Webhook and channel-neutral receipt capture with { receipt_id } wake-up. Does not invoke the processor."
 tags: [granot-lifecycle]
 status: draft
-stale_after: 2026-11-19
+stale_after: 2026-12-19
 resource: src/services/granotLifecycle/capture.ts
 applies_to:
   - src/services/granotLifecycle/capture.ts
   - src/services/granotLifecycle/queuePublisher.ts
   - src/services/granotLifecycle/receiptEvidence.ts
   - src/models/GranotObservationReceipt.ts
+  - src/services/granotHistory/completedWebhooks.ts
+  - src/services/granotHistory/retireLeadEvidence.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -66,7 +68,7 @@ generated:
 
 Stored headers are exactly `content-type`, `content-length`, `user-agent`, `x-request-id`, and `x-vercel-id`, each value truncated to 1,024 characters.
 
-Webhook capture commits the receipt and the New York day/hour counters in one transaction. Daily Operations stores no receipt card. Identical deliveries are distinct receipts. `payload_sha256` is diagnostic, never idempotency. Webhook payload keys are not schema-validated. Granot may add unused fields or omit unused ones (for example `service_type` or `cubic_rate`). Capture stores the credential-redacted body as Mixed evidence; normalization later reads only known optional keys.
+Webhook capture commits the receipt and the New York day/hour counters in one transaction. Daily Operations stores no receipt card. Identical deliveries are distinct receipts. `payload_sha256` is diagnostic, never idempotency. Its diagnostic index was removed on November 19. Webhook payload keys are not schema-validated. Granot may add unused fields or omit unused ones (for example `service_type` or `cubic_rate`). Capture stores the credential-redacted body as Mixed evidence; normalization later reads only known optional keys.
 
 ## Responses
 
@@ -91,7 +93,7 @@ A dedicated consumer (`api/queues/granot-lifecycle-consumer.ts`) and five-minute
 
 Every two minutes the retention worker examines up to eight completed receipts per Lead route. The daily webhook count, Observation and live Decision must already exist. A creation Decision also requires the created Form Lead. An observation-only or expired match requires a matching version of the source policy that permits observation or linking only. Applied updates require the target Lead and its recorded effect.
 
-The worker reads back the exact compressed BSON from a pinned GCS generation, verifies its checksum and compares it with the original. It rechecks the receipt and business evidence before replacing the receipt with a compact archive locator in one MongoDB transaction. The Observation and Decision continue to support the Desk and booking readers. Failed storage verification leaves the receipt available for retry. Booking status receipts use their own lifecycle.
+The worker reads back the exact compressed BSON from a pinned GCS generation, verifies its checksum and compares it with the original. It rechecks the receipt and business evidence inside one MongoDB transaction, inserts a compact locator in `granot_archived_receipts` and deletes the hot receipt. The locator keeps the hash, generation, route, capture time, latest Decision ID and certified Lead. The drainer, Owner requeue and case readers resolve the retired receipt by its original ID through `readRetiredLifecycleReceipt`. The Observation and Decision continue to support the Desk and booking readers. Failed storage verification leaves the receipt available for retry. Booking status receipts use their own lifecycle.
 
 ## Retirement of Lead Observations and Decisions
 
@@ -103,7 +105,8 @@ The worker verifies a compressed GCS page, repeats the source and reference chec
 
 - CRM Posting on form-lead create does **not** write a receipt and is not triggered by webhooks ([`form-lead.md`](../services/form-lead.md)).
 - Approved Owner browser-extension apply uses `captureChannelOperationReceipt` (`observation_channel: "browser_extension"`, `authentication_method: "extension_session"`). Same channel + operation ID + same hash **and** same `channel_operation_kind` replays the receipt. A different hash **or** kind is `409 GRANOT_OPERATION_IDEMPOTENCY_CONFLICT` and creates no row. Unique-index races reload the winner and apply the same check. A race with no reload winner throws `CaptureUnavailableError` (`503 GRANOT_CAPTURE_UNAVAILABLE`). Unique index is `{ observation_channel, channel_operation_id }` partial on string `channel_operation_id`. Details: [`extension-apply.md`](./extension-apply.md).
-- Approved HTTP automation apply uses `captureChannelOperationReceipt` (`observation_channel: "granot_http_automation"`, `authentication_method: "automation_owner_approval"`). Operation ID is `${run_id}:${action_id}`. Same hash/kind conflict rules. Details: [`automation-apply.md`](./automation-apply.md).
+- Pre-cutover HTTP automation captures used `captureChannelOperationReceipt` (`observation_channel: "granot_http_automation"`, `authentication_method: "automation_owner_approval"`). Operation ID is `${run_id}:${action_id}`. Same hash/kind conflict rules. New scheduled Estimates actions apply directly without a receipt. Details: [`automation-apply.md`](./automation-apply.md).
+- Index and read paths for receipts and locators: [storage and retention](./storage-retention-operations.md#storage-indexes-and-read-paths).
 - Software map: [`granot-lifecycle-capture.mdc`](../../../.cursor/rules/granot-lifecycle-capture.mdc).
 
 ## Out of scope here

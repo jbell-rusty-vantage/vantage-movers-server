@@ -1,8 +1,84 @@
 # Resume the server optimization sprint from main
 
+## Granot receipt retention
+
+The next Granot session should determine when a receipt has finished matching or updating a Lead and how soon its full document can leave MongoDB. A receipt tracks one delivery. A scheduled Estimates run tracks many actions. Older HTTP automation stored a result in both places. New scheduled Estimates already bypass receipt capture, and eligible inbound `lead_created` and `priority_updated` receipts already move to verified Google Cloud Storage (GCS). A genuine webhook can arrive without any run. [Scheduled apply](../knowledge/granot-lifecycle/automation-apply.md) · [Inbound retirement](../knowledge/granot-lifecycle/capture.md#retirement-of-completed-inbound-lead-receipts)
+
+Start with the remaining receipts. The November 19 cleanup retired 22,781 historical HTTP receipts. Of the 13,019 held in that cohort, 6,066 still had live evidence or lacked a verified archive page, and 6,953 lacked closed-run replay proof. At 21:01 New York the primary held 13,032 receipts across all channels, totaling 28.6 MiB of logical data, with 1,119.6 MiB of allocated collection space available for reuse. Measure fresh arrivals and removals to establish the current growth rate. [Cleanup results](../../../storage-capacity-analysis-2026-11-17/granot-receipt-cleanup-2026-11-19/RESULTS.md) · [Storage baseline](INDEX-READ-BASELINE-2026-11-19.md)
+
+1. **Prove fulfillment.** Trace the receipt through its Observation and Synchronization Decision to the matched Lead. For an update, verify the committed effect on that Lead and any required Sheet or Outreach handoff. For an already-current, stale or policy-final outcome, identify the durable evidence that closes it. Keep pending matches, retries, conflicts and unresolved downstream work available to their workers.
+2. **Decide what each channel still needs.** Trace inbound webhooks, historical HTTP actions and browser-extension operations separately. Where an original-ID reader needs the body, reuse its verified GCS generation and compact lookup. Where all remaining readers and recovery paths can use the Lead, Decision or closed-run replay, test deleting the full receipt without creating another archive copy or locator. Verify duplicate delivery and changed-input handling through the channel's normal entry point, including a retry during removal. Preserve Daily Operations counts and the extension's unique operation identity.
+3. **Prove the collection stays bounded.** In the implementation session, test a matched update, a terminal no-change, a held receipt and an interrupted retirement. Give the existing production watch the longer measurement of daily arrivals and distinct removals by channel, time from fulfillment to removal, age and reason for holds, and net MongoDB bytes including locators. Report one-time backlog cleanup separately. The decision is which receipts can leave immediately, which need GCS, and what specific work keeps the rest in MongoDB.
+
 **November 19 Sales Outreach and RingCentral Capture and Numbers.** Both services shipped. The receipt cleanup released 64.76 MiB logical. Both repeat previews returned zero. The November 18 receipt mix projects 9.61 MiB/day less BSON. Signed Numbers and Desk reads agreed with canonical calls, assignments and rep-day totals. [Production release and observation queries](OUTREACH-NUMBERS-RELEASE-2026-11-19.md)
 
 **November 19 Daily Operations, domain commands and Master Sheets.** Backlog cleanup removed 49,332,062 redundant BSON bytes from 1,006,476 records. The repeated cutoff preview returned zero. Keep canonical acceptance, immutable revisions, 400-day board facts, Sheet intents and 90-day attempt history in MongoDB. Runtime `62653f03` reproduced the closed day and all four timeline cases. The worker repaired six duplicate IDs in 6.47 seconds. All eight tabs and the empty queue verified. Follow up on natural milestone visibility and the 57.33 MiB increase in allocated data plus indexes. [Release and remaining proof](DAILY-COMMANDS-MASTER-SHEETS-RELEASE-2026-11-19.md)
+
+## Collection-wide index and read optimization
+
+The service storage passes are released. Production served `d5a1d33c` at 19:34 New York on November 19. Start from the [read-only index and read baseline](INDEX-READ-BASELINE-2026-11-19.md). Each Service doc under `docs/knowledge/` has a "Storage, indexes and read paths" section. It lists the declared indexes, their query shapes and retention.
+
+1. **Measure.** Capture `$indexStats` and `$collStats` on all three members at matched hours for seven days. The first sample covered only 29.2 hours on the primary. Add a slow-query or profiler sample for the hottest collections. Record the members, the windows and counter resets.
+2. **Attribute.** Map each index with zero or low reads to its declared query owner in the Service doc. Map each hot read to its code path. Hot reads include the `_id` reads on `form_leads`, `granot_observations` and `granot_webhook_receipts`, the `sheet_sync_leases.scope_1` reads and the `granot_automation_runs.granot_run_recovery` reads. Mark unknown owners as unknown.
+3. **Propose.** For each change, give its bytes, its write amplification, the plans before and after on the owning queries, and its rollback. Prefer hiding an index before dropping it. Batch or project hot reads only where the business contract is unchanged.
+4. **Reclaim.** Plan per-member physical reclaim for `granot_webhook_receipts`, `granot_observations`, `sales_intelligence_jobs` and `sales_intelligence_audit_events`. These collections hold most of the 2,147.8 MiB reusable on the primary. Record disk use per member before and after.
+
+**Authority.** This handoff grants no index, TTL, compact, deletion or deployment authority. Each production change needs explicit Owner approval with its scope recorded.
+
+Preserve RingCentral-only Call Lead qualification, saved historical qualifications, official Booking and Cancellation reporting, Master Sheet tab identities, command replay identities and recovery evidence.
+
+**November 20 progress.**
+- **Indexes:** 13 prefix-redundant Lead indexes are hidden in production (PR #235). Drop them with `node ops/capacity/retire-redundant-indexes-2026-11-20.cjs --drop` after 03:04 UTC on November 21, if no plan regression appears.
+- **Compact:** done on all three members, including the oplog. A temporary operator ran it and was then deleted, and member 02 is now primary after a Test Failover. Disk use fell from 49.0/58.9/53.4% to 24.2/23.6/24.5%, returning 15,394.5 MB in total. Oplog windows held at 25.6 hours. [Results](INDEX-READ-BASELINE-2026-11-19.md#november-20-actions-owner-approved)
+- **Next:** drop the hidden indexes after 03:04 UTC on November 21. Then run the seven-day index series against the now-compact files.
+
+**Clocks still open from earlier releases:**
+
+- **November 21 after 17:33 New York:** the eight-job Outreach expiry witness.
+- **November 22 after 16:27:17.007 New York:** the compact-receipt TTL check, plus the first-natural-receipt check for no stored preview or credential headers.
+- **November 23 at 21:06:40 New York:** the W1 checkpoint.
+- **November 26 at 00:00 UTC:** the earliest Granot receipt-expiry promotion, if November 19–25 are clean.
+- **November 27 at 20:04:51 New York:** the first fourteen-day Sales Intelligence job deadline.
+- **December 19 after 16:21:36.666 New York:** GCS generation expiry for the Sales Intelligence packs.
+- **Still to collect:** natural Daily Operations milestone visibility percentiles, and the matched-hour capacity watch. [Outreach and Numbers observations](OUTREACH-NUMBERS-RELEASE-2026-11-19.md#owner-observations) · [Daily Operations remaining proof](DAILY-COMMANDS-MASTER-SHEETS-RELEASE-2026-11-19.md)
+
+## Completed November 19 assignment — Daily Operations, commands and Master Sheets
+
+Released and verified on November 19. Outcome, measurements and remaining proof are in the [release record](DAILY-COMMANDS-MASTER-SHEETS-RELEASE-2026-11-19.md). The Owner's original assignment follows for reference.
+
+Complete the Daily Operations, Lead/Booking/Cancellation commands, and Master Sheets storage and workload optimization on vantage-main-server main. Carry it through implementation, deployment, eligible backlog cleanup, and live verification. You have my authorization to use the server code and logic, MongoDB Atlas, Google Cloud Storage, and the Google Sheets integration for every service and collection in scope.
+
+Start with the [root owner ledger](C:/Users/Pinda/Proyectos/vantage/OWNER-STORAGE-LEDGER.md) and the [Sales Intelligence release record](C:/Users/Pinda/Proyectos/vantage/vantage-main-server/docs/operations/SALES-INTELLIGENCE-JOBS-RELEASE-2026-11-19.md). Apply the same evidence and release strategy. Complete these three areas in order.
+### Daily Operations and `daily_operations_events`
+
+Historical display rows have already been trimmed, and retained events have a 400-day TTL. Determine exactly what the live board, day close, historical views, and late corrections read from these events. Price the current design against viable alternatives, including coalesced refreshes, rebuilding from canonical records, and archiving closed-day history to GCS. Verify that the chosen design reproduces a representative closed day and handles a correction after the New York day boundary.
+
+**Job number timeline**
+
+Simplify the job number timeline. I want a short history that answers three questions at a glance. Where did the lead originate? When was the job number linked, if known? When was the job booked or cancelled? Show the lead origin, the first job-number link, and any official Booking or Cancellation in chronological order. If a job was booked and later cancelled, show both. If an official Booking or Cancellation has no linked Lead, show the known milestones without inventing an origin.
+
+Exact event-by-event history and real-time updates are no longer requirements. Routine field edits, repeated observations, sync attempts, and retries can be omitted from the timeline. Derive milestones from canonical records wherever those records preserve the historical fact and its date. Before retiring granular events, verify whether another consumer still needs them for day close, corrections, command replay, or sheet delivery.
+
+Verify the simplified timeline against production examples of an open job, a booked job, and a booked-then-cancelled job, plus a leadless official record if available. Record which event writes and retained rows this simplification removes, the measured savings, and any history that still needs MongoDB or GCS.
+
+### Lead, Booking, and Cancellation commands
+
+Cover `domain_command_executions` and `entity_changes`. Trace every producer and consumer, including retry and replay paths, downstream workers, and their checkpoints. Determine which records must remain queryable in MongoDB, for how long, and what can be compacted, archived, or removed. Preserve durable command acceptance, idempotency, same-key conflict detection, and recovery after partial failure. Preserve RingCentral Call Lead qualification and billing, legitimate historical qualifications, and official Booking and Cancellation reporting, including leadless records.
+
+### Master Sheets
+
+Cover `sheet_sync_jobs` and `sheet_sync_attempts`. Cover all six Master Leads tabs and both Master Booked tabs. Measure the cost of enqueuing, polling, retrying, and retaining delivery history. Coalesce superseded work wherever the latest canonical state is sufficient. Preserve spreadsheet and tab identities, correct row placement and removal, and operator-owned cells. Prove recovery when Sheets accepts a write and the worker stops before MongoDB records success. Verify that an older retry cannot overwrite a newer correction or recreate a removed row.
+### Measurement, release, and verification across all three areas
+
+Eventual consistency is acceptable. The board and sheets can update in batches. Choose a reasonable cadence from measured traffic and business use. Keep canonical commands durable and make downstream work recoverable. Report the observed median and 95th-percentile time from a canonical change to its visible result, the oldest pending work, and how quickly a backlog drains. Verify that the system converges to the correct result after retries and late corrections.
+
+Measure before changing production. Use a representative full business day where available, identify peak and day-close windows, and state the dates, time zone, units, and sampling limits. Measure per-collection reads and writes where observable, document counts, logical bytes, allocated storage, index bytes, and queue age. For each proposed change, show the arithmetic for ongoing work removed and work added across MongoDB, the server, GCS, and Sheets. Keep one-time cleanup savings separate from recurring savings. Record query shapes and index usage now so the later collection-wide index analysis has a baseline.
+
+Release and clean up against explicit eligibility rules. Test duplicate delivery, worker interruption, replay, and late correction before deployment. Verify the production API and affected workers are running the intended revision. Preview cleanup by collection and cutoff, with counts, bytes, and reasons for held records. Apply eligible cleanup in bounded, restartable batches and rerun the preview. Where GCS takes over a retention obligation, verify the object generation, checksum, and restore or lookup path before removing the MongoDB copy. Verify live board and sheet results against canonical records using real activity, and identify the observation window for each claim.
+
+Update the server ledgers, server handoff, and root owner ledger with the deployed revision, before-and-after measurements, eligible and held backlog, observed delivery lag, and what stays in MongoDB or GCS and why. End with a status for each of the three areas and the exact outstanding proof for anything still open. The overall final measurements and broad index refactor come after this assignment.
+
+## Previous release notes
 
 **November 19 Sales Intelligence jobs and Sales Outreach.** Production removed 233,735 full jobs and compacted 177,836 replay receipts, saving 202.23 MiB net logical BSON. Keep current Desk, attribution, admissions and worker recovery evidence in MongoDB. Verified rollback data occupies 38.72 MiB in GCS. The next proof is the November 22 new-receipt TTL check, then December 19 generation-specific recovery expiry. [Release and measured results](SALES-INTELLIGENCE-JOBS-RELEASE-2026-11-19.md) · [Owner bookmark](C:/Users/Pinda/Proyectos/vantage/SERVER-OPTIMIZATION.md)
 
@@ -12,7 +88,9 @@
 
 **November 19 Owner correction.** Scheduled Estimates now have a direct Lead change path in the primary checkout. Fresh polls skip unchanged, unmatched and ambiguous Leads. New scheduled actions bypass webhook receipt capture, enqueue Sheet Sync for affected fields and request an Outreach refresh for a committed priority change. Qualify a live slot for zero new automation webhook receipts before the historical cleanup. The November 19 9 a.m. figures and archive-first proposals below describe the pre-cutover producer and its historical data. [Current scheduled apply contract](../knowledge/granot-lifecycle/automation-apply.md)
 
-## Next session priority — remove fulfilled Granot receipts from MongoDB
+## November 19 pre-cutover receipt and run design
+
+The following records the design and volumes before the November 19 releases. Use the [current receipt retention handoff](#granot-receipt-retention) for the remaining cohorts.
 
 The Owner's November 19 scope covers all four collections, with fulfilled receipts first. Implement on server `main`. The target is the first point at which a retry, reader or downstream worker can finish from independently durable state. The following are implementation targets. The existing production controls and measured retirement are recorded below.
 
