@@ -4,7 +4,7 @@ title: "Granot lifecycle claim and drain (`granotLifecycle/drainer`)"
 description: Fenced claim/lease, queue/cron drain, dead letter, and Owner requeue. No Lead or Booking effects.
 tags: [granot-lifecycle]
 status: draft
-stale_after: 2026-11-19
+stale_after: 2026-12-19
 resource: src/services/granotLifecycle/drainer.ts
 applies_to:
   - src/services/granotLifecycle/drainer.ts
@@ -30,7 +30,7 @@ generated:
 
 # Granot lifecycle claim and drain (`granotLifecycle/drainer`)
 
-**Role:** Turn Mongo receipt work state into one fenced execution path shared by the queue consumer, five-minute cron, future synchronous apply, and Owner requeue. Queue messages are wake-ups only. This module does not match Leads, invent `pending_match`, or mutate official Lead/Booking/Cancellation facts.
+**Role:** Turn Mongo receipt work state into one fenced execution path shared by the queue consumer, five-minute cron, synchronous extension and pre-cutover automation apply, and Owner requeue. Queue messages are wake-ups only. This module does not match Leads, invent `pending_match`, or mutate official Lead/Booking/Cancellation facts.
 
 ## Shared entry
 
@@ -39,6 +39,8 @@ Callers pass receipt identity only. The claim predicate is the Section 26 filter
 Renew and every success/retry/dead-letter finalization are fenced by `{_id, state:claimed, lease_owner}`. A zero match means lease lost: stop, write no final state, launch no replacement processor.
 
 For accepted Lead outcomes, the transaction verifies the Decision and Observation, certifies the current winning Lead and stores its reference in the fenced receipt completion. Losing the receipt lease rolls back the Lead proof. Later reconciliation can use the stored reference to invalidate the proof.
+
+Successful completion stores the replay result for channel receipts and sets `processing.retention_review_at` to completion plus 24 hours and one minute for a Form Lead or Call Lead target with an `already_current`, `stale`, `created`, `linked` or `applied` outcome. A receipt load falls back to `granot_archived_receipts` by original ID when the hot receipt was retired. A Decision load falls back to the case copy and then the GCS archive catalog by original Decision ID ([`completedWebhooks.ts`](../../../src/services/granotHistory/completedWebhooks.ts), [`caseEvidence.ts`](../../../src/services/granotLifecycle/caseEvidence.ts)).
 
 Processing disabled: no claim, safe skipped run (`claimAndProcessOrPoll` returns `{ status: "skipped", reason: "processing_disabled" }`). Capture and due work remain intact. If the processor is invoked directly with processing off, it throws `ProcessingDisabledError`.
 

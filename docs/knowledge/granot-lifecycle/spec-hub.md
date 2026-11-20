@@ -64,4 +64,16 @@ This file is a **Reference** hub only. It points at the locked contract and owne
 - [Owner operator runbook](../../granot-lead-lifecycle/[REDACTED]-operator-runbook.md)
 - [Sprint progress through Unit 25](../../granot-lead-lifecycle/sprint-progress-through-unit-25.md)
 
+## Removed source paths
+
+None of the files linked above remain in the working tree. Read them from git history:
+
+| Linked path | Removed in | Read with |
+| --- | --- | --- |
+| `scripts/prototypes/granot-lead-lifecycle/specs/*` (FINAL SPEC) | `ce5f856c`, 2026-09-24 (`scripts/` became local-only) | `git show ce5f856c^:<path>` |
+| `docs/granot-lead-lifecycle/*`, `docs/call-lead-contact-provenance/*`, `docs/booking-intake-lead-attachment/*` | `259b8b72`, 2026-09-10 | `git show 259b8b72^:<path>` |
+| `docs/referral-review-release-first/*`, `docs/dashboard-delete-live-claims/*` | `b67f740f`, 2026-10-03 | `git show b67f740f^:<path>` |
+
+The pointer Services in this folder remain the current code-facing summaries. Granot collections, indexes and read paths after the November 17–19 optimization releases are in [storage and retention](./storage-retention-operations.md#storage-indexes-and-read-paths).
+
 Service concepts for capture, apply, processor, and cases stay in the inventory files listed from [`docs/index.md`](../../index.md). Query with `pnpm okf:query --tag granot-lifecycle`.

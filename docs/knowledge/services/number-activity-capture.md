@@ -4,33 +4,48 @@ title: Number Activity capture (all-direction Call Interaction projection)
 description: CSI-02 projection of RingCentral webhook parties and Detailed Call Log records into canonical, account-scoped Call Interactions with honest coverage, and the All Numbers call summary of every touched Contact Number. Its only downstream job is the number's lead-link recompute when a settled call joins it.
 tags: [sales-intelligence, ringcentral, durable-work]
 status: draft
-stale_after: 2026-12-17
+stale_after: 2026-12-19
 resource: src/services/numberActivity/
 applies_to:
   - src/services/numberActivity/
+  - src/services/ringcentral/webhook-capture.ts
+  - src/models/CallInteraction.ts
+  - src/models/ContactNumber.ts
+  - src/models/salesIntelligence/capture.ts
 owners: [team:main-server]
 sources:
+  - id: release-2026-11-19
+    resource: docs/operations/OUTREACH-NUMBERS-RELEASE-2026-11-19.md
+    title: Sales Outreach and RingCentral Capture and Numbers release (2026-11-19)
+  - id: jobs-release-2026-11-19
+    resource: docs/operations/SALES-INTELLIGENCE-JOBS-RELEASE-2026-11-19.md
+    title: Sales Intelligence jobs release (2026-11-19)
   - id: specification
     resource: docs/call-sales-intelligence/03-server-pipeline-and-jobs.md
+    title: Removed from main 2026-10-29 (fc8166bf); read it from git history
   - id: models
     resource: docs/call-sales-intelligence/02-domain-models.md
+    title: Removed from main 2026-10-29 (fc8166bf); read it from git history
   - id: handoff
     resource: docs/call-sales-intelligence/workspace/evidence/csi-02/HANDOFF.md
+    title: Removed from main 2026-10-29 (fc8166bf); read it from git history
   - id: review
     resource: docs/call-sales-intelligence/workspace/evidence/csi-02/INDEPENDENT-REVIEW.md
+    title: Removed from main 2026-10-29 (fc8166bf); read it from git history
   - id: call-log-completeness
     resource: ../CALL-LOG-CAPTURE-COMPLETENESS-SPECIFICATION.md
+    title: Workspace-root specification; not present in the current workspace checkout
 ---
 
 # Number Activity capture
 
 **2026-10 All Numbers phase B.** The Contact Number rollups, the attachment refresh job and the rollup rebuild are gone: after a contribution changes, capture recomputes each touched number's [call summary](#all-numbers-call-summary) from its calls in the observation's transaction and nominates a `lead_link` job ([number-activity-reads.md](number-activity-reads.md#lead-link-leadlinkts)).
 
-**2026-10 server/admin slimming.** Capture is retained. It no longer nominates `outreach_ensure` or `recording_discovery` work, the ContactNumber rollups lost their Outreach and analysis counters, and the old capture-recovery repair tooling was removed ([slimming specification](../../server-admin-slimming/SPECIFICATION.md) §7.3–7.4). Provider recording metadata stays on `call_interactions.recordings[]`; the server never downloads audio.
+**2026-10 server/admin slimming.** Capture is retained. It no longer nominates `outreach_ensure` or `recording_discovery` work, the ContactNumber rollups lost their Outreach and analysis counters, and the old capture-recovery repair tooling was removed (slimming specification §7.3–7.4, removed from main on 2026-10-29; the Admin keeps a pointer in `vantage-admin/docs/server-admin-slimming/README.md`). Provider recording metadata stays on `call_interactions.recordings[]`; the server never downloads audio.
 
 **Role:** turns every RingCentral telephony observation — inbound, outbound, missed, unanswered, transferred, internal, withheld — into one canonical [Call Interaction](../../../../CONTEXT.md) per provider session, keyed by provider account plus session/Call Log aliases. It feeds Number Activity; it never widens [Call Qualification](../../../../CONTEXT.md), never imports `ingestRingCentralQualifiedCall`, and never writes Leads.
 
-**System of record:** `call_interactions`, `call_interaction_aliases`, `contact_numbers`, `sales_intelligence_sync_state` (scopes `call_log_all_directions` and `call_log_sweep`) and `sales_intelligence_jobs`. Indexes come from the CSI migration; writers fail closed without the unique fences.
+**System of record:** `call_interactions`, `call_interaction_aliases`, `contact_numbers`, `sales_intelligence_sync_state` (scopes `call_log_all_directions` and `call_log_sweep`) and `sales_intelligence_jobs`. Capture reads `ringcentral_webhook_events` receipts through the [fan-out job](sales-intelligence-webhook-fanout.md). [Storage, indexes and read paths](#storage-indexes-and-read-paths) lists every index and the queries that use it.
 
 **Disk trim (2026-10-07).** Capture writes no `sales_intelligence_audit_events` row. The per-observation `interaction.created|updated|merged` rows and the `capture_projection.completed` / `call_log_refresh.completed` completion rows were worker exhaust (about 10 MB a day) that no screen read; the stored backlog was deleted by `ops/disk-trim/trim.ts`. The call row, its aliases, `projection_revision` and the bounded `result` on the job row are the evidence. Owner and desk commands still write audit rows, and those now expire after 90 days (`csi_audit_happened_ttl` on `happened_at`).
 
@@ -57,6 +72,8 @@ sources:
 - Identity is `(provider, provider_account_id, alias)`; aliases are `telephony_session_id` → `session_id` → `call_log_id`. Two rows merge only when one provider record names both identities; the earlier-created row is canonical, the other gets `merged_into_id`, aliases re-point, and both numbers' summaries are recomputed. Phone and time similarity never merge.
 - Each party is fenced by its own `last_webhook_sequence`. `terminal` and `provider_connected` never regress (a provisional Call Log record leaves `terminal` as it was; it never sets it). A Call Log record with an older `lastModifiedTime` adds ids/legs/recordings only and never overwrites stored leg-level result/duration. Once a Call Log record has been applied, its result/duration/ended_at outrank later webhook events. On a settled row, a delayed party webhook may add party evidence while the stored Call Log direction and endpoints continue to identify the customer. Each subsequent Call Log batch checks provider evidence against the resolved account, including by-ID recovery. `legs_overflow_count` is a monotone lower bound.
 - Identical semantic input is a no-op: no write, revision or job. `call_log_state` is part of the projection, so a change of state alone is a revision.
+- A row that retention purged (`purged_at` set) keeps its identifiers and aliases. A late provider replay that resolves to it returns a no-op and never restores content.
+- Aliases are account-scoped. The same `telephony_session_id` or Call Log id in two provider accounts resolves to two separate interactions (replica proof, `ops/numbers-v2/all-numbers.replica.test.ts`, `fdc799dc`).
 - **A Call Log record is observed, not final** (CC-04). RingCentral lists a queue call as soon as its unanswered ring-out legs end, then rewrites the same record id when the call ends. `classifyCallLogRecordState(record, directory, { now, settleHorizonMinutes })` is pure and returns `provisional` when either rule holds:
   - **P-a**: the top-level `result` is `Stopped`, `IP Phone Offline` or `In Progress`.
   - **P-b**: RingCentral's `direction` is `Inbound`/`Outbound` (a live snapshot says `Outbound`: it copies the ring-out leg), the top-level `to` classifies as company side, every leg is a company ring-out (a `PstnToSip`/`SipToSip` leg that is not `Inbound`, with an `extension.id` or a company-side `to`; so no `Accept` or customer leg), **and** the call carries PSTN evidence (a `PstnToSip` leg, or a top-level number that is not a company DID). The top-level `from` may be the rep's extension (the 24 stored snapshots: both sides company, stored `Internal`) or the PSTN caller id (live watch 2026-09-24). The PSTN condition keeps a genuine extension-to-extension call settled.
@@ -64,7 +81,7 @@ sources:
   Otherwise `settled`. Any record with `now − lastModifiedTime ≥ settleHorizonMinutes` (default 240; start time when `lastModifiedTime` is absent) is `settled`. An `Inbound`/`Accepted` record with a short `Accept` leg is **deliberately settled**: its `lastModifiedTime` does not move while the call continues, so it cannot be told from a genuine short answered queue call; the re-read corrects duration and adds recordings. The rules gate downstream work only; the reconcile re-reads every record inside the horizon regardless. Pinned by `callLogState.test.ts` (24 stored-shape and 2 live-shape snapshot fixtures provisional; 3 `Accepted` snapshots and 37 settled fixtures of every result family settled).
 - `call_interactions.call_log_state`: `null` (never seen in the Call Log: webhook-only or stored before CC-04), `provisional`, `settled`. A provisional record does not set `terminal`, `ended_at` or `duration_seconds` from the snapshot, gets **no Contact Number**, and schedules **no** downstream job. `settled` never regresses: a stale record keeps the stored state (a provisional row quiet past the horizon still settles), and a settled row stays settled. Webhook projection never sets the field; only a settled Call Log record, or the settle from store below, settles a row.
 - **A terminal row never moves to provisional.** When a row is already `terminal` (a webhook `Disconnected`, or any earlier final observation) and is not provisional, a Call Log record that classifies as a snapshot is applied like a stale record: it adds ids, legs and recordings only. It does not change `call_log_state`, direction, endpoints, result, duration or `provider_last_modified_at`, so the Contact Number, its summary and downstream work already created are never withdrawn and re-run. This covers the provider's rewrite lag after webhook capture has ended a session, and a newer snapshot-looking record on a settled row.
-- The **one allowed regression**: a later Call Log version of a provisional row may change `direction` (`Internal` or the snapshot's `Outbound` to the final `Inbound`/`Outbound`) and `started_at` and set `external_e164`, `external_endpoint_kind` and the Contact Number. It is refused on a `settled` Internal row (a row stored before CC-04, `null`, may still change, so historical repair can fix frozen snapshots). The Contact Number appears on the settle transition and the call is counted once (the summary is recomputed from the calls). The first settled revision of a provisional row (`newly_settled`) is treated like a creation downstream: `outreach_ensure` for that revision, the number's `lead_link` job, `recording_discovery` for every recording id (or `:pending` when none).
+- The **one allowed regression**: a later Call Log version of a provisional row may change `direction` (`Internal` or the snapshot's `Outbound` to the final `Inbound`/`Outbound`) and `started_at` and set `external_e164`, `external_endpoint_kind` and the Contact Number. It is refused on a `settled` Internal row (a row stored before CC-04, `null`, may still change, so historical repair can fix frozen snapshots). The Contact Number appears on the settle transition and the call is counted once (the summary is recomputed from the calls). The first settled revision of a provisional row (`newly_settled`) counts as the call joining its number, so it nominates the number's `lead_link` job. It nominates no other stage.
 - `contact_numbers.search_terms` has one cap and one owner (`numberActivity/searchTerms.ts`, `MAX_SEARCH_TERMS = 50`). The All Numbers lead-link recompute owns the set and replaces it wholesale (caller-ID names, then the Leads' names, Job Numbers and reps); capture (`observeOnNumber`) may only *add* an observed caller-ID name and never truncates, reorders or evicts a term it did not write — at the cap it declines the addition, and the name still reaches the set through `provider_names` on the next recompute (CSI-14 §6).
 - `contact_type` here is `unknown` or provider-declared `voicemail`; human conversation is never inferred from connection or duration. Transcript/Owner values are preserved.
 - `Internal` requires company-side evidence on **both** endpoints (directory extension/DID, or a provider-supplied extension id/number). An unknown short dial string is `malformed`, not a fabricated extension. A party event with no `direction` projects `Unknown` until later evidence; the party's own extension is never injected into an endpoint merely assumed to be the company side.
@@ -92,7 +109,7 @@ Escalation (structured log lines `sales_intelligence.call_log_reconcile.<kind>`;
 
 ## RingCentral rate gate
 
-Every server path authenticates as one JWT user, and RingCentral limits each app + user pair per API group, so all crons, queue consumers and jobs share one bucket per group. Production answered the Heavy group on 2026-09-25 with `429 CMN-301`, `X-Rate-Limit-Group: heavy`, `X-Rate-Limit-Limit: 10`, `X-Rate-Limit-Window: 60`, `Retry-After: 60`. Call Log list/by id, Call Log Sync, recording metadata/content, Active Calls (account or extension) and account presence are Heavy. Per-extension message list / message by id, message sync, extension presence and subscription renew are Light (Sales Outreach Desk rep SMS capture).
+Every server path authenticates as one JWT user, and RingCentral limits each app + user pair per API group, so all crons, queue consumers and jobs share one bucket per group. Production answered the Heavy group on 2026-09-25 with `429 CMN-301`, `X-Rate-Limit-Group: heavy`, `X-Rate-Limit-Limit: 10`, `X-Rate-Limit-Window: 60`, `Retry-After: 60`. Call Log list/by id, Call Log Sync, recording metadata/content, Active Calls (account or extension) and account presence are Heavy. No server path calls the recording endpoints since the unused recording adapter (`ringcentral/recordings.ts`) was retired on 2026-11-18 (`afa626bc`); the gate still classifies those paths. Per-extension message list / message by id, message sync, extension presence and subscription renew are Light (Sales Outreach Desk rep SMS capture).
 
 `ringcentral/rateLimitGate.ts` keeps one document per group in `ringcentral_rate_limit_gates` (`ringcentral:heavy`, `ringcentral:light`, `ringcentral:other`), decided by one atomic pipeline `findOneAndUpdate`:
 
@@ -114,7 +131,7 @@ Every server path authenticates as one JWT user, and RingCentral limits each app
 - `shadow`: counts records whose stored row would change (the per-row skip) and applies nothing; the token chain still advances. The window keeps the full settle horizon and stays authoritative.
 - `on`: applies every record through the window's path (per-row skip, quarantine). The new token is stored only when every record applied or was quarantined. With a stored token the window narrows to the safety lookback (90) as a net; if the step failed, the window keeps the full settle horizon.
 
-**Minute ISync lane** (`callLogIsyncLane.ts`, cron `/api/cron/sales-intelligence-call-log-isync`, `* * * * *`, under `SALES_INTELLIGENCE_CAPTURE_CALL_LOG`, only when the mode is `on`): while New York time is in [07:45, 20:30) it sends one `ISync` with the stored token every minute (Heavy, high lane, gate wait at most 10 s), follows pages only while full (budget 3), and applies records through `callLogApplier.ts`. It shares this state row, token chain, quarantine and lease with the reconcile: it never bootstraps a token (missing: `token_missing`, the reconcile FSyncs), skips when the lease is held, and yields on the reconcile's own minutes (UTC minute 3 mod 5) and outside staffed hours, where the reconcile's step carries ISync. The reconcile waits up to 20 s for a lease the lane holds. The lane writes `isync_lane.{last_run_at, last_success_at, last_error_code, last_records, last_applied}` field by field (`isyncLaneSetOf`), so `last_success_at` is sticky: a run that stores no token leaves the previous success in place (A3). It never moves `known_complete_through` (the window owns it). After each applied batch both lanes call the Sales Outreach Desk wake (`salesOutreach/capture/contactChangeWake.ts`) for the changed rows; the seam is inert until the desk consumer exists.
+**Minute ISync lane** (`callLogIsyncLane.ts`, cron `/api/cron/sales-intelligence-call-log-isync`, `* * * * *`, under `SALES_INTELLIGENCE_CAPTURE_CALL_LOG`, only when the mode is `on`): while New York time is in [07:45, 20:30) it sends one `ISync` with the stored token every minute (Heavy, high lane, gate wait at most 10 s), follows pages only while full (budget 3), and applies records through `callLogApplier.ts`. It shares this state row, token chain, quarantine and lease with the reconcile: it never bootstraps a token (missing: `token_missing`, the reconcile FSyncs), skips when the lease is held, and yields on the reconcile's own minutes (UTC minute 3 mod 5) and outside staffed hours, where the reconcile's step carries ISync. The reconcile waits up to 20 s for a lease the lane holds. The lane writes `isync_lane.{last_run_at, last_success_at, last_error_code, last_records, last_applied}` field by field (`isyncLaneSetOf`), so `last_success_at` is sticky: a run that stores no token leaves the previous success in place (A3). It never moves `known_complete_through` (the window owns it). After each applied batch both lanes call the Sales Outreach Desk wake (`salesOutreach/capture/contactChangeWake.ts`) for the changed rows (`wakeOutreachForTouchedCalls`). It enqueues one deduplicated `outreach_contact_change` job per call revision only while the persisted desk configuration is active with `desk_enabled` or `goal_metrics_enabled` on; the desk's contact sweep is the net for a lost wake.
 
 State: `call_log_sync: {token, sync_time, last_full_sync_at, consecutive_expiries}`. The token never appears in logs, events or summaries. `last_run` carries `sync_mode`, `sync_type`, `sync_records`, `sync_changed`, `sync_applied`, `sync_token_stored`, `sync_error_code`.
 
@@ -132,7 +149,7 @@ Records held in the reconcile's `quarantined_records` are skipped: neither measu
 - **Result**: `answered` when `provider_connected`; `voicemail` when `contact_type: voicemail` or the provider result matches /voicemail/i; else `missed`. Only an inbound call counts as missed (voicemail included); an unanswered outbound call keeps result `missed` but never counts and never opens a wait.
 - **Waiting on us**: handled = any outbound call (connected or not) or an answered inbound call; `waiting_since` = the start of the **earliest** missed/voicemail inbound call after the **latest** handled call, else null. An outbound text does not clear it (v1).
 - `last_call.rc_extension_id` is our side (the answering, else first, user party); reads resolve the Agent at the call time (`callRep.ts`).
-- **Writers**: capture inside the observation transaction when the counted contribution changes or the Number summary needs initialization. Moves and merges recount every affected Number; retention after purging a call; the v2 migration. The write sets the summary paths only, without a `revision` bump (the revision fences the Owner's lead-link command), and only when something changed.
+- **Writers**: capture inside the observation transaction; retention after purging a call; the v2 migration. Capture skips the recount (W7, `477703d3`) only when all of these hold: the call was already on the same Number, this observation did not create the Number, the stored summary is initialized (`hasInitializedCallSummary`: `summary_version` 1 and well-formed `calls`, dates and `last_call`), no row merged, and `sameCallSummaryContribution` finds the call's contribution unchanged (Number, direction, start, result, duration, our extension, counted or not). A new recording or fresher provider evidence on the same call then costs no Number summary read and no counted-call query. Creation, a move, a merge, a purge, settlement and a corrected counted field still recount every touched Number. An identical replay exits earlier, before any Number work. The write sets the summary paths only, without a `revision` bump (the revision fences the Owner's lead-link command), and only when something changed.
 - Capture's own number write (`observeOnNumber`) adds caller-ID names and a search term and widens `first_observed_at`/`last_activity_at`; it no longer bumps `revision` — concurrent writers of the row all run in transactions, where a write conflict aborts and retries.
 - Retention's Number activity purge clears the v2 fields with the identity (`lead: null`, zero `calls`, no `last_call`, no wait).
 
@@ -155,6 +172,89 @@ Records held in the reconcile's `quarantined_records` are skipped: neither measu
 The reconcile cron runs `3-59/5`; the sweep `40 7 * * *`. All provider calls are `GET`. Cron/queue registration, the webhook fan-out that calls `observeRingCentralWebhookEvents` from a durable job, and the all-direction subscription lifecycle are wired by CSI-03: see [sales-intelligence-webhook-fanout.md](sales-intelligence-webhook-fanout.md).
 
 `PersistDependencies.settleHorizonMinutes` passes the same horizon to `fromCallLogRecord`, so the provisional gate and the re-read window agree. Index `call_interaction_call_log_state_started` `{call_log_state: 1, started_at: 1}` finds provisional rows oldest first.
+
+## Storage, indexes and read paths
+
+Index declarations are the source of truth. The CSI collections declare theirs in `src/models/salesIntelligence/registry.ts` (`CSI_MODEL_REGISTRY`) with `autoIndex` off. Every CSI write first checks that the collection's unique fences exist (`defineCsiModel`, `INDEX_REQUIRED`). The receipt collection builds its own indexes on first use (`ensureRingCentralWebhookEventIndexes`).
+
+### Collections and indexes
+
+**`ringcentral_webhook_events`** (`ringcentral/webhook-capture.ts`, unnamed indexes get the driver's default name):
+
+| Name | Keys and options | Used by |
+| --- | --- | --- |
+| `provider_1_receivedAt_-1` | `{provider: 1, receivedAt: -1}` | Owner Coverage latest receipt and one-hour count; subscription health `{provider, receivedAt > since, subscriptionId}` |
+| `uuid_1` | `{uuid: 1}`, unique, sparse | Duplicate delivery fence on insert; duplicate lookup `findOne({uuid})` |
+| `telephonySessionId_1` | `{telephonySessionId: 1}` | No `src/` reader (observation) |
+| `sessionId_1` | `{sessionId: 1}` | No `src/` reader (observation) |
+| `provider_1_receivedAt_1__id_1` | `{provider: 1, receivedAt: 1, _id: 1}`, partial `{telephonySessionId: {$type: "string"}}` | Watermark recovery keyset scan (`listWebhookReceiptsBetween`); Desk newest telephony receipt (`readLastCallWebhookAt`, newest first, limit 1) |
+| `ringcentral_webhook_event_received_ttl` | `{receivedAt: 1}`, `expireAfterSeconds` 604,800 (7 days) | TTL; the bounded dev monitor (`find({})` newest first, limit 1–100) |
+
+The capture job loads its receipt by `_id`. A stored receipt keeps `provider`, `receivedAt`, `validationTokenPresent`, sanitized `headers`, `rawBody` and the indexed identities `uuid`, `subscriptionId`, `event`, `timestamp`, `ownerId`, `telephonySessionId`, `sessionId`, `sequence`. It stores no `normalizedPreview` and no credential header (`WEBHOOK_CREDENTIAL_HEADERS`: `authorization`, `cookie`, `x-api-secret`, `verification-token`, `validation-token`, `x-vercel-oidc-token`, `x-vercel-proxy-signature`) since `477703d3` and `ed8db9b5`. The route verifies the delivery against the request before it stores. The monitor (`GET /api/dev/ringcentral/webhook-events`) rebuilds the preview from `rawBody` on read.
+
+**`call_interactions`** (`CALL_INTERACTION_INDEXES`):
+
+| Name | Keys and options | Used by |
+| --- | --- | --- |
+| `call_interaction_session_unique` | `{provider: 1, provider_account_id: 1, telephony_session_id: 1}`, unique, partial `{telephony_session_id: {$type: "string"}}` | Identity fence; nightly sweep `$or` arm `telephony_session_id: {$in}`; `numbersForLead` (without the account, see observations) |
+| `call_interaction_session_id` | `{provider: 1, provider_account_id: 1, session_id: 1}`, sparse | No `src/` filter on `session_id` (identity lookup goes through aliases; observation) |
+| `call_interaction_call_log_ids` | `{provider: 1, provider_account_id: 1, call_log_ids: 1}` | Nightly sweep `$or` arm `call_log_ids: {$in}` |
+| `call_interaction_number_started_id` | `{contact_number_id: 1, started_at: -1, _id: -1}` | Summary recount (`summaryCallFilter`, every counted call of the number); Number detail (newest 101 calls); lead-link session page (newest 200) |
+| `call_interaction_started_window` | `{started_at: -1, _id: -1}` | Retention scan `{started_at <= cutoff, purged_at: null}` oldest first |
+| `call_interaction_extension_started` | `{"parties.extension_id": 1, started_at: -1}` | No `src/` filter on `parties.extension_id` (observation) |
+| `call_interaction_recording` | `{"recordings.provider_recording_id": 1}`, sparse | No `src/` filter since recording discovery was retired (observation) |
+| `call_interaction_provider_modified` | `{provider_last_modified_at: -1}` | Candidate for the settle-from-store scan (sorted by `provider_last_modified_at`) |
+| `call_interaction_updated` | `{updatedAt: -1, _id: -1}` | Sales Outreach contact sweep `(updatedAt, _id)` cursor |
+| `call_interaction_call_log_state_started` | `{call_log_state: 1, started_at: 1}` | Provisional stragglers and the `known_complete_through` cap; settle from store (`call_log_state: "provisional"`) |
+
+**`call_interaction_aliases`**: `csi_alias_unique` `{provider: 1, provider_account_id: 1, kind: 1, value: 1}` unique; `csi_alias_interaction` `{interaction_id: 1}` (merge re-point `updateMany({interaction_id})`).
+
+**`contact_numbers`**: the seven `CONTACT_NUMBER_INDEXES` and their read paths are in [number-activity-reads.md](number-activity-reads.md#storage-indexes-and-read-paths). Capture uses `contact_number_e164_unique` (`findOne({e164})` before create) and writes by `_id`.
+
+**`sales_intelligence_sync_state`**: `sales_intelligence_sync_state_scope_unique` `{scope: 1}`. Capture scopes: `call_log_all_directions` (reconcile and ISync lane), `call_log_sweep`, `webhook_receipts`, the retention lease, `lead_link_entity_changes`. Rep SMS reads scopes by prefix regex.
+
+**`ringcentral_directory_snapshots`**: `csi_directory_digest_unique` `{provider_account_id: 1, digest: 1}` unique; `csi_directory_taken` `{taken_at: -1}`. Append-only.
+
+**`ringcentral_rate_limit_gates`**: one document per group, addressed by `_id` (`ringcentral:heavy|light|other`). No secondary index.
+
+### Main query shapes
+
+- **Receipt insert and dedupe.** `insertOne`; a duplicate `uuid` (E11000) is answered with the stored `_id` from `findOne({uuid})`.
+- **Watermark scan.** `{provider, receivedAt in [from, to], telephonySessionId: {$type: "string"}}` plus a strict `(receivedAt, _id)` keyset, sorted `{receivedAt: 1, _id: 1}`, batch 200, at most 10 pages. It projects `_id`, `receivedAt`, `uuid` only.
+- **Interaction upsert** (`persistInteraction.ts`, one transaction): alias `find({provider, provider_account_id, $or: [{kind, value}…]})`; canonical rows by `_id: {$in}` following `merged_into_id`; Number `findOne({e164})`; interaction `updateOne({_id, projection_revision})` CAS with `$inc`, or `create`; merge tombstone CAS and alias re-point; `insertMany` for new aliases; the summary recount when W7 does not skip it; `enqueueCsiJob` for `lead_link`.
+- **Per-row skip** (`callLogApplier.ts`): one batched alias read per window, then canonical rows by `_id: {$in}` (at most four `merged_into_id` hops), projecting `provider_last_modified_at`, `call_log_state`, `merged_into_id`.
+- **Summary recount.** Number `findById` (summary fields), then `find(summaryCallFilter)` with no limit, then `updateOne({_id}, {$set})` only on change.
+- **Nightly sweep.** `{provider, provider_account_id, $or: [{telephony_session_id: {$in}}, {call_log_ids: {$in}}]}` in chunks of 500.
+- **Settle from store.** `{call_log_state: "provisional", merged_into_id: null, provider_last_modified_at < horizon, $or: [...]}` sorted by `provider_last_modified_at`, limit 50.
+
+### Retention and what stays in MongoDB
+
+- Receipts: TTL 7 days on `receivedAt`. `rawBody` serves the capture job, the 12-hour watermark replay and debugging inside that window. A preview is reproducible from `rawBody`, so it is not stored.
+- `call_interactions` and `call_interaction_aliases`: kept until retention. Retention (`salesIntelligence/retention.ts`) purges calls older than the active Owner policy's `retention.audit_days` (730 days on 2026-11-19, cutoff `2024-11-19T23:51:22Z`, zero eligible rows). A purged call keeps its provider identifiers and aliases so replay cannot resurrect it; parties, legs, recordings, `external_e164` and `provider_names` are cleared. Aliases are never deleted.
+- `contact_numbers`: a Number idle past the same cutoff becomes a `purged:<id>` tombstone with an empty summary and no Lead.
+- Sync state, directory snapshots and rate gates are small operational rows.
+- `sales_intelligence_jobs` is shared; its retention is in [sales-intelligence-foundation.md](sales-intelligence-foundation.md).
+
+### Measured baseline
+
+Window 2026-11-18T23:07Z to 2026-11-19T23:59Z, primary `01` ([stock before cleanup](../../operations/evidence/outreach-numbers-stock-before.json)). Bytes are logical BSON, WiredTiger allocated data and total index size. Reads and writes are server operation counters over the window.
+
+| Collection | Documents | Logical | Allocated | Indexes | Reads | Writes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `ringcentral_webhook_events` | 34,775 | 159,607,634 | 62,193,664 | 6,213,632 | 11,921 | 5,583 |
+| `call_interactions` | 37,494 | 117,001,327 | 23,195,648 | 11,481,088 | 24,722 | 6,527 |
+| `call_interaction_aliases` | 112,492 | 29,246,842 | 7,892,992 | 5,885,952 | 8,362 | 1,214 |
+| `contact_numbers` | 11,231 | 8,946,205 | 3,928,064 | 4,292,608 | 35,783 | 2,073 |
+
+The four together held 119.27 MiB allocated data plus indexes. After the 2026-11-19 preview and header cleanup the receipts held 91,574,867 logical bytes ([stock after](../../operations/evidence/outreach-numbers-stock-after.json), 2026-11-20T00:13Z). On 2026-11-18 (New York day) capture took in 5,162 receipts (22.62 MiB), 582 interactions, 1,746 aliases and 99 Numbers, and ran 4,916 `capture_projection` jobs (p50/p95 185/428 ms), 580 `call_log_refresh` jobs (309/488 ms) and 732 `lead_link` jobs (26.654/56.269 s) ([observations](../../operations/evidence/outreach-numbers-observations.json), [release record](../../operations/OUTREACH-NUMBERS-RELEASE-2026-11-19.md#ringcentral-capture-and-numbers)). Per-index sizes and per-query counts are unmeasured.
+
+### Observations for the index and read phase
+
+- Declared indexes with no `src/` query: receipts `telephonySessionId_1` and `sessionId_1`; `call_interaction_session_id`, `call_interaction_extension_started`, `call_interaction_recording`. Check `ops/` scripts and `$indexStats` before dropping any.
+- The summary recount reads every counted call of a number with no limit. W7 removes the unchanged case; a busy number still pays a full read on each counted change.
+- `numbersForLead` looks up a Call Lead's session without `provider_account_id`, so `call_interaction_session_unique` is walked across all accounts. Production has one account (2026-11-19).
+- Settle from store filters `call_log_state` and sorts by `provider_last_modified_at`; no compound index has both. The provisional set is small, so this is cheap today.
+- Retention scans `started_at` oldest first with `purged_at: null` as a residual filter. Purged tombstones stay in that range, so the scan cost grows once purges begin.
 
 ## Tests
 

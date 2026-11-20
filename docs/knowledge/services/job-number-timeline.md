@@ -1,21 +1,22 @@
 ---
 type: Service
 title: Job Number timeline
-description: Owner-only typed Job Number chain from the production module. Not the Granot lifecycle forensic timeline.
+description: Owner-only typed Job Number read. The HTTP route serves milestones only (Lead arrival, first Job Number link, each official Booking and Cancellation). The detailed evidence assembly remains for scoped callers and tests. Not the Granot lifecycle forensic timeline.
 tags: [job-number, admin]
 status: draft
-stale_after: 2026-11-27
+stale_after: 2026-12-19
 resource: src/services/jobNumberTimeline/module.ts
 applies_to:
   - src/services/jobNumberTimeline/**
   - src/routes/job-number-timeline-admin.routes.ts
-  - scripts/prototypes/job-number-timeline/src/cli.ts
-  - scripts/prototypes/job-number-timeline/src/discover.ts
-  - scripts/prototypes/job-number-timeline/src/live-proof.ts
+  - ops/verify-granot-history-archive.ts
 owners: [team:main-server]
 sources:
   - id: primary
     resource: src/services/jobNumberTimeline/module.ts
+  - id: release-2026-11-19
+    resource: docs/operations/DAILY-COMMANDS-MASTER-SHEETS-RELEASE-2026-11-19.md
+    title: Daily Operations, canonical commands and Master Sheets release (2026-11-19)
   - id: glossary
     resource: ../CONTEXT.md
     title: Platform glossary
@@ -26,138 +27,124 @@ generated:
   at: 2026-08-28T01:50:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
-**ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
+**ADRs:** [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/jobNumberTimeline/` (`createJobNumberTimelineModule`)  
-**CLI / proof adapter:** [`scripts/prototypes/job-number-timeline/`](../../../scripts/prototypes/job-number-timeline/README.md)  
-**Enhancement workspace:** [`../../job-number-timeline/README.md`](../../job-number-timeline/README.md) — JTE-01 extract, JTE-02 v2 projection, JTE-03 evaluators, JTE-04 Admin UI, JTE-05 (live proof, deep links), JTE-06 (cancellation correlation snapshots), and JTE-07 (WordPress Form Submission Receipt capture) shipped.  
-**Domain terms used:** [Job Number](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Sheet Sync](../../../../CONTEXT.md), [Granot Observation Receipt](../../../../CONTEXT.md), [WordPress Form Submission Receipt](../../../../CONTEXT.md)
+**Latest release record:** [2026-11-19 release, "Daily Operations and job number timeline"](../../operations/DAILY-COMMANDS-MASTER-SHEETS-RELEASE-2026-11-19.md)  
+**Domain terms used:** [Job Number](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Cancellation](../../../../CONTEXT.md), [Granot Record Link](../../../../CONTEXT.md), [Entity Change](../../../../CONTEXT.md)
 
 # Job Number timeline
 
-The Owner HTTP route displays the Lead origin, earliest supported Job Number link, and each official Booking and Cancellation. It reads the canonical Lead arrival clock, Record Link establishment or a matching stored job-number change, official recording time and business date. An immutable Cancellation snapshot can establish an earlier Booking after the original record is gone. A transport observation alone supplies no link date. The detailed evidence assembly described below remains available to scoped consumers and test fixtures.
+The Owner route reads one Job Number on demand and returns its major milestones. It stores nothing. It is not `GET /api/v1/admin/granot-lifecycle/jobs/:normalized_job_no`; that forensic page is [`projections.md`](../granot-lifecycle/projections.md). This module does not call `projections.ts`.
 
-This is not `GET /api/v1/admin/granot-lifecycle/jobs/:normalized_job_no`. That forensic page is [`projections.md`](../granot-lifecycle/projections.md) (`GranotTimelineEntry`). This path does not call `projections.ts`.
-
-Runtime code lives in `src/services/jobNumberTimeline/`. Callers use `createJobNumberTimelineModule({ loader }).read(...)`. The typed Job Number HTTP read and the CLI `render` / `discover` / `proof` modes call that same interface. A separate Owner-only sample read (`recent-official-bookings.ts`) does not. Tests use a memory loader; production uses a Mongo loader. No file under `src/` imports `scripts/prototypes/job-number-timeline`.
-
-Internal v2 files: `projector.ts`, `evidence.ts`, `clocks.ts`, `outcome.ts`, `attention.ts`. Golden pages: `golden-pages.ts`.
+Callers use `createJobNumberTimelineModule({ loader, milestonesOnly? }).read(...)`. Tests use the memory loader; production uses `createMongoEvidenceLoader`. No file under `src/` imports a CLI.
 
 ## HTTP
 
-`GET /api/v1/admin/job-number-timeline` on `job-number-timeline-admin.routes.ts`, mounted after the `/api/v1` guard next to Granot lifecycle admin.
+`GET /api/v1/admin/job-number-timeline` on [`job-number-timeline-admin.routes.ts`](../../../src/routes/job-number-timeline-admin.routes.ts), mounted after the `/api/v1` guard.
 
 | Query | Required | Notes |
 | --- | --- | --- |
 | `job_no` | yes | Trimmed, min length 1. Zod miss → `400` `{ ok: false, error: "invalid_job_number" }` |
 | `source_granularity_id` | no | Optional filter |
-| `source_company_id` | no | Loads company granularities; a granularity that is not in that company → `filtered_out` |
+| `source_company_id` | no | Loads company granularities; a granularity outside that company → `filtered_out` |
 
-Owner-only (`requireRegistryOwnerActor`). Admin `403`. Success envelope is always `{ ok: true, data: JobTimelineAssembleResult }` (HTTP `200`), including assembler `not_found` / `filtered_out` / `invalid_job_number`. Unhandled failures return HTTP `500` `{ ok: false, error: "Internal error" }` and log the real message server-side with `request_id`. They do not echo `error.message`.
+Owner-only (`requireRegistryOwnerActor`). Admin gets 403. Success is always HTTP 200 `{ ok: true, data: JobTimelineAssembleResult }`, including `not_found`, `filtered_out` and `invalid_job_number`. Unhandled failures return HTTP 500 `{ ok: false, error: "Internal error" }` and log the real message with `request_id`.
 
-The typed Job Number route stays authorize → validate → `module.read` → respond. Redaction of `page` happens inside the module on `status: "ok"`.
+The route builds the module with `createMongoEvidenceLoader({ db, milestonesOnly: true })` and `milestonesOnly: true`. It reads through the server's Mongo connection.
 
-`GET /api/v1/admin/job-number-timeline/recent-official-bookings` is registered first on the same router. It is a separate Owner-only bounded sample — not `module.read`, not a Job Number catalog, dropdown, or paginated list. Success envelope is `{ ok: true, data: { bookings: Array<{ job_no: string; booked_at: string }> } }`. Hard cap of 3. Newest official [Booking](../../../../CONTEXT.md) `book_date` first (`booked_leads`). Implementation: `src/services/jobNumberTimeline/recent-official-bookings.ts` (`listRecentOfficialBookingExamples`). Safe projection only: `job_no`, `normalized_job_no`, `book_date`, `createdAt`, `timestamp`. No contact.
+`GET /api/v1/admin/job-number-timeline/recent-official-bookings` is a separate Owner-only sample, registered first ([`recent-official-bookings.ts`](../../../src/services/jobNumberTimeline/recent-official-bookings.ts)). It returns at most three `{ job_no, booked_at }` from `booked_leads`, newest `book_date` first. Projection: `job_no`, `normalized_job_no`, `book_date`, `createdAt`, `timestamp`. No contact. It is not a catalog or a list.
 
-The HTTP read uses the server's connected Mongo (`connectMongo` / `TEST_MODE`). It does not apply the CLI production-confirm flag.
+## Milestones (Owner HTTP read)
 
-## Module
+Since 49f9d8d5 and 3f01cfd3 (2026-11-19), `milestonesOnly` pages contain only these event kinds (`milestoneEvents` in [`assemble.ts`](../../../src/services/jobNumberTimeline/assemble.ts)):
 
-`createJobNumberTimelineModule({ loader }).read({ job_no, source_granularity_id?, source_company_id?, now? })`.
+| Kind | Clock | Rule |
+| --- | --- | --- |
+| `lead_created` | Lead arrival instant (`leadArrivalInstant` from `dailyOperations/leadDay.ts`), reported as `lead.timestamp`; else `lead.createdAt` | Only when a Lead resolves. Coverage `official_fact_only` |
+| `job_number_acquired` | Earliest of `record_link.established_at` and Lead `entity_change.applied_at` where a stored `job_no`/`normalized_job_no` after-value matches | At most one. Coverage `evidence_only`. Headline "First recorded Job Number link" |
+| `official_booking` | `booking.createdAt` (recorded), else `booking.book_date` | One per loaded Booking. The headline names the business book date |
+| `official_booking` (restored) | `cancellation.booking_created_at_snapshot`, else `cancellation.book_date` | When a Cancellation references a Booking that is no longer loaded |
+| `official_cancellation` | `cancellation.createdAt` (recorded), else `cancellation.cancel_date` | Every Cancellation linked to a loaded Booking or attached by `normalized_job_no_snapshot`. The headline names the business cancel date |
 
-The seam is unchanged from JTE-01. Callers do not know collection names, walk-back order, sort priorities, or redaction rules. The module passes `input.now ?? new Date()` into assemble as `assembled_at` and `freshness.mongo_read_at`.
+Recorded instants and business dates are distinct. The event clock is the recording instant; `book_date` and `cancel_date` appear only in headlines.
 
-`assembleJobNumberTimeline` remains a pure function over injected rows. It builds the v1 chain, then `projectEnhancedPage` wraps an `ok` page. The module normalizes the typed Job Number, loads company granularities when a company filter is present, loads rows through the loader, assembles, and redacts.
+A Granot transport observation supplies no link date. A leadless official Booking or Cancellation stands alone. When no Record Link, Booking, Decision or Cancellation names a Lead, the loader takes a Lead only if exactly one Form or Call Lead matches the Job Number (`findUniqueJobLead`). In milestone mode that match does not require an accepted Granot observation.
 
-`JobTimelineAssembleResult`:
+Milestone pages also:
+
+- skip the 250-event cap;
+- keep only the `origin`, `qualification`, `booking` and `cancellation` stage assessments;
+- keep only the `MULTI_QUERY_READ` limitation;
+- keep attention and freshness as computed.
+
+Measured on four production jobs (release record, 2026-11-19): milestone reads took 11–12 MongoDB read commands versus 14–17 for the detailed read, and 6,308–15,762 BSON reply bytes versus 9,346–36,469. Events fell from 5–19 to 1–4. Milestone queries took 193–461 ms from the measurement client. The change saves zero event writes and zero retained bytes; the timeline never stored events.
+
+## Detailed assembly
+
+Without `milestonesOnly`, `assembleJobNumberTimeline` builds the full v1 chain and `projectEnhancedPage` wraps it as `schema_version: "job_timeline.v2"`. The memory-loader tests, golden pages (`golden-pages.ts`) and [`ops/verify-granot-history-archive.ts`](../../../ops/verify-granot-history-archive.ts) use it. No production route uses it.
+
+`page.events` kinds (type priority 5–110): `source_received` (5), `lead_created` (10), `lead_message` (20), `job_number_acquired` (30), `lead_updated` (40), `granot_observation` (50), `synchronization_decision` (60), `booking_intake` (70), `cancellation_intake` (80), `official_booking` (90), `official_cancellation` (100), `sheet_sync` (110). The cap is 250 (`JOB_TIMELINE_EVENT_CAP`); overflow is a named `TIMELINE_TRUNCATED` limitation.
+
+`source_received` needs a durable ingress row: a loaded Granot Observation Receipt, a qualified RingCentral processed-call row (`lead_created`, `lead_created_duplicate`, `lead_adopted`, `lead_adopted_duplicate`), or a loaded WordPress Form Submission Receipt.
+
+Evaluators: `outcome.ts` (`evaluateCurrentOutcome`, `assessStages`, `outcomeHeadline`) and `attention.ts` (`evaluateAttention`, `evaluateLimitations`, `evaluateFreshness`). Always-on detailed limitations: `MULTI_QUERY_READ`, `MOVE_COMPLETION_UNAVAILABLE`, `GOOGLE_DESTINATION_UNVERIFIED`. A snapshot-recovered Cancellation without a live Booking is `cancelled` plus `OFFICIAL_BOOKING_UNAVAILABLE`, not `contradictory`. Sheet `synced` means outbox completion, not Google equality.
+
+Loader options (`JobTimelineMongoReadBounds` in [`mongo-evidence-loader.ts`](../../../src/services/jobNumberTimeline/mongo-evidence-loader.ts)):
+
+- `includeTransportEvidence`: loads `granot_observations`, their Synchronization Decisions and receipts (hot `granot_webhook_receipts`, then `granot_archived_receipts`), and the Granot history archive. Without it (since c55f61a7) no observation, decision or receipt is read, so no Granot `source_received` is emitted.
+- `maxRowsPerQuery` (1–2,000): every cursor fetches one sentinel row over the bound with a five-second limit; overflow throws `JobTimelineEvidenceLimitError` (`EVIDENCE_LIMIT_REACHED`). Only `ops/verify-granot-history-archive.ts` passes it today.
+- `milestonesOnly`: skips Lead Messages, processed calls, WordPress receipts, Booking and Cancellation Entity Changes and Sheet Sync jobs, and filters Lead Entity Changes to `changed_paths` `job_no` / `normalized_job_no`.
+
+Safe projections only: no payload, headers, phone, transcript, recording, `last_error` or `spreadsheet_id`. Redaction happens inside the module on `status: "ok"`.
+
+## Result statuses
 
 | `status` | When |
 | --- | --- |
-| `ok` | First hop found a job-scoped row and optional source filters matched; `page` is `EnhancedJobTimelinePage` with `schema_version: "job_timeline.v2"` |
-| `invalid_job_number` | Typed value does not normalize |
-| `not_found` | No observation, record link, booking, booking/release case, discrepancy, or snapshot-matching Cancellation on the first hop |
-| `filtered_out` | Job exists, but no resolved scope matches the requested granularity/company |
+| `ok` | A first-hop row or a unique Lead match exists and source filters matched |
+| `invalid_job_number` | The typed value does not normalize |
+| `not_found` | No Record Link, Booking, booking/release case, discrepancy, observation, snapshot Cancellation or unique Lead |
+| `filtered_out` | The job exists but no resolved scope matches the requested granularity/company |
 
-Every v1 page and event field remains (`event_at`, `clock_field`, `coverage`, `headline`, safe `data`).
+## Storage, indexes and read paths
 
-`page.events` kinds (type priority 5–110): `source_received` (5), `lead_created` (10), `lead_message` (20), `job_number_acquired` (30), `lead_updated` (40), `granot_observation` (50), `synchronization_decision` (60), `booking_intake` (70), `cancellation_intake` (80), `official_booking` (90), `official_cancellation` (100), `sheet_sync` (110).
+The timeline owns no collection and writes nothing. It reads other services' collections per request. Job Number matching uses `equivalentNormalizedJobFilter` (`bookings/bookingIdentity.ts`): an exact `normalized_job_no`, its digit core, and the anchored regex `^[A-Z]+<core>$`.
 
-`source_received` is emitted only when a durable ingress fact was loaded:
+Milestone-mode reads, in order, with the declared index that fits (code declarations; production plans for this route are unmeasured except the release record's read counts):
 
-- Granot: observation has a `receipt_id` and that [Granot Observation Receipt](../../../../CONTEXT.md) is in the loaded rows.
-- RingCentral: resolved [Call Lead](../../../../CONTEXT.md) plus a processed-call ledger row whose `callLeadId` matches and whose status is `lead_created`, `lead_created_duplicate`, `lead_adopted`, or `lead_adopted_duplicate`.
-- WordPress: a [WordPress Form Submission Receipt](../../../../CONTEXT.md) row is loaded and its `lead_ref` matches the Form Lead. `assemble.ts` then emits `source_received` with `ingress: "wordpress"`. No receipt row → no invented WordPress receipt event; `lead_created` stays the origin row.
+| Collection | Query | Declared index |
+| --- | --- | --- |
+| `granot_record_links` | job filter | None fits. `granot_record_link_active_job_unique` is `{ provider, normalized_job_no }`, partial `state: "active"`; the query has neither field |
+| `booked_leads` | job filter | `booked_lead_normalized_job_no_unique`, partial `normalized_job_no: { $type: "string" }` |
+| `granot_booking_reconciliation_cases` | job filter | `granot_booking_case_job_kind_sequence_unique` prefix |
+| `granot_release_reconciliation_cases` | job filter | `granot_release_case_job_kind_sequence_unique` prefix |
+| `granot_booking_discrepancies` | job filter | None fits. `granot_booking_discrepancy_open_fingerprint_unique` is partial `state: "open"` |
+| `granot_release_discrepancies` | job filter | None fits. `granot_release_discrepancy_open_fingerprint_unique` is partial `state: "open"` |
+| `ringcentral_call_log_sync_state` | `findOne({ key: "account" })` | Single-document lookup; feeds freshness only |
+| `cancelled_leads` | `{ booked_lead: { $in } }` and the snapshot job filter | `booked_lead` field index; `cancelled_lead_normalized_job_no_snapshot` (partial `$type: "string"`) |
+| `form_leads`, `call_leads` | job filter, `limit(2)`, only when no Lead ref resolved | `form_lead_normalized_job_no`; `{ normalized_job_no: 1 }` |
+| `form_leads` or `call_leads` | `findOne({ _id })` | `_id` |
+| `entity_changes` | `{ entity.model, entity.id, changed_paths: { $in: ["job_no", "normalized_job_no"] } }` | `entity_change_entity_applied` or `entity_change_entity_revision_unique` prefix |
+| `lead_source_granularities` | `{ _id: { $in } }` | `_id` |
 
-Each event has dual clocks (`time.occurred_at` / `time.recorded_at`). Default order is still `occurred_at` ASC, then type priority, then id. Events also carry `evidence_level`, `stage`, `correlation`, and `causality.activity_id`. `activities` group related rows; grouping does not delete events. Official Booking and official Cancellation keep independent activity ids.
+`recent-official-bookings` reads `booked_leads` with `$or` on non-empty `job_no` / `normalized_job_no`, sorted `{ book_date: -1, createdAt: -1 }`, limit 3. No declared `booked_leads` index leads with `book_date`.
 
-Cap is 250 (`JOB_TIMELINE_EVENT_CAP`). Overflow is a named `TIMELINE_TRUNCATED` limitation with `counts_by_stage` of the omitted events. Never a silent drop.
+Retention: none owned. The milestones depend on Record Links, official Bookings and Cancellations (including their immutable `*_snapshot` fields) and Lead Entity Changes staying in MongoDB. See [`domain-commands.md`](./domain-commands.md) for why `entity_changes` has no expiry.
 
-### Evaluators (JTE-03 shipped)
+### Observations for the index phase
 
-The module evaluates page-level v2 fields after events and activities are finalized. `projector.ts` calls the evaluators. The external seam is unchanged: `createJobNumberTimelineModule({ loader }).read`. The HTTP route still only authorize → validate → `module.read` → respond. Tests call that same interface.
-
-JTE-03 evaluators shipped. JTE-04 Admin UI shipped — it displays these arrays; it does not recompute them.
-
-`outcome.ts` owns current outcome and stage assessments:
-
-- `evaluateCurrentOutcome` uses specification §4.2 precedence, not last-event-wins. Intake is never the official outcome.
-- `assessStages` emits one assessment per §4.1 stage. Labels follow §9.2. States are expectation-aware (`complete`, `active`, `not_started`, `not_applicable`, `attention`, `unverifiable`). Official Cancellation with no live Booking sets the booking stage to `attention`, label "Official Booking no longer present", reason `BOOKING_UNAVAILABLE_AFTER_CANCELLATION`.
-- `outcomeHeadline` fills `summary.headline` from the decided outcome.
-
-On `ok`, `page` stays `EnhancedJobTimelinePage` with `schema_version: "job_timeline.v2"`. Every v1 field and every JTE-02 event field remains.
-
-`current_outcome` values: `lead_active` | `booking_intake_open` | `booked` | `cancellation_intake_open` | `cancelled` | `contradictory` | `unknown`.
-
-`attention.ts` owns one evaluator per specification §8 attention and limitation code, plus freshness:
-
-- `evaluateAttention` / `evaluateLimitations` / `evaluateFreshness`
-- `SHEET_SYNC_PENDING_TOO_LONG_MS` default is 1 hour (module constant, not `process.env`)
-
-Always emit limitations: `MULTI_QUERY_READ`, `MOVE_COMPLETION_UNAVAILABLE`, `GOOGLE_DESTINATION_UNVERIFIED`. Keep `TIMELINE_TRUNCATED` when the 250 cap hits. Attention includes `OFFICIAL_BOOKING_UNAVAILABLE` when an official Cancellation is present and the Booking document is not. Do not invent other §8 codes.
-
-WordPress-born pages emit `WORDPRESS_RECEIPT_UNAVAILABLE` until a **WordPress** `source_received` exists (`ingress: "wordpress"`). A later Granot receipt does not clear that limitation. `goldenWordpressRows` / `wordpressRows()` job `9001001` stays the no-receipt WordPress golden. RingCentral-born pages emit `RINGCENTRAL_CURSOR_BOUNDED` and fill `freshness.ringcentral_covered_through` plus `ringcentral_cursor_lag_seconds`. `freshness.google_destination_readback` stays `"not_performed"`. `freshness.consistency` stays `"multi_query_best_effort"`.
-
-Sheet `synced` means outbox completion, not Google equality. Delivery stage is `unverifiable` even when every outbox job is synced. Move completion is a limitation, never a stage or event.
-
-Golden pages for Admin fixtures live in `golden-pages.ts` (`GOLDEN_EXPECTATIONS`, `ALWAYS_LIMITATION_CODES`, plus extra builders for policy skip, resolved-without-fact, contradictory chronology, and open cancellation intake). Admin displays those arrays; it must not recompute them.
-
-### Residuals
-
-- JTE-01: CLI company/granularity mismatch prints `filtered_out` (exit 0).
-- JTE-02: the module stamps `assembled_at` with `input.now ?? new Date()`. RingCentral `source_received` is qualified ledger statuses only (`lead_created`, `lead_created_duplicate`, `lead_adopted`, `lead_adopted_duplicate`).
-- JTE-07 shipped: WordPress `source_received` only when a [WordPress Form Submission Receipt](../../../../CONTEXT.md) is loaded. Capture writes live on the authorized test path in Form Lead create — see [`form-lead.md`](./form-lead.md). `/daily` does not exist.
-
-### Loader
-
-CSI-17's scoped intelligence consumer opts into `createMongoEvidenceLoader({ db, maxRowsPerQuery: 200 })`. Every Mongo `find` cursor, including initial Job Number lookup and downstream decisions, receipts, changes, messages, Sheet Sync and catalog joins, fetches at most 201 rows with a five-second query limit. The extra row detects overflow; `JobTimelineEvidenceLimitError` (`EVIDENCE_LIMIT_REACHED`) aborts the read instead of assembling partial evidence. Single-record lookups remain bounded to one row. Existing Owner consumers omit this option and retain their established read behavior. This optional transport budget does not change timeline events, source authority or projection rules.
-
-Mongo loader reads observations, latest decisions, record links, bookings, cancellations, booking/release cases, discrepancies, leads, entity changes, lead messages, sheet sync jobs, Granot CRM sources, and granularities. It also reads:
-
-- `granot_webhook_receipts` (safe projection: `captured_at`, `createdAt`, `route_event_class`, `observation_channel`, `channel_operation_kind`, `processing.state`)
-- `wordpress_form_submission_receipts` by indexed `lead_ref.id` when the resolved lead is a Form Lead (safe projection: `received_at`, `createdAt`, `processing_status`, `lead_ref.id`). No collection scan.
-- processed-call ledger via `getRingCentralCollectionName("processedCalls")` (`ringcentral_processed_calls`: `status`, `qualificationReason`, `firstProcessedAt`, `updatedAt`, `ingestionSource`, `duplicate`, `callLeadId`)
-- call-log cursor via `getRingCentralCollectionName("callLogSyncState")` (`ringcentral_call_log_sync_state`, `{ key: "account" }`)
-
-Safe projections only: no payload, headers, phone, transcript, recording, `last_error`, or `spreadsheet_id`.
-
-Cancellations load by Booking id (`booked_lead` in the loaded bookings), merged with an indexed hop on `cancelled_leads.normalized_job_no_snapshot` via `equivalentNormalizedJobSnapshotFilter` when that snapshot is present. No collection scan. A snapshot-matching Cancellation is a first-hop survivor: a job whose only remaining fact is that snapshot is `ok` / `cancelled`, not `not_found`. Assemble still refuses orphans without a durable job snapshot (named tests `orphan cancellation is not attached without durable job snapshot`, `cancellation snapshot restores exact job correlation`, and `snapshot-only cancellation is a found cancelled page`). A snapshot-recovered Cancellation without a live Booking is `cancelled` plus `OFFICIAL_BOOKING_UNAVAILABLE`, not `contradictory`. Do not invent an `official_booking` event.
+- Record Link and discrepancy job lookups have no fitting declared index. Each Owner timeline read issues them.
+- The regex arm of the job filter is anchored but starts with a character class, so its index bounds span every key that begins with a letter. Its cost is unmeasured.
+- `recent-official-bookings` sorts `booked_leads` by `book_date` with no supporting index. Its cost is unmeasured.
+- The call-log cursor read runs on every milestone read although milestone pages drop the `RINGCENTRAL_CURSOR_BOUNDED` limitation; it still feeds `freshness.ringcentral_covered_through`.
 
 ## CLI
 
-```text
-pnpm prototype:job-number-timeline -- render --job-no <raw>
-pnpm prototype:job-number-timeline -- discover
-pnpm prototype:job-number-timeline -- proof --max-jobs 200 --warm-runs 12
-pnpm test:prototype:job-number-timeline
-```
-
-Modes are `render`, `discover`, and `proof`. There is no list mode. Optional `--source-granularity-id`, `--source-company-id`; discover also `--limit` and `--min-score`; proof also `--max-jobs` and `--warm-runs`. Default live target is `testvantagemovers`. Production reads require `--confirm-production-db=vantagemovers` plus explicit user approval. No Mongo, Sheet, or CRM writes. Local gitignored reports may land under `scripts/output/job-number-timeline/`.
-
-`render`, `discover`, and `proof` call `createJobNumberTimelineModule`. `discover.ts` remains a CLI-only ranking helper. It is not an HTTP catalog. `proof` (`live-proof.ts`) is read-only, count-stable, and masks Job Numbers as `JOB-n`. JTE-05 named test `serialized v2 page contains no forbidden fields or contact` serializes all 10 v2 goldens via `assertPageSafe`. No evaluator or projection semantics changed.
-
-A company/granularity mismatch prints `filtered_out` and exits 0 (JTE-01 residual).
+`package.json` still defines `prototype:job-number-timeline` and `test:prototype:job-number-timeline` under `scripts/prototypes/job-number-timeline/`. `scripts/` has been local-only since ce5f856c (2026-09-24), so the CLI is not in a clean checkout. It is not a supported path.
 
 ## Related
 
-- Prototype README: [`scripts/prototypes/job-number-timeline/README.md`](../../../scripts/prototypes/job-number-timeline/README.md)
 - Forensic Granot job/lead reads: [`projections.md`](../granot-lifecycle/projections.md)
-- Admin tab `/job-timeline` and `lib/api/jobNumberTimeline.ts` live in `vantage-admin` (Owner-only page and proxy path). JTE-04 shipped: Admin consumes the server v2 page and copies DTO types additively. Admin types are never the semantic authority. JTE-05 shipped: CLI `proof` mode; Owner deep links via `JobTimelineDeepLink` / `buildJobTimelineHref({ job })` on Lead / Booking / Cancellation / intake surfaces. The empty `/job-timeline` state (and the same chips under search after a page is open) may show the bounded official Booking sample so the Owner can open a live timeline without typing. JTE-06 shipped: official Cancellation create stamps four immutable correlation snapshots; Mongo hops by indexed `normalized_job_no_snapshot`. JTE-07 shipped: WordPress `source_received` when a receipt row is loaded; Admin still renders the no-receipt golden / `WORDPRESS_RECEIPT_UNAVAILABLE` until that ingress exists. `/daily` does not exist.
+- Lead arrival rule: [`daily-operations.md`](./daily-operations.md) (`leadDay.ts`)
+- Cancellation snapshots: [`cancelled-lead.md`](./cancelled-lead.md)
+- Admin page `/leads/timeline` (`JOB_TIMELINE_HREF`) and `lib/api/jobNumberTimeline.ts` live in `vantage-admin` (Owner-only). Admin copies DTO types; they are never the semantic authority. Deep links use `buildJobTimelineHref({ job })`.

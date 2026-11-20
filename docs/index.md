@@ -8,7 +8,7 @@ description: Type-grouped entrypoint for agent-readable concepts.
 
 Everyday work: [operate the server](operations/README.md) and [safe local agent setup](../CLOUD_AGENTS.md). Start with the task runbook; use this catalog when a deeper invariant or implementation reference is needed.
 
-Optimization program: [service sequence and progress ledger](operations/SERVICE-OPTIMIZATION-ROADMAP.md), with the [current next-session prompt](operations/NEXT-SESSION.md). Phase 1 Sheet Sync is active; local qualification, release and production proof are tracked separately.
+Optimization program: [service sequence and progress ledger](operations/SERVICE-OPTIMIZATION-ROADMAP.md), with the [current next-session prompt](operations/NEXT-SESSION.md). The November 17–19 service storage releases are complete. The next phase is collection-wide index and read optimization, which starts from the [November 19 baseline](operations/INDEX-READ-BASELINE-2026-11-19.md). Each Service doc lists its collections, declared indexes and query shapes under "Storage, indexes and read paths".
 
 November 17 capacity continuation: [isolated W0/W5 release and qualification record](capacity-review-2026-11-16/QUALIFIED-RELEASE-2026-11-17.md), [fresh all-member capacity/recovery audit](capacity-review-2026-11-16/PRODUCTION-CAPACITY-AUDIT-2026-11-17.md), and [bounded retention-query/index proposal](capacity-review-2026-11-16/W4-ATLAS-DIAGNOSIS-2026-11-17.md). Application deployment, sustained qualification and database-operation approval remain separate.
 
@@ -79,9 +79,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [lead-messaging.md](knowledge/services/lead-messaging.md) | Persist and dispatch outbound confirmation SMS for public Form Leads and Granot create-if-missing Leads. |
 | [daily-operations.md](knowledge/services/daily-operations.md) | Pointer only. Owner Daily Operations: category panels (focus expands in place) plus Arrivals as a live rail on `/daily`; snapshot carries today / yesterday / day before; trend % vs yesterday-by-now; kind colour tones. Not Daily View. Not Live Events. Contract is the formal spec, not this file. |
 | [employee-bookings.md](knowledge/services/employee-bookings.md) | Public employee booking submit with auto-match, plus Owner booking-lead reconciliation cases. |
-| [reporting.md](knowledge/services/reporting.md) | Retired custom report definitions and custom Google Sheet delivery. |
 | [tariff.md](knowledge/services/tariff.md) | Append-only tariff adjustment rows to TARIFF_SHEET_ID / Master. Carrier is the resolved Moving Carrier name and DOT. |
-| [ingestion.md](knowledge/services/ingestion.md) | Fenced Best Relocation sheet inspect/preview/adopt/apply through canonical domain commands. |
 | [capture.md](knowledge/granot-lifecycle/capture.md) | Webhook and channel-neutral receipt capture; `{ receipt_id }` wake-up. |
 | [extension-apply.md](knowledge/granot-lifecycle/extension-apply.md) | Owner extension apply items, receipt capture, and claim/process. |
 | [automation-apply.md](knowledge/granot-lifecycle/automation-apply.md) | Owner-approved HTTP automation receipt apply. |
@@ -112,6 +110,8 @@ Kept as stubs with `status: retired`. Each names what was removed, what remains 
 | [sales-intelligence-transcription.md](knowledge/services/sales-intelligence-transcription.md) | CSI-12 speech-to-text and transcript versions. **Retired 2026-10** by the [server/admin slimming](server-admin-slimming/SPECIFICATION.md). |
 | [sales-intelligence-outreach.md](knowledge/services/sales-intelligence-outreach.md) | CSI-06 Outreach, follow-ups, Attention, Closed, Overview, Case File. **Retired 2026-10** by the [server/admin slimming](server-admin-slimming/SPECIFICATION.md). |
 | [sales-intelligence-move-assessment.md](knowledge/services/sales-intelligence-move-assessment.md) | Move assessment step, reads and presentation. **Retired 2026-10** by the [server/admin slimming](server-admin-slimming/SPECIFICATION.md). |
+| [reporting.md](knowledge/services/reporting.md) | Dashboard-defined reports and custom Google Sheet creation. **Retired 2026-11-18** (server `62a20ea4`); official Master Sheets remain in Sheet Sync. |
+| [ingestion.md](knowledge/services/ingestion.md) | Best Relocation external tracker intake. Final reconciliation completed 2026-11-03; adapter, runner, cron and endpoints **retired 2026-11-18** (server `61dc3f02`). Saved command executions still replay; the Source Company stays active. |
 
 ## Reference (environment)
 

@@ -4,7 +4,7 @@ title: All Numbers reads, lead link and Accounts (Owner Numbers surface, coverag
 description: Owner-only All Numbers list/detail/lead search and the pin/unlink command, the number's lead link (candidates, automatic newest, Owner pin, exclusions, triggers), Accounts (directory Users and their Agent, connect/change/disconnect, suggested matches), Owner coverage, daily RingCentral directory snapshots and the MCP canonical history reads. Reads never mutate.
 tags: [sales-intelligence, ringcentral, durable-work]
 status: draft
-stale_after: 2027-01-31
+stale_after: 2026-12-19
 resource: src/services/numberActivity/
 applies_to:
   - src/services/numberActivity/allNumbers.ts
@@ -27,10 +27,13 @@ owners: [team:main-server]
 sources:
   - id: contract
     resource: ../all-numbers/CONTRACT.md
-    title: All Numbers + Accounts build contract (2026-10-05, Owner-approved)
+    title: All Numbers + Accounts build contract (2026-10-05, Owner-approved); workspace-root file, not present in the current workspace checkout
   - id: slimming
     resource: docs/server-admin-slimming/SPECIFICATION.md
-    title: Server and Admin slimming specification (§7.3–7.4)
+    title: Server and Admin slimming specification (§7.3–7.4); removed from main 2026-10-29 (fc8166bf), read it from git history
+  - id: release-2026-11-19
+    resource: docs/operations/OUTREACH-NUMBERS-RELEASE-2026-11-19.md
+    title: Sales Outreach and RingCentral Capture and Numbers release (2026-11-19)
 ---
 
 # All Numbers reads, lead link and Accounts
@@ -51,7 +54,7 @@ Kept: `e164` (unique), `national_ten`, `digits_reversed`, `country`, `revision`,
 
 ## Lead link (`leadLink.ts`)
 
-- **Candidates**: the non-duplicate, non-Bad-Lead Leads whose phone is exactly the number — the indexed normalized phone paths (`leadContactPhoneIndexes.ts`: live, ingested snapshot, Granot snapshot, RingCentral original caller; joined on `national_ten`, else the E.164 digits) and the Call Lead created from a call on the number (its `ringcentral.telephony_session_id` among the number's newest 200 calls) — minus `lead_link.excluded`. At most 100 per model and lookup (newest kept). Always computed from the number's side, so every trigger converges.
+- **Candidates**: the non-duplicate, non-Bad-Lead Leads whose phone is exactly the number — the indexed normalized phone paths (`leadContactPhoneIndexes.ts`: live, ingested snapshot, Granot snapshot, RingCentral original caller; joined on `national_ten`, else the E.164 digits) and the Call Lead created from a call on the number (its `ringcentral.telephony_session_id` among the number's newest 200 canonical calls) — minus `lead_link.excluded`. When `RINGCENTRAL_ACCOUNT_ID` is configured, the session path reads only calls of that qualification account, because a foreign account can reuse a session id (`d5a1d33c`). Phone matches and Owner pins keep their own evidence and are not account-scoped. At most 100 per model and lookup (newest kept). Always computed from the number's side, so every trigger converges.
 - **Automatic**: `lead` = the newest candidate by `received_at` (id breaks ties); `other_leads` = the rest. `set_at` moves only when the Lead changes.
 - **Owner pin**: `lead` stays the pinned Lead (any non-duplicate Lead, not only a candidate) until a candidate is received after `set_at`; then the link reverts to automatic. A pinned Lead that is gone or became a Duplicate ends the pin.
 - **Snapshots** are copied from the Leads on every recompute; `search_terms` is rebuilt at the same time (caller-ID names, then name, Job Number and rep of `lead` and `other_leads`, cap 50).
@@ -93,6 +96,43 @@ Body `{ revision, lead: {model,id} | null, unlink?: {model,id} }`, exactly one o
 | `pnpm numbers:desk-resync --target=<db> [--apply]` | Phase B, once right after it deploys. The phase A migration wrote the links while the desk still read attachments, so nothing woke the desk. Dry run by default (counts only). Apply nominates `outreach_lead_change` for every open subject whose `contact_number_ids` differ from the link rule, and `outreach_contact_change` for every call since the earliest activation whose contact event does not credit its number's current Lead's subject (calls with no event yet are left to the contact sweep); the minute crons drain both. Identities carry `numbers-v2-switch`, so a rerun enqueues nothing new and a drained run leaves nothing to nominate. Skips when the desk configuration wants no contact evidence. `--all-open` (outreach lifecycle repair C2c): nominates `outreach_lead_change` for **every** open subject, drifted or not, so a changed subject rule (`cadence.no_contact_number_rule`) is recomputed at once; those identities carry `lane-c-review-rule-r<active configuration revision>` (a rerun under the same revision is a no-op, a later PATCH gets new ones); the summary adds `all_open`, `subjects_drifted` and `lead_change_tag`; apply is skipped with `configuration_not_active` (and `configuration_state`) when no configuration is active. The call drift check follows the active `evidence.call_association_rule` (summary `call_association_rule`): under `single_active_subject_on_link` a call credited to the single active `other_leads` subject is expected, not drift (`ops/lib/numbers-v2-desk-resync.ts`). |
 | `pnpm numbers:mint-lead-numbers --target=<db> [--scope=desk\|all] [--limit=<n>] [--apply]` | Outreach lifecycle repair C2b, once after the deploy that mints Call Lead numbers (`ops/numbers-v2/mint-lead-numbers.ts`, pure parts in `ops/lib/numbers-mint-lead-numbers.ts`). `desk` (default): the Leads of every non-closed desk subject; `all`: every non-Duplicate Call Lead. Dry run by default (read-only): `leads_checked`, `numbers_reused` (the phone already has a number), `numbers_to_create` (by model), `skipped {no_phone, company_number, duplicate, bad_lead}`. `--apply` passes the production-writer guard, then one transaction per Lead: `ensureLeadContactNumber` (forced for Form Leads) and `recomputeLeadLink` for each of `numbersForLead`, whose desk wake enqueues `outreach_lead_change` / `outreach_contact_change` in that transaction; prints `applied {numbers_created, numbers_reused, links_changed, desk_subjects_nominated, failures}` and an `after` report. Idempotent: a rerun mints and links nothing. Counts only. |
 | `pnpm numbers:cleanup --target=<db> [--apply]` | Dry run by default. Refuses while a non-purged number is unstamped. Drops the retired `contact_numbers` indexes, unsets the retired fields, drops `number_lead_attachments`. Idempotent. Point of no return for a phase A rollback. |
+
+## Storage, indexes and read paths
+
+Capture-side collections (`call_interactions`, aliases, receipts, sync state) and their indexes are in [number-activity-capture.md](number-activity-capture.md#storage-indexes-and-read-paths). This section covers the Number reads and the lead link.
+
+**`contact_numbers` indexes** (`CONTACT_NUMBER_INDEXES`, `src/models/ContactNumber.ts`, registered in `CSI_MODEL_REGISTRY`; `pnpm numbers:migrate` builds the three v2 indexes `contact_number_waiting`, `contact_number_lead` and `contact_number_other_leads` when missing):
+
+| Name | Keys and options | Used by |
+| --- | --- | --- |
+| `contact_number_e164_unique` | `{e164: 1}`, unique | Capture and Lead-number mint `findOne({e164})`; `q` with ten or more digits; `numbersForLead` `{e164: {$in}, purged_at: null}` |
+| `contact_number_digits_activity` | `{digits_reversed: 1, last_activity_at: -1, _id: -1}` | `q` suffix search, anchored `^<reversed digits>` regex, with the `all` sort |
+| `contact_number_terms_activity` | `{search_terms: 1, last_activity_at: -1, _id: -1}` | `q` name, Job Number or rep prefix, anchored regex. The array key keeps a sort stage (model comment) |
+| `contact_number_last_activity` | `{last_activity_at: -1, _id: -1}` | `view=all` list and keyset cursor; retention `{last_activity_at <= cutoff, purged_at: null}` |
+| `contact_number_waiting` | `{waiting_since: 1, _id: 1}`, partial `{waiting_since: {$type: "date"}}` | `view=waiting` list and the `waiting` count |
+| `contact_number_lead` | `{"lead.id": 1}` | `numbersForLead` `$or` arm |
+| `contact_number_other_leads` | `{"other_leads.id": 1}` | `numbersForLead` `$or` arm |
+
+**Query shapes.**
+
+- **Number list** (`listAllNumbers`): one `find(filter, ROW_PROJECTION).sort(sort).limit(limit + 1)` with `purged_at: null` always in the filter; two counts, `countDocuments({purged_at: null})` and `countDocuments({purged_at: null, waiting_since: {$type: "date"}})`; then one desk-subject read (`lead_model` + `lead_id: {$in}`), one Rep Identity Link read (`rc_extension_id: {$in}`, limit 1,000).
+- **Number detail**: `findOne({_id, purged_at: null})`, then the newest 101 counted calls through `summaryCallFilter` sorted `{started_at: -1, _id: -1}` (`call_interaction_number_started_id`).
+- **Lead search**: per model `find({$or, duplicate: {$ne: true}})` sorted `{timestamp: -1, _id: -1}`, limit 20. Ten digits use the indexed phone paths; shorter digits use an unanchored regex on `normalized_phone_number`; a name uses a case-insensitive unanchored regex.
+- **Lead-link recompute** (`leadLink.ts`): the session page `{contact_number_id, merged_into_id: null, telephony_session_id: {$ne: null}, provider_account_id?}` sorted newest first, limit 200; per model one candidate `find` over the phone clauses (and, for Call Leads, `ringcentral.telephony_session_id: {$in}`), limit 100; the write `updateOne({_id, revision}, {$set, $inc: {revision: 1}})` only on change, with the desk wake in the same transaction.
+- **Lead side** (`numbersForLead`, ≤ 50 numbers): `{e164: {$in}, purged_at: null}`; for a Call Lead, `call_interactions` `{provider, telephony_session_id, merged_into_id: null, contact_number_id: {$ne: null}}` limit 10; `{$or: [{"lead.id"}, {"other_leads.id"}]}` limit 50.
+- **Lead-link jobs** (`leadLinkJobs.ts`): the minute `entity_changes` scan reads `{"entity.model": {$in: [FormLead, CallLead]}}` with a strict `(applied_at, _id)` cursor (page of 100) plus a 2-minute overlap re-read (limit 500), and enqueues into `sales_intelligence_jobs` (`csi_job_dedupe_unique` on `dedupe_key`). Its cursor lives in `sales_intelligence_sync_state` scope `lead_link_entity_changes`.
+
+**Retention.** A Number stays until the active Owner history policy purges it (730 days on 2026-11-19, zero eligible). A purged Number becomes a `purged:<id>` tombstone and every read excludes it.
+
+**Measured baseline.** At 2026-11-19T23:59Z `contact_numbers` held 11,231 documents: 8,946,205 logical bytes, 3,928,064 allocated, 4,292,608 index bytes. From 2026-11-18T23:07Z it saw 35,783 read and 2,073 write operations ([stock](../../operations/evidence/outreach-numbers-stock-before.json)). On 2026-11-18 (New York day) 99 Numbers and 732 `lead_link` jobs arrived; lead-link delay was 26.654/56.269 s p50/p95 ([release record](../../operations/OUTREACH-NUMBERS-RELEASE-2026-11-19.md#cross-service-priorities-and-workload)). The split of reads between list, detail, capture and lead link is unmeasured.
+
+**Observations for the index and read phase.**
+
+- `countDocuments({purged_at: null})` runs on every list page and no index leads with `purged_at`, so it scans the collection (11,231 rows on 2026-11-19).
+- Reads outnumber writes about 17 to 1 on `contact_numbers` in the measured window. The source of the reads is unmeasured.
+- The lead-link `entity_changes` scan filters `entity.model` and orders by `(applied_at, _id)`. Production serves it with `entity_change_applied_scan` `{applied_at: 1, _id: 1}`, which had 6,991 reads on the primary from 2026-11-18T20:50Z to 2026-11-20T02:01Z ([baseline](../../operations/INDEX-READ-BASELINE-2026-11-19.md)). That index is not declared in `ENTITY_CHANGE_INDEXES` (`src/models/EntityChange.ts`), so a database built from code would lack it. See [domain-commands.md](domain-commands.md).
+- Lead search with fewer than ten digits or a name uses unanchored regexes on `form_leads` and `call_leads`. It is Owner-only and bounded to 20 rows.
+- `numbersForLead`'s session lookup omits `provider_account_id`; see the capture observations.
 
 ## Removed routes (404)
 

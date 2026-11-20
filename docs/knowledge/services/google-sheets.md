@@ -4,13 +4,14 @@ title: Google Sheets Service
 description: Tab routing, projections, upsert/delete, and master versus source writes.
 tags: [sheet-sync, google-sheets]
 status: draft
-stale_after: 2026-12-03
+stale_after: 2026-12-19
 resource: src/services/googleSheets/googleSheets.service.ts
 applies_to:
   - src/services/googleSheets/googleSheets.service.ts
   - src/services/googleSheets.service.ts
   - src/services/googleSheets/targets.ts
   - src/services/googleSheets/tabs.ts
+  - src/services/googleSheets/rowLookup.ts
   - src/services/googleSheets/syncRows.ts
   - src/services/googleSheets/deleteRows.ts
   - src/services/googleSheets/projections/formLeadRow.ts
@@ -22,6 +23,9 @@ applies_to:
   - src/services/googleSheets/sheetContains.ts
   - src/services/sheetSync/drainer/jobPlanner.ts
   - src/services/sheetSync/drainer/deliveryRequests.ts
+  - src/services/sheetSync/drainer/batchWriter.ts
+  - src/services/sheetSync/drainer/tabRowMap.ts
+  - src/config/domain/sheets.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -31,9 +35,12 @@ sources:
     title: Platform glossary
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
+  - id: release-2026-11-19
+    resource: docs/operations/DAILY-COMMANDS-MASTER-SHEETS-RELEASE-2026-11-19.md
+    title: Daily commands and Master Sheets release record
 generated:
   by: process:docs-keeper
-  at: 2026-11-05T02:30:00Z
+  at: 2026-11-19T23:30:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -42,7 +49,7 @@ generated:
 
 # Google Sheets Service
 
-**Role:** Projects Mongo Form Leads, reporting-eligible Call Leads, official Bookings and Cancellations into Reporting Sheets. Mongo remains the System of Record. November 3 reporting corrections are implemented in this checkout; deployment, physical tab migration, derivative formulas and production membership qualification require separate release evidence.
+**Role:** Projects Mongo Form Leads, reporting-eligible Call Leads, official Bookings and Cancellations into Reporting Sheets. Mongo remains the System of Record. On November 19 a read-only production read-back found all eight canonical tabs (Forms, Calls, Duplicate Forms, Duplicate Calls, Bad Form Leads, Bad Call Leads, Booked Deals, Cancelled Deals), and 40 sampled identities matched their canonical projections. That record does not qualify derivative IMPORTRANGE/QUERY formulas. [Release record](../../operations/DAILY-COMMANDS-MASTER-SHEETS-RELEASE-2026-11-19.md#master-leads-and-master-booked)
 
 **Best Relocation reconciliation is complete:** the approved final exception cohort and official Bookings are verified in the [final reconciliation report](../../lead-reporting-retirement/FINAL-RECONCILIATION-2026-11-03.md). Recurring ingestion and Granot creation remain retired; this recovery slice authorizes no new import. Keep the Source Company active for the Owner's separate deactivation.
 
@@ -76,8 +83,9 @@ Official Bookings project to Master Booked / Booked Deals (`master_booked`), and
 - Bad Forms are upserted to Bad Form Leads before the same Mongo ID is deleted from Forms and both old/new Duplicate Forms titles. `staleFormTargets`/`staleFormTargetKeys` and the queued planner discover these rows without saved metadata. Form retries replan the current destination and cleanup despite stale `target_hints`.
 - A failed/deferred destination fences stale deletes. The queued writer completes upserts first, then deletes. A destination-written/stale-delete-failed interruption remains pending and retries without another append.
 - Physical duplicate IDs are repaired from canonical Mongo values: update one desired row, remove extra copies, and remove every stale copy in descending row order. Repairs are logged. Overlapping jobs for the same ID and identical payload share a physical write while each job receives an outcome; conflicting current payloads fail closed.
-- Queued append/delete requests are single-attempt per known plan, including transport retries. An unconfirmed structural outcome stops further provider requests for that invocation and defers unresolved work; the next durable drain reloads current Mongo plans and physical IDs. Previously committed appends become updates, and reliably absent deleted IDs require no second positional delete. Missing/malformed confirmation, missing/ambiguous identity headers, failed reads or malformed topology cannot establish delivery/absence. The queued header helper validates identity before rewriting existing headers; confirmed new empty tabs can initialize. Shifted legacy ID lookup still serves deletes; unsafe identity-column header rewrites require operator correction. See [queued recovery, limits and rollback](./sheet-sync.md#uncertain-structural-delivery-queued-only).
+- Queued append, row-delete and managed-value clear requests are single-attempt per known plan, including transport retries. An unconfirmed structural outcome stops further provider requests for that invocation and defers unresolved work; the next durable drain reloads current Mongo plans and physical IDs. Previously committed appends become updates, and reliably absent deleted IDs require no second positional delete. Missing/malformed confirmation, missing/ambiguous identity headers, failed reads or malformed topology cannot establish delivery/absence. Queued delivery reads the header row and the `Mongo ID` column in one `values.batchGet` per tab. Matching managed headers are not cleared or rewritten. A managed header prefix that differs from the expected headers blocks the upsert for operator correction; confirmed new empty tabs can initialize. Shifted legacy ID lookup still serves deletes. See [queued recovery, limits and rollback](./sheet-sync.md#uncertain-structural-delivery-queued-only).
 - The queued request boundary covers tab/header helpers and every explicit safe retry: reserve read/write quota, check deadline, drain lease and topology fence, then send with Google transport retry disabled. The legacy/direct retry helper is unchanged. A request already in flight can finish after ownership loss; no further writes or old-owner completion follow. No exactly-once network guarantee is made.
+- Queued row removal rereads the identity and annotations of each row it removes. Plain rows are deleted. A row with operator values, notes, formulas or validation stays in place with its reporting `Mongo ID` and eligible managed values cleared. A protected row stops that removal until an operator resolves it. See [row removal](./sheet-sync.md#row-removal-and-operator-cells).
 - Missing tabs are an idempotent no-op on deletes and are never auto-provisioned by a delete. Upserts ensure only their written tab; bootstrap handles full provisioning. Append requires Google confirmation.
 - Hard Call deletes and tombstones enumerate all three destinations. Form deletes enumerate all three Form destinations plus both transitional Form titles. Historical `sheet_sync[]` locations participate, including source locations when current dual writing is disabled. Booking/Cancellation rows are not lead-move targets.
 - A durable command or outbox receipt does not prove sheet membership. Owner contains and the release verifier read live rows by ID. Contains checks the other two Call tabs so stale membership is visible.
@@ -108,12 +116,27 @@ Master targets always come first. Source Company Sheets are normally derivatives
 
 Focused offline tests: `googleSheets/**/*.test.ts` and `sheetSync/**/*.test.ts`, including migration replay, ambiguous titles, qualification/no-sync routing, inert imported notes, destination/delete interruption recovery, physical duplicate repair and writer-fence lease boundaries. Production release still requires independent per-ID membership, formula and billing readback.
 
+## Storage, indexes and read paths
+
+This service owns no MongoDB collection. It writes Google Sheets and returns target outcomes; Sheet Sync stores them in `sheet_sync[]` on the domain document and in `sheet_sync_attempts`. Sheet Contains reads canonical documents by `_id` and open `sheet_sync_jobs` by `entity_model` and `entity_id` (index `entity_model_1_entity_id_1_status_1`). Collections, indexes and retention are in [Sheet Sync storage](./sheet-sync.md#storage-indexes-and-read-paths).
+
+Google read paths:
+
+| Caller | Identity read per tab | Notes |
+|---|---|---|
+| Queued drainer (`drainer/tabRowMap.ts`) | `values.batchGet` of row 1 plus the `Mongo ID` column | One read per tab group; two when the identity column has shifted |
+| Legacy/direct sync (`rowLookup.ts`) | `values.get` of `A:ZZ` | Reads the whole tab for each lookup |
+| Sheet Contains (`sheetContains.ts`) | `values.get` of `A:ZZ` | Reads whole tabs, up to 25 IDs per request |
+
+On November 19, across the first 101 rows or fewer of each of the eight tabs, the wide and narrow responses were 124,885 and 21,055 uncompressed UTF-8 bytes. Identity counts that day were Forms 8,364, Calls 1,677, Duplicate Forms 195, Duplicate Calls 359, Bad Form Leads 1,040, Bad Call Leads 19, Booked Deals 1,071 and Cancelled Deals 47. The queued identity read grows with these counts. Legacy and Contains reads grow with full tab width as well. [Eight-tab baseline](../../operations/evidence/operations-command-sheets-verified-before.json)
+
+Observation for the read phase: the legacy/direct facade and Sheet Contains still read `A:ZZ`. Their call frequency is unmeasured.
+
 ## Related services
 
 - [Sheet Sync](./sheet-sync.md): scheduling, leases, queued retries and metadata.
 - [Call Leads](./call-lead.md), [Form Leads](./form-lead.md): domain writes and qualification.
 - [Bookings](./bookings.md), [Cancellations](./cancelled-lead.md): official outcome chains.
 - [Sheet Sync rule](../../../.cursor/rules/sheet-sync-process.mdc): modes, envs and quotas.
-
 
 **November 4 Call parity review:** [canonical billing policy](../../call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering) owns company-scoped Form Fill, bounded transactional follow-up and final-result ordering. Reporting exclusions remain separate from Booking/Cancellation reporting and Desk eligibility. [Evidence and release limits](../../call-billing-review-2026-11-04.md).

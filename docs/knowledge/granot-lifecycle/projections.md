@@ -4,7 +4,7 @@ title: Granot lifecycle read projections
 description: Masked Admin case, job, and lead reads. Reads never invoke mutations.
 tags: [granot-lifecycle]
 status: draft
-stale_after: 2026-11-19
+stale_after: 2026-12-19
 resource: src/services/granotLifecycle/projections.ts
 applies_to:
   - src/services/granotLifecycle/projections.ts
@@ -73,7 +73,7 @@ Daily Job and Lead timelines use business changes, Record Links, cases, discrepa
 
 ## Timelines
 
-Job Number is the primary timeline. Available Observations, individual Priority effects and Booked/Release actions, Decisions, case evidence/sequence events, Record Link changes, Entity Changes, and current official Booking/Cancellation facts remain individual entries. Sorting is ascending `(event_at, type_priority, id)` with the locked priorities 10 through 100. Invalid authoritative event time fails projection; request time is never substituted.
+Job Number is the primary timeline. Individual Priority effects and Booked/Release actions, case evidence/sequence events, Record Link changes, Entity Changes, and current official Booking/Cancellation facts remain individual entries. Routine transport Observations and Decisions no longer enter the Admin timelines; case evidence reads the case-owned copies, and pairing reads `readPairingObservations`. Sorting is ascending `(event_at, type_priority, id)` with the locked priorities 10 through 100. Invalid authoritative event time fails projection; request time is never substituted.
 
 Pagination returns `{ items, next_cursor, current, capabilities }`. There is no hidden 100-row cap: `next_cursor` advertises remaining entries. Release-case and discrepancy capabilities are true when those collections exist.
 

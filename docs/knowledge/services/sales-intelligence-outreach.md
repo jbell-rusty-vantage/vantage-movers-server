@@ -33,7 +33,7 @@ CSI-06 and its successors planned Outreach records per Number, kept follow-ups, 
 - Owner routes for Attention, Outreach, Closed history, Overview, follow-ups, Start/End the call, Case File, the Outreach timeline and `POST /backfill`; they return 404.
 - Crons `sales-intelligence-outreach-ensure`, `-attention-publish`, `-overview-refresh` and `-backfill-step`; job stages `outreach_ensure`, `outreach_derive` and `backfill` (late rows are terminalized as `retired`).
 - Flags `SALES_INTELLIGENCE_{OUTREACH_ENSURE,ATTENTION_V2,ATTENTION_EVOLUTION,LEAD_PROGRESS,PROGRESS_PLAN,CASE_FILE,TIMELINE_V2,LIVE_SSE}` and the Outreach due-time bootstrap settings.
-- The post-commit Granot Outreach wake-up. Lead changes now wake the Lead attachment job instead ([processor.md](../granot-lifecycle/processor.md)).
+- The post-commit Granot Outreach wake-up. Lead changes then woke the Lead attachment job instead ([processor.md](../granot-lifecycle/processor.md)). All Numbers phase B later retired `attachment_refresh`; the `lead_link` stage and the Sales Outreach Desk Lead-change tail now follow Lead changes.
 
 ## Still in place
 

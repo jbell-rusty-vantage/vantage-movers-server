@@ -4,7 +4,7 @@ title: "Granot lifecycle processor (`granotLifecycle/processor`)"
 description: Channel-neutral orchestration from receipt to Decision and gated Lead writes. No official Booking or Cancellation writes.
 tags: [granot-lifecycle]
 status: draft
-stale_after: 2026-11-19
+stale_after: 2026-12-19
 resource: src/services/granotLifecycle/processor.ts
 applies_to:
   - src/services/granotLifecycle/processor.ts
@@ -162,4 +162,4 @@ Official Booking Owner commands (including Confirm Granot Cancellation on a book
 
 ## Cadence convergence and no-op evidence
 
-Webhook Priority Update and Estimates snapshots enter the same temporal/desired-state command. Fresh unchanged business state may advance accepted metadata and retains a Decision, without a business revision/EntityChange/Sheet intent. Exact operation replay returns saved evidence; stale captured tuples cannot win. Current Form state is reread for sibling mirroring, including after `already_current`; the best-effort callback is not made durable by terminal replay. The committed marker's related Form wake is owned by the [Outreach tail](../sales-outreach-lifecycle.md#granot-cadence-convergence-november-4). Actual Booked/Release assertions retain reconciliation and Owner-command authority. [Proof and release limits](../../granot-automation-frequency/IMPLEMENTATION-LEDGER.md).
+Webhook Priority Update and pre-cutover Estimates receipts enter the same temporal/desired-state command. Fresh unchanged business state may advance accepted metadata and retains a Decision, without a business revision/EntityChange/Sheet intent. Since November 19 scheduled Estimates skip unchanged, unmatched and ambiguous rows before apply and record no Decision for them; a real change uses `prepareDecision` and the Lead synchronization operation directly ([automation apply](./automation-apply.md)). Exact operation replay returns saved evidence; stale captured tuples cannot win. Current Form state is reread for sibling mirroring, including after `already_current`; the best-effort callback is not made durable by terminal replay. The committed marker's related Form wake is owned by the [Outreach tail](../sales-outreach-lifecycle.md#granot-cadence-convergence-november-4). Actual Booked/Release assertions retain reconciliation and Owner-command authority. [Proof and release limits](../../granot-automation-frequency/IMPLEMENTATION-LEDGER.md).
