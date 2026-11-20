@@ -65,7 +65,7 @@ All line ranges are at `9955430d`. Words follow the [glossary](../../../../CONTE
 Webhook versus scheduled versus extension, in one line each:
 
 - **Webhook and extension** share one path: receipt → Observation → `processGranotObservation` → booking case, Form creation, or `synchronizeLeadFromGranot`, then the bounded post-commit steps (lead-link wake and sibling mirror).
-- **Scheduled Estimates (schema 3, since `5137f06f`, November 19)** skip the receipt. `applyScheduledLeadChange` re-plans inside one transaction and applies only a real change.
+- **Scheduled Estimates (schema 3, since `5137f06f`, November 19)** skip the receipt. `applyScheduledLeadChange` re-plans inside one transaction and commits a real change, or, for an already-current Lead, an owed Record Link or Form sibling catch-up (§6, since Track A `15987e9c`).
 
 ## 2. What Granot may write on a matched Lead
 
@@ -93,20 +93,20 @@ Eligibility of the matched Lead (identity ladder, `identity.ts`):
 
 ## 3. `synchronizeLeadFromGranot`
 
-**Source:** `granotLifecycle/synchronizeLeadFromGranot.ts:synchronizeLeadFromGranot` L78–L101, `applySynchronizeLeadOperation` L145–L318.
+**Source:** `granotLifecycle/synchronizeLeadFromGranot.ts:synchronizeLeadFromGranot` L78–L101, `applySynchronizeLeadOperation` L145–L318 @ `9955430d` (L147–L320 @ `25aecf5e`; Track A added `dispute_recorded` to the conflict result and exported the exact-job link lookup as `findExactActiveRecordLink`, L840).
 
 | Aspect | Rule |
 |---|---|
-| Trigger | Processor `maybeSynchronizeMatchedLead` (`processor.ts` L969–L1173) for webhook and extension receipts; `applyScheduledLeadChange` (`scheduledLeadChange.ts` L124–L216) for scheduled runs. |
+| Trigger | Processor `maybeSynchronizeMatchedLead` (`processor.ts` L969–L1173) for webhook and extension receipts; `applyScheduledLeadChange` (`scheduledLeadChange.ts` L162–L278 @ `25aecf5e`) for scheduled runs. |
 | Preconditions | Live mode, `lead_writes_enabled`, all eight effect gates (L81–L87). `domain_revision` equals the planned revision (L158–L160). The Observation is newer than `last_accepted_granot_observation` (L171–L177). |
 | Precedence | Temporal winner first: an older or same Observation never wins (`granotTemporal.ts`). Then Record Link conflict beats any Lead change (L181–L184). A job already on the Lead beats a new job (plan conflict). Owner booking commands own `booked`. |
 | Time window / clock | No window. Order by the Observation's `captured_at` (UTC instant). Pending matches retry on `nextPendingMatchDueAt` until `match_window_expired` (`leadDesiredState.ts` L293–L313). |
-| Idempotency | Webhook/extension: key `granot:synchronize-lead:<observation_id>` (`authorizedDesiredState.ts` L256–L258) plus `expected_domain_revision` CAS (L676–L690). Scheduled: key `scheduled-estimate:<source id>`, deterministic Observation/Decision IDs hashed from the operation ID (`scheduledLeadChange.ts` L59–L104). |
+| Idempotency | Webhook/extension: key `granot:synchronize-lead:<observation_id>` (`authorizedDesiredState.ts` L256–L258) plus `expected_domain_revision` CAS (L676–L690). Scheduled: key `scheduled-estimate:<source id>`, deterministic Observation/Decision IDs hashed from the operation ID (`scheduledLeadChange.ts` L96–L130 @ `25aecf5e`). |
 | Fields written | `reportable` paths from §2, plus `last_accepted_granot_observation` always, `current_contact_provenance` / `granot_contact_revision` / `last_granot_contact_change` when contact leaves change, `current_move_provenance` when a move path changes (`buildLeadUpdate` L572–L645). With no Lead change and only a new link, only the temporal winner advances (L695–L723). |
 | EntityChange | `synchronizeLeadFromGranot` on the Lead (`FORM_LEAD_CHANGE_PATHS` / `CALL_LEAD_CHANGE_PATHS`) and on the `GranotRecordLink` when established/attached (L277–L289). The revision stamp advances `domain_revision` (`domainCommands/entityChange.ts` L435–L466). A change to `phone_number`, `duplicate` and similar schedules Form Fill work (L418–L421); Granot sync does not write those paths in practice. |
 | Sheet Sync | `source_lead` / `form_lead.update` or `call_lead.update`, enqueued in the transaction **only when a non-`granot_priority` reportable path changed** (L187–L191, L299–L307). Priority-only changes plan no Sheet work. The shared planner then upserts the Lead's current tab in place (a Form Fill Call stays on Duplicate Calls). |
-| Outreach | The Lead EntityChange row feeds the Lead-change tail. `granot_priority`, `normalized_job_no`, `move_date` and `last_accepted_granot_observation` are admission decision paths (`salesOutreach/subjects/feed.ts` L147–L161). Scheduled runs also refresh Pool and the open subject in the same transaction when priority changed (`scheduledLeadChange.ts` L210–L212). |
-| Daily Operations | `granot.linked` after commit for `applied` or `linked` only, dedupe `decision:<id>:granot.linked` (`finalizeSynchronizedLead` L119–L122; `dailyOperations/recordGranotFacts.ts` L140–L168). Skipped on an idempotent replay. |
+| Outreach | The Lead EntityChange row feeds the Lead-change tail. `granot_priority`, `normalized_job_no`, `move_date` and `last_accepted_granot_observation` are admission decision paths (`salesOutreach/subjects/feed.ts` L147–L161). Scheduled runs also refresh Pool and the open subject in the same transaction when priority changed (`scheduledLeadChange.ts` L270–L272 @ `25aecf5e`). |
+| Daily Operations | `granot.linked` after commit for `applied` or `linked` only, dedupe `decision:<id>:granot.linked` (`finalizeSynchronizedLead` L119–L122 @ `9955430d`, L121–L124 @ `25aecf5e`; `dailyOperations/recordGranotFacts.ts` L140–L168). Skipped on an idempotent replay. |
 | Outcomes | `applied`, `linked` (link only), `already_current` (equal-date-only work with an exact link, L195–L197), `conflict`. Anything else is a race and is re-planned up to 3 times (`processor.ts` L997, L1172). |
 
 ### Call move-date recovery (`recoverCallLeadMoveDate`)
@@ -119,7 +119,7 @@ Eligibility of the matched Lead (identity ladder, `identity.ts`):
 
 ### Two ways a Call Lead gets a job
 
-> Pending re-verification against the Track A merge (scheduled sibling catch-up / Record Link). Documented at 9955430d.
+> Re-verified against the Track A merge (PR #243, `15987e9c`; `main` = `25aecf5e`) on November 20. Rules changed by Track A cite `25aecf5e`.
 
 1. **Granot matched the Call directly.** The Granot source label resolves to a **call** Source Granularity, so the Call ladder runs and `synchronizeLeadFromGranot` writes `job_no`, priority, receiver and move facts onto the Call. `granot_form_sibling` stays empty. This is the Owner's reference Call `6ae907f26f28ecf54e7aff42` (TBM Prime Inbounds): `createCallLead` 2026-11-02 22:00:17 UTC; `synchronizeLeadFromGranot` 22:00:47 via `granot_webhook` (job, priority, receiver, contact snapshot, move fields, `quoted`); again 23:28:20 via `granot_http_automation` (snapshot and move provenance); again 2026-11-03 00:36:23 via `granot_webhook` (priority to 5); `confirmGranotBooking` 14:23:29 (`booked`); `recordRingCentralFinalCallLogResult` 22:26:10. No Form Lead holds its job. It stays on Duplicate Calls (row 310) because `form_fill: true`. Production read 2026-11-20 12:48 New York.
 2. **The Form→Call sibling mirror.** Granot files the job under the Form source. The Form ladder resolves the Form Lead, and after the Form result the mirror (§5) copies the job onto the qualified Call Lead and stamps `granot_form_sibling`.
@@ -145,7 +145,7 @@ Production (read 2026-11-20 17:37 UTC): 2,078 Form Lead creations, latest 2026-1
 
 ## 5. The Form→Call sibling mirror (`mirrorFormLeadToCallSibling`)
 
-**Source:** `granotLifecycle/callLeadFormSibling.ts`: `eligibleSibling` L121, `planFormSiblingUpdate` L127–L173, `loadFormSiblingCandidates` L176–L193, `hasSyncedCallsRow` L198–L202, `mirrorFormLeadToCallSibling` L235–L277. Owner directive 2026-10-28/29 (workspace `AGENTS.md`).
+**Source:** `granotLifecycle/callLeadFormSibling.ts`: `eligibleSibling` L121, `planFormSiblingUpdate` L127–L173, `loadFormSiblingCandidates` L176–L193, `findFormsNeedingSiblingUpdate` L207–L243, `hasSyncedCallsRow` L245–L249, `mirrorFormLeadToCallSibling` L282–L324, all @ `25aecf5e` (L1–L193 are unchanged from `9955430d`). Owner directive 2026-10-28/29 (workspace `AGENTS.md`).
 
 ### Eligibility gate
 
@@ -176,36 +176,57 @@ It never creates a Lead and never writes the Form Lead, a Record Link, a Decisio
 
 | Aspect | Rule |
 |---|---|
-| Idempotency | Key `granot-form-sibling:<form>:<call>:r<call revision>:<first 32 hex of the sha256 of the mirrored values>`; the hash leaves out `receiver_agent_set_at` and `granot_form_sibling` (L241–L246). It re-plans inside the transaction and CASes on the Call's `domain_revision` (L250–L261). |
-| EntityChange | `mirrorFormLeadToCallSibling` on the Call Lead (L263–L265). |
-| Sheet Sync | `source_lead` / `call_lead.update` only when the Call already has a synced row on Calls, Duplicate Calls or Bad Call Leads, its disposition is not `excluded`, effective No-Sync does not apply, **and** `job_no` or the receiver name changed (L198–L202, L267–L270). Priority-only mirrors plan no Sheet work. The planner keeps a Form Fill Call on Duplicate Calls. A never-delivered Call is not newly admitted. |
+| Idempotency | Key `granot-form-sibling:<form>:<call>:r<call revision>:<first 32 hex of the sha256 of the mirrored values>`; the hash leaves out `receiver_agent_set_at` and `granot_form_sibling` (L288–L293 @ `25aecf5e`). It re-plans inside the transaction and CASes on the Call's `domain_revision` (L297–L308). |
+| EntityChange | `mirrorFormLeadToCallSibling` on the Call Lead (L310–L312 @ `25aecf5e`). |
+| Sheet Sync | `source_lead` / `call_lead.update` only when the Call already has a synced row on Calls, Duplicate Calls or Bad Call Leads, its disposition is not `excluded`, effective No-Sync does not apply, **and** `job_no` or the receiver name changed (L245–L249, L314–L317 @ `25aecf5e`). Priority-only mirrors plan no Sheet work. The planner keeps a Form Fill Call on Duplicate Calls. A never-delivered Call is not newly admitted. |
 | Outreach | The tail recognizes this command touching `granot_form_sibling` and nominates a related-Form job `sod:lead-change:FormLead:<form>:related:CallLead:<call>:change:<change>` (`subjects/feed.ts` L95–L108). The Desk then excludes the Call as `form_lead_holds_job`. |
 | Daily Operations | None. |
 | Time window | 45 days between Form and Call creation, phone rung only. No window on the job rung. |
 
 ### When it runs
 
-> Pending re-verification against the Track A merge (scheduled sibling catch-up / Record Link). Documented at 9955430d.
+> Re-verified against the Track A merge (PR #243, `15987e9c`; `main` = `25aecf5e`) on November 20. Rules changed by Track A cite `25aecf5e`.
 
 | Path | When | Bound |
 |---|---|---|
 | Processor (webhook, extension, pre-schema-3 automation receipts) | After any Form Lead result `applied`, `linked`, `created` or `already_current`, live writes only, not shadow mode, and only when the receipt loads and an initiator resolves; otherwise the mirror is skipped with no log (`processor.ts` L240–L258, L245–L253, `FORM_SIBLING_OUTCOMES` L274) | 2 s, never throws (`boundedLeadLinkWake` L277–L288, `LEAD_LINK_WAKE_TIMEOUT_MS` L271) |
-| Scheduled direct apply (schema 3) | **Only after an `applied` Form change** (`scheduledLeadChange.ts` L153–L162, L197–L198, L227–L235) | **Unbounded, awaited, errors escape** |
+| Scheduled direct apply (schema 3) | After any committed Form outcome except `conflict`: an `applied` change, a `linked` Record Link, or an `already_current` sibling catch-up promoted by planning (§6; `scheduledLeadChange.ts` L292–L303 @ `25aecf5e`) | 2 s, never throws (`boundedLeadLinkWake`); result on the receipt's `post_commit.form_sibling` |
 | Owner backfill script | On demand | n/a |
 
 Production (read 2026-11-20 12:47 New York): 52 `mirrorFormLeadToCallSibling` Call rows, 2026-10-29 02:13 to 2026-11-17 16:25 UTC. 39 are the October 29 Owner backfill (38 on Form Fill Calls); 8 came from `granot_http_automation` receipts and 5 from `granot_webhook` (priority only). 47 Call Leads carry `granot_form_sibling`.
 
-## 6. Scheduled-run findings (current `main` behavior)
+## 6. Scheduled Estimates runs: follow-ups for already-current Leads
 
-> Pending re-verification against the Track A merge (scheduled sibling catch-up / Record Link). Documented at 9955430d.
+> Re-verified against the Track A merge (PR #243, `15987e9c`; `main` = `25aecf5e`) on November 20. Rules changed by Track A cite `25aecf5e`.
 
-These are the November 20 review findings ([review](../../operations/SERVICE-REVIEW-2026-11-20.md#granot-runs-and-lead-updates)). They describe the code as it is.
+The November 20 review found three gaps in the scheduled path introduced by `5137f06f` (November 19): no Record Link for an already-current Lead, no sibling catch-up from an already-current Form, and unbounded post-commit steps ([review](../../operations/SERVICE-REVIEW-2026-11-20.md#granot-runs-and-lead-updates)). Track A (PR #243) closed all three. At `25aecf5e`:
 
-1. **No Record Link for an already-current Lead.** Planning classifies every matched row whose plan is not `applied` as `unchanged` (`estimatesIdentityPlanning.ts` L159–L164). Apply skips anything but `applied` with changed paths (`scheduledLeadChange.ts` L153–L162). The webhook processor still links an `already_current` Lead (`processor.ts` L1029–L1034, and the decision-and-link transaction L408–L500).
-2. **Sibling catch-up only after an applied Form change.** The scheduled path calls the mirror only after an applied Form change (`scheduledLeadChange.ts` L227–L235). A Call that qualifies after its Form already holds the job gets the job from the next webhook or Form change, not the hourly run. Measured November 20: 42 qualified, non-duplicate, jobless Calls in 30 days, none with a same-source Form sibling holding a job.
-3. **Unbounded post-commit retries.** `wakeLeadLinksAfterChange` and the mirror are awaited with no time bound and errors escape (`scheduledLeadChange.ts` L226–L235). `runWorkflow.ts` L555–L558 turns the error into `EstimatesApplyRetry`, and the run retries that action first on every pass until the 24-hour run expiry. The command replays by its key, so the Lead is not written twice.
+**Planning promotes owed follow-ups.** `granotHttpCollector/estimatesIdentityPlanning.ts:promoteFollowUps` L288–L345 @ `25aecf5e` takes the rows planned as `unchanged` with outcome `already_current` (classification L235) and promotes a row to `update` with a `follow_up` list when it owes work the webhook processor would do:
 
-Minor: a Record Link conflict on the scheduled path returns `conflict` from the operation, which `SkippedChange` turns into a rollback (L197–L198, L217–L219). The dispute is never saved.
+| Follow-up | Owed when | Source |
+|---|---|---|
+| `record_link` | The ladder did not reach the Lead through a Record Link, and no active link holds the row's exact job (or that link has no Lead). A link naming another Lead is never contested from an already-current row. **A Call Lead qualifies only while reporting-eligible**: `hasReportingEligibleCall` (via `reportingEligibleCallLeadFilter`) and not `created_on_unmatched` (Owner, November 20). | `EstimatesFollowUp` L32, `findEligibleCallLeads` L57–L63, `linkOwed` L320–L321 |
+| `form_sibling` | The Form Lead's qualified Call sibling is behind: `findFormsNeedingSiblingUpdate` plans each candidate Form with the unchanged `planFormSiblingUpdate` (so the sibling gate is the same) and confirms with the update's own loader. Letter-prefixed job variants are not found in this batch read; the Form's next applied change or webhook still reaches them. | `callLeadFormSibling.ts:findFormsNeedingSiblingUpdate` L207–L243 @ `25aecf5e` |
+
+Bounds (constants at L35–L39):
+- **Cap:** at most `FOLLOW_UP_PROMOTION_CAP` = 50 promoted rows per plan; the rest count as `follow_up_deferred` and drain in later slots. Promoted rows are placed after the plan's real updates (L340–L342).
+- **Form backoff:** a Form whose scheduled sibling catch-up committed within `FORM_SIBLING_RETRY_AFTER_MS` = 6 hours is not promoted again (`follow_up_form_sibling_backoff`). Only scheduled `already_current` Decisions count, not webhook ones (`findRecentScheduledSiblingCatchUps` L65–L79).
+- **Read bound:** each batched read has `maxTimeMS` 5,000 (`FOLLOW_UP_READ_MAX_TIME_MS`). A failed read promotes nothing for that plan (`follow_up_unavailable`) and every other unchanged row still writes no per-Lead history.
+
+**Apply rechecks inside the transaction.** `granotHttpCollector/scheduledLeadChange.ts:applyScheduledLeadChange` L80–L314 @ `25aecf5e`:
+- A real change commits `applied` as before.
+- An `already_current` row whose gates all pass (L194–L196) commits `linked` when a link is owed: no active Record Link on the exact job (`findExactActiveRecordLink`), the ladder did not use one, and the Lead is a Form or an admitted Call (`admittedCallLead` L317–L320: `hasReportingEligibleCall` and not `created_on_unmatched`) (L197–L204).
+- Otherwise, for a Form whose sibling update would write (`loadFormSiblingCandidates` + `planFormSiblingUpdate`), it commits only the Observation and an `already_current` Decision that the sibling update cites; the Form Lead itself is unchanged (L205–L215).
+- A Record Link conflict found while applying a change now commits `conflict` once, keeping the dispute the Lead command recorded (`dispute_recorded`); an already-disputed link leaves no new history (L252–L257).
+- Anything else rolls back with no per-Lead history (`SkippedChange`). Committed outcomes: `applied`, `linked`, `already_current`, `conflict` (L57–L58). An idempotent replay reads the committed Decision to know what it did (`committedOutcome` L322–L325).
+
+**Post-commit steps are bounded and never throw (L282–L313).** After `applied` or `linked`, the Lead-link wake runs through `boundedLeadLinkWake` with the webhook path's 2 s bound (`processor.ts` L271, L277). For a Form Lead with any committed outcome except `conflict`, `mirrorFormLeadToCallSibling` runs under the same bound. Each result is recorded on the action receipt as `post_commit` (`lead_link_wake`: `done`/`timeout`/`failed`; `form_sibling`: `updated`, a skip reason, or `timeout`/`failed`) (`automationApply.ts:ScheduledPostCommitOutcome` L47–L58 @ `25aecf5e`). A failure no longer escapes into `EstimatesApplyRetry`.
+
+Scheduled apply still never creates a Lead and never uses Call `create_if_missing`. The sibling update never creates or qualifies a Call; its gate is unchanged (§5).
+
+**Archive and Pool readers.** The scheduled-run archive accepts `linked` actions (`granotHistory/scheduledRunArchive.ts` L67–L68), and Pool admission treats a scheduled Observation with a `linked` Decision as completed (`salesOutreach/pool/admission.ts` L168–L169), both @ `25aecf5e`.
+
+Tests (unit, offline): `granotHttpCollector/estimatesIdentityPlanning.test.ts`. Replica: `granotHttpCollector/scheduledFollowUp.replica.test.ts` (results in [COVERAGE.md](COVERAGE.md#tests)).
 
 ## 7. Granot Record Links
 
@@ -213,10 +234,10 @@ A Record Link (`models/GranotRecordLink.ts`) binds one active `normalized_job_no
 
 | Action | Where | Effect |
 |---|---|---|
-| Establish | Sync with no active link (`synchronizeLeadFromGranot.ts` L368–L370, L493–L543); processor decision-only path for a job proposal (`processor.ts` L423–L470); `reserveRecordLink` on Form creation; `confirmGranotBooking` when no link exists | New active link, revision 0, EntityChange on the link. |
-| Attach | Active link without `lead_ref` (L382–L384, L545–L569) | `$set lead_ref` (+ `source_scope`). |
-| Confirm | Link already on this Lead (L385, L647–L662) | Observation pointers only; no EntityChange. |
-| Conflict | Link on another Lead (`record_link_conflict`), another job, or another source scope (L371–L381) | `disputed: true`, `dispute_reason`, EntityChange on the link; Decision `conflict`; **no Lead write** (L406–L479). |
+| Establish | Sync with no active link (`synchronizeLeadFromGranot.ts` L370–L372, L498–L548 @ `25aecf5e`); scheduled `linked` follow-up for an already-current Form or admitted Call (§6); processor decision-only path for a job proposal (`processor.ts` L423–L470); `reserveRecordLink` on Form creation; `confirmGranotBooking` when no link exists | New active link, revision 0, EntityChange on the link. |
+| Attach | Active link without `lead_ref` (L384–L386, L550–L574 @ `25aecf5e`) | `$set lead_ref` (+ `source_scope`). |
+| Confirm | Link already on this Lead (L387, L652–L667 @ `25aecf5e`) | Observation pointers only; no EntityChange. |
+| Conflict | Link on another Lead (`record_link_conflict`), another job, or another source scope (L373–L383 @ `25aecf5e`) | `disputed: true`, `dispute_reason`, EntityChange on the link; Decision `conflict`; **no Lead write** (L408–L484 @ `25aecf5e`). On the scheduled path the dispute is now committed once (§6). |
 | Booking claim | `confirmGranotBooking`, `createReferralBooking` | `$set booking_ref`, clears `disputed` (see [bookings-and-cancellations.md](bookings-and-cancellations.md)). |
 | Release | `deleteBookedLead` → `releaseLiveBookingClaims` | `$unset booking_ref`. |
 

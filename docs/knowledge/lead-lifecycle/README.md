@@ -8,6 +8,7 @@ status: current
 stale_after: 2027-01-20
 resource: docs/knowledge/lead-lifecycle/
 verified_at: 9955430d
+reverified_at: 25aecf5e
 applies_to:
   - src/services/leads/**
   - src/services/domainCommands/**
@@ -138,4 +139,4 @@ Read-only, 13:50–13:51 New York, after the session's Owner-approved Form-tab f
 
 ## Track A
 
-Track A changes the scheduled Granot sibling catch-up and Record Link establishment. Sections marked "Pending re-verification against the Track A merge" describe `9955430d` and must be re-checked against the merged code.
+Track A (PR #243, merged as `15987e9c`) restored the scheduled Granot sibling catch-up and Record Link establishment for already-current Leads, with bounded follow-ups. PR #245 made Forms and Duplicate Forms exclusive on re-delivery and added a row-identity recheck before every positional Sheet update. Both are deployed at `main` = `25aecf5e`. The affected sections of [granot-effects.md](granot-effects.md), [duplicates-and-form-fill.md](duplicates-and-form-fill.md), [reporting-and-sheets.md](reporting-and-sheets.md), [form-leads.md](form-leads.md) and [bad-leads.md](bad-leads.md) were re-verified and re-cited at `25aecf5e`; every other rule cites `9955430d`, whose code for it is unchanged.

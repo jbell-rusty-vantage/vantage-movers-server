@@ -127,29 +127,29 @@ A throwaway script imported the pure functions from the worktree and evaluated 4
 
 **No Form `excluded` disposition exists in code.** Form routing has no admission gate: every Form Lead that exists is routed. `form_fill` and `created_on_unmatched` are Call fields; on a Form they change nothing (confirmed by the truth table).
 
-**Source:** `src/services/googleSheets/leadReportingTargets.ts:hasFormBadProjection` L25–L27, `formLeadTargets` L32–L39, `staleFormTargetKeys` L42–L46; `jobPlanner.ts:planSourceLead` L141–L182; `noSyncLead.ts` L13–L34 @ `9955430d`.
+**Source:** `src/services/googleSheets/leadReportingTargets.ts:hasFormBadProjection` L25–L27, `formLeadTargets` L32–L39 @ `9955430d`, `staleFormTargetKeys` L48–L53 @ `25aecf5e`; `jobPlanner.ts:planSourceLead` L141–L182; `noSyncLead.ts` L13–L34 @ `9955430d`.
 
 | # | Condition | Tab | Insights billable | Sheet Sync action on re-delivery |
 |---|---|---|---|---|
 | 1 | Bad: `bad_lead` is truthy (any reason, including `legacy_bad_tab`) or a trusted `bad_form` review | Bad Form Leads | `!duplicate` (a non-duplicate Bad Form is priced) | Upsert Bad Form Leads, then delete Forms, Duplicate Forms and legacy `Duplicates` rows. `no_sync` and `duplicate` do not change the tab. |
-| 2 | `duplicate === true` | Duplicate Forms | false | Upsert Duplicate Forms, then delete Bad Form Leads and legacy `Bad Leads` rows. **The Forms row is not deleted.** |
+| 2 | `duplicate === true` | Duplicate Forms | false | Upsert Duplicate Forms, then delete Forms, Bad Form Leads and legacy `Bad Leads` rows (since `25aecf5e`). |
 | 3 | `no_sync === true` | none | true | Delete the row from every Form tab, including legacy titles. No upsert. |
-| 4 | Otherwise | Forms | true | Upsert Forms, then delete Bad Form Leads and legacy `Bad Leads` rows. **A Duplicate Forms row is not deleted.** |
+| 4 | Otherwise | Forms | true | Upsert Forms, then delete Duplicate Forms (old and new titles), Bad Form Leads and legacy `Bad Leads` rows (since `25aecf5e`). |
 
 Precedence: Bad wins over duplicate and No-Sync. Duplicate wins over No-Sync. The Bad Form tab is exclusive (`formLeadTargets` comment: "Bad Forms have one exclusive destination, including duplicate/booked Forms").
 
-Form truth table, 512 combinations (`duplicate` × 4 `bad_lead` values × 4 review states × `no_sync` × `booked` × `form_fill` × `created_on_unmatched`):
+Form truth table, 512 combinations (planner deletes re-derived at `25aecf5e`) (`duplicate` × 4 `bad_lead` values × 4 review states × `no_sync` × `booked` × `form_fill` × `created_on_unmatched`):
 
 | Combinations | Bad | Duplicate | No-Sync | Tab | Planner deletes | Insights price |
 |---:|---|---|---|---|---|---|
-| 16 | no | no | no | Forms | Bad Form Leads | priced |
+| 16 | no | no | no | Forms | Duplicate Forms, Bad Form Leads (since `25aecf5e`) | priced |
 | 16 | no | no | yes | none | every Form tab | priced |
-| 16 | no | yes | no | Duplicate Forms | Bad Form Leads | duplicate ($0) |
-| 16 | no | yes | yes | Duplicate Forms | Bad Form Leads | duplicate ($0) |
+| 16 | no | yes | no | Duplicate Forms | Forms, Bad Form Leads (since `25aecf5e`) | duplicate ($0) |
+| 16 | no | yes | yes | Duplicate Forms | Forms, Bad Form Leads (since `25aecf5e`) | duplicate ($0) |
 | 224 | yes | no | either | Bad Form Leads | Forms, Duplicate Forms | priced |
 | 224 | yes | yes | either | Bad Form Leads | Forms, Duplicate Forms | duplicate ($0) |
 
-**The Forms ↔ Duplicate Forms asymmetry is intentional in code.** The test "Form Duplicate upserts Duplicates and does not delete leftover Forms" (`jobPlanner.test.ts` L478–L490) pins it, and the comment on `staleFormTargetKeys` reads "Preserve ordinary Form duplicate behavior". A Form that becomes a duplicate keeps its old Forms row. A Form that stops being a duplicate keeps its old Duplicate Forms row. Only a deletion tombstone, No-Sync or a Bad Form move removes those rows.
+**Forms and Duplicate Forms are mutually exclusive (since PR #245, `25aecf5e`, November 20).** `leadReportingTargets.ts:staleFormTargetKeys` L48–L53 @ `25aecf5e` lists every Form-family tab except the current destination: a Form that becomes a duplicate has its Forms row removed, and a Form that stops being one has its Duplicate Forms row removed (old and new titles). The current destination's transitional title is never listed, because an unmigrated workbook resolves the canonical upsert onto that old title. As with every stale-row removal, the delete runs only after the destination upsert is `synced`. Tests: "Form that became a Duplicate upserts Duplicate Forms and removes its Forms row without metadata", "Form that stopped being a Duplicate upserts Forms and removes old and new Duplicate Forms titles", "re-delivered non-duplicate Form leaves exactly its Forms row across old and new Duplicate titles" (`jobPlanner.test.ts`), and "direct Form facade keeps Forms and Duplicate Forms exclusive when the duplicate flag flips" (`googleSheets.service.test.ts`). Before `25aecf5e` the opposite primary row was kept.
 
 ### Billable value and the CPL used
 
@@ -198,10 +198,11 @@ Every Booking is expected on Booked Deals and every Cancellation on Cancelled De
 
 ### Batch writer
 
-**Source:** `src/services/sheetSync/drainer/batchWriter.ts:writeBatchedTargets` L58–L80, `processTabGroup` L99–L177, `applyDeletes` L252–L308, `rowRemovalRequests` L312–L345; `src/services/sheetSync/drainer/tabRowMap.ts:buildTabRowMap` L17–L67 @ `9955430d`.
+**Source:** `src/services/sheetSync/drainer/batchWriter.ts:writeBatchedTargets` L58–L80, `processTabGroup` L99–L177, `applyUpdates` L179–L229, `recheckIdentities` L232–L243, `applyDeletes` L281–L337, `rowRemovalRequests` L341–L374 @ `25aecf5e`; `src/services/sheetSync/drainer/tabRowMap.ts:buildTabRowMap` L17–L67 @ `9955430d` (unchanged).
 
 1. All upserts run first, grouped per tab. Each tab is read once (the header row plus the Mongo ID column) into a map of Mongo ID → row number.
 2. An upsert whose Mongo ID is on the tab rewrites that row in place. Otherwise it is appended. **The stored `sheet_sync.row_number` never addresses a write**; it is a hint only.
+   - **Identity recheck before every positional update (since PR #245, `25aecf5e`).** Updates address a row number, so every attempt, including each inline 429/503 retry, rereads the tab's Mongo ID map right before writing (`applyUpdates` L195–L223, `recheckIdentities` L232–L243). A write whose Mongo ID has moved to another row is not sent and fails with `sheet_update_identity_changed`; the other writes in the chunk proceed. A failed recheck read fails the chunk with `sheet_update_identity_recheck_failed:<status>` and is not retried by the update retry; a quota-refused recheck defers the update instead (`SheetDeliveryDeferred`). A managed-header mismatch at recheck refuses the update with `sheet_identity_projection_layout_unsafe`. A failed write marks the job failed and the drainer retries it up to the attempt limit (`runSheetSyncDrain.ts:markJobFailure` L243–L252), re-resolving the row by Mongo ID. This keeps an operator edit or another writer that shifted rows from having another Lead's row overwritten.
 3. If the same Mongo ID appears on more than one row of the destination tab, the extra rows are removed after a successful upsert (duplicate-row repair, L155–L174).
 4. A delete runs only when every upsert of the same Lead succeeded. A failed or deferred destination turns that Lead's deletes into `deferred` with `destination_upsert_pending` (L68–L76). The retry re-plans from Mongo.
 5. Upserts use `valueInputOption: "USER_ENTERED"`.
@@ -214,7 +215,8 @@ Stale-row removal is the delete half of a re-delivery. It happens **only after t
 |---|---|---|
 | Call, routed | the two Call tabs other than the destination (`jobPlanner.ts` L190–L192) | `staleCallTargetKeys` (`leadReportingTargets.ts` L14–L17) |
 | Form, Bad | Forms, Duplicate Forms, legacy `Duplicates` | `master_forms`, `source_forms`, `master_duplicates`, `source_duplicates` |
-| Form, not Bad | Bad Form Leads, legacy `Bad Leads` | `master_bad_leads`, `source_bad_leads` |
+| Form, duplicate, not Bad | Forms, Bad Form Leads, legacy `Bad Leads` | `master_forms`, `source_forms`, `master_bad_leads`, `source_bad_leads` (`staleFormTargetKeys` L48–L53 @ `25aecf5e`) |
+| Form, not duplicate, not Bad | Duplicate Forms (old and new titles), Bad Form Leads, legacy `Bad Leads` | `master_duplicates`, `source_duplicates`, `master_bad_leads`, `source_bad_leads` |
 | No-Sync (Form or Call) | every tab of its type | all reporting keys of its type |
 | Call, excluded or Unmatched (no No-Sync) | none | — |
 
@@ -284,9 +286,9 @@ Cell rules:
 - `FormFill` on the Call tabs is `TRUE`/`FALSE` from `form_fill`. `Sales Rep` is `receiver_agent_name_snapshot`, so a receiver change shows only after the Lead's next delivery. `Source Company` prefers the CRM label snapshot, then the feed label snapshot, then the company label.
 - A Form `Bad Lead` cell shows the reason label (for example `D/C number` or `Legacy Bad Tab`), or the imported note.
 
-**Operator content** (`batchWriter.ts:rowRemovalRequests` L328–L337) is anything on the row that Sheet Sync did not write: a value in a column whose header is not a managed header (columns to the right and blank-header columns), or a note, rich-text run or data-validation rule in any cell. Since PR #237 a formula in a managed column counts as managed, because Google stores a `USER_ENTERED` `+…` phone as a formula. Operator content never blocks an upsert. It only changes a removal into "clear the managed cells, keep the row".
+**Operator content** (`batchWriter.ts:rowRemovalRequests` L357–L366 @ `25aecf5e`) is anything on the row that Sheet Sync did not write: a value in a column whose header is not a managed header (columns to the right and blank-header columns), or a note, rich-text run or data-validation rule in any cell. Since PR #237 a formula in a managed column counts as managed, because Google stores a `USER_ENTERED` `+…` phone as a formula. Operator content never blocks an upsert. It only changes a removal into "clear the managed cells, keep the row".
 
-**Header refusal.** Before writing, the tab's header row must contain exactly one `Mongo ID`, and must start with the full managed header list in order. Otherwise delivery to that tab fails with `sheet_identity_header_rewrite_unsafe` (when headers are ensured) or `sheet_identity_projection_layout_unsafe`, and the job retries (`batchWriter.ts` L116–L143; `tabRowMap.ts` L41–L53). A release that adds a managed column must update the tab headers first. A brand-new empty tab is initialized.
+**Header refusal.** Before writing, the tab's header row must contain exactly one `Mongo ID`, and must start with the full managed header list in order. Otherwise delivery to that tab fails with `sheet_identity_header_rewrite_unsafe` (when headers are ensured) or `sheet_identity_projection_layout_unsafe`, and the job retries (`batchWriter.ts` L116–L143; `tabRowMap.ts` L41–L53). Since `25aecf5e` the same layout check also runs at each positional update's identity recheck (`recheckIdentities` L241). A release that adds a managed column must update the tab headers first. A brand-new empty tab is initialized.
 
 ## Sheet Sync metadata (`sheet_sync`)
 
@@ -306,8 +308,8 @@ Each row is what the next delivery does once the flag is saved. The owning page 
 
 | Transition | Upserted | Stale row removed | Notes |
 |---|---|---|---|
-| Form becomes a duplicate | Duplicate Forms | Bad Form Leads only | The Forms row stays (intentional). |
-| Form stops being a duplicate | Forms | Bad Form Leads only | The Duplicate Forms row stays. |
+| Form becomes a duplicate | Duplicate Forms | Forms, Bad Form Leads | Since `25aecf5e`; before, the Forms row stayed. |
+| Form stops being a duplicate | Forms | Duplicate Forms (old and new titles), Bad Form Leads | Since `25aecf5e`; before, the Duplicate Forms row stayed. |
 | Form becomes Bad | Bad Form Leads | Forms and Duplicate Forms, after the upsert succeeds | — |
 | Bad Form reversed (`bad_lead` cleared, no trusted review) | Forms or Duplicate Forms | Bad Form Leads, legacy `Bad Leads` | — |
 | Call gains `form_fill` | Duplicate Calls | Calls, Bad Call Leads | Not billable from then on. |
@@ -330,7 +332,7 @@ Read-only scans: the coordinator's tab scan at 12:38:49 New York and reconciliat
 | Excluded Calls with rows | 209 (203 Calls, 6 Duplicate Calls) | Written before `6febe214`; excluded Calls plan nothing since. See [above](#excluded-leads-and-their-existing-rows). |
 | Bad Forms also on Forms | 592 at 12:38; 0 after 13:01 | See [The November 3 Bad Form transition and the November 20 cleanup](#the-november-3-bad-form-transition-and-the-november-20-cleanup). |
 | Non-Bad Forms only on Bad Form Leads | 5 (0 after the 13:25 re-delivery) | No `bad_lead` write appears in their history, and their `sheet_sync` lists only Forms. No code path writes a non-Bad Form to Bad Form Leads, so the rows were most likely moved by hand. The next delivery would append a Forms row and delete the Bad Form Leads row (or clear its managed cells if it carries operator content). |
-| Non-duplicate Form on Duplicate Forms | 1 (row deleted 13:15) | A `legacy_unknown` Form. Its October 14 re-delivery left the Duplicate Forms row in place, as the asymmetry above predicts. |
+| Non-duplicate Form on Duplicate Forms | 1 (row deleted 13:15) | A `legacy_unknown` Form. Its October 14 re-delivery left the Duplicate Forms row in place under the pre-`25aecf5e` rule; the row was deleted at 13:15, and under the current rule a re-delivery would remove it. |
 | Form Fill Call on Calls | 1 | A June 12 `legacy_unknown` Call last delivered July 6. Before November 3 Calls routed by `duplicate` only, so Form Fill Calls went to Calls. It has had no intent since. The next delivery would move it to Duplicate Calls. |
 | Planner skips | 210 `missing_call_qualification`, 2 `created_on_unmatched`, 1 Form `no_sync` | Expected to have no row. |
 | Billable Calls and Form Fill Calls missing from their tab | 55 + 4 | `sheet_sync` says synced, and the row was removed by hand. Sheet Sync re-appends it on the Lead's next intent. |
@@ -341,7 +343,7 @@ Read-only scans: the coordinator's tab scan at 12:38:49 New York and reconciliat
 
 **Before November 3.** Until `6febe214` (November 3, 2026, 15:54 New York) a Bad Form was written to **both** its primary tab (Forms or Duplicates) and the old `Bad Leads` tab. The old planner upserted the primary, then also upserted `Bad Leads` when `bad_lead` was set, and deleted the `Bad Leads` row only when `bad_lead` was cleared (`git show 6febe214^:src/services/sheetSync/drainer/jobPlanner.ts` L192–L229). Dual membership was the designed behavior.
 
-**November 3.** `6febe214` made Bad Form Leads exclusive: the current planner upserts Bad Form Leads and then removes the Forms and Duplicate Forms rows (`leadReportingTargets.ts:formLeadTargets` L32–L39, `staleFormTargetKeys` L42–L46). The same release renamed the tabs by numeric sheet ID, so both old rows of every Bad Form survived. No backfill re-delivered the existing Bad Forms. Each one kept its Forms row until a new intent for that Lead ran the new plan.
+**November 3.** `6febe214` made Bad Form Leads exclusive: the current planner upserts Bad Form Leads and then removes the Forms and Duplicate Forms rows (`leadReportingTargets.ts:formLeadTargets` L32–L39, `staleFormTargetKeys` L42–L46 @ `9955430d`; L48–L53 @ `25aecf5e`). The same release renamed the tabs by numeric sheet ID, so both old rows of every Bad Form survived. No backfill re-delivered the existing Bad Forms. Each one kept its Forms row until a new intent for that Lead ran the new plan.
 
 **State before the cleanup** (R4 read at 12:49 New York, November 20). 592 Bad Forms had a row on both Forms and Bad Form Leads. All 592 listed `Forms` and `Bad Leads` in `sheet_sync`, last synced on or before 2026-10-30. 417 had their last `sheet_sync_jobs` job before November 3, and the rest had no job on record.
 
@@ -396,7 +398,7 @@ All ran offline at `9955430d`: 110 tests across 18 files, 108 pass, 2 skip (the 
 - `src/services/leads/callLeadReportingDisposition.test.ts`: the overnight clock and DST, precedence, No-Sync billing, checker mapping.
 - `src/services/leads/callLeadAdmission.test.ts`: the 69-ID inventory, forged and ISO-string stamps, queue qualification for any source.
 - `src/services/googleSheets/leadReportingTargets.test.ts`, `expectedSheetTabs.test.ts`: planner and contains agree; Bad Form exclusivity; Booked and Cancelled targets.
-- `src/services/sheetSync/drainer/jobPlanner.test.ts`: the Form duplicate asymmetry, Bad Form moves, No-Sync deletes, the Unmatched empty plan, tombstone fan-out.
+- `src/services/sheetSync/drainer/jobPlanner.test.ts`: Forms ↔ Duplicate Forms exclusivity (since `25aecf5e`), Bad Form moves, No-Sync deletes, the Unmatched empty plan, tombstone fan-out.
 - `src/services/sheetSync/drainer/drainer.test.ts`, `deliveryRecovery.test.ts`, `deliveryRequests.test.ts`, `metadataPersistence.test.ts`: delete fencing, duplicate-row repair, operator content, formula phones, metadata.
 - `src/services/googleSheets/projections/projections.test.ts`: row shapes and `textCell`.
 - `src/services/insights/insights.test.ts`: Bad Calls are zero-cost and duplicates $0 in Insights.

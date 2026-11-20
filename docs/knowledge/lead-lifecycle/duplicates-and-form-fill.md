@@ -30,7 +30,7 @@ sources:
 
 # Duplicates and Form Fill
 
-This page covers the three "this Lead is not new" rules: the Form duplicate rule, the 90-day Call repeat rule, and Form Fill. Every rule cites code at `main` `9955430d`.
+This page covers the three "this Lead is not new" rules: the Form duplicate rule, the 90-day Call repeat rule, and Form Fill. Every rule cites code at `main` `9955430d`; rules changed by Track A (PR #243) or PR #245 cite `25aecf5e`.
 
 Related: [call-leads.md](call-leads.md), [form-leads.md](form-leads.md), [bad-leads.md](bad-leads.md), [granot-effects.md](granot-effects.md), [reporting-and-sheets.md](reporting-and-sheets.md) (full routing table), [README.md](README.md).
 
@@ -76,15 +76,15 @@ A Form Lead is a [Duplicate Lead](../../../../CONTEXT.md) when an earlier, non-d
 | The earlier Form becomes Bad | Nothing. A Bad Form still counts as a predecessor for future Forms. | Only the earlier Form moves to Bad Form Leads. | L111–L118 |
 | The earlier Form's phone, email or granularity is corrected | Nothing for existing duplicates. Future Forms compare against the new values. | — | `correctFormLead` L606–L670 |
 | A later Form's contact or granularity is corrected | Nothing. `updateSourceOwnedLead` does not re-run the rule. | — | same |
-| **Duplicate repair: Owner sends `duplicate: false`** | Flag cleared. `updateFormLeadSchema` accepts it; `omitForbiddenLeadLifecycleFields` does not strip it. | Upserts Forms. **The old Duplicate Forms row is not removed** (non-bad stale keys are Bad Form Leads only). | `leads.validation.ts` L155–L164; `leadReportingTargets.ts:staleFormTargetKeys` L42–L46; test "Form Duplicate upserts Duplicates and does not delete leftover Forms" |
-| **Duplicate repair: Owner sends `duplicate: true`** | Flag set. | Upserts Duplicate Forms. **The old Forms row is not removed.** | same |
+| **Duplicate repair: Owner sends `duplicate: false`** | Flag cleared. `updateFormLeadSchema` accepts it; `omitForbiddenLeadLifecycleFields` does not strip it. | Upserts Forms and, since `25aecf5e`, removes the old Duplicate Forms row (old and new titles) after the upsert succeeds (before `25aecf5e` it stayed, because the non-bad stale keys were Bad Form Leads only). | `leads.validation.ts` L155–L164; `leadReportingTargets.ts:staleFormTargetKeys` L48–L53 @ `25aecf5e`; tests "Form that stopped being a Duplicate upserts Forms and removes old and new Duplicate Forms titles" and "Form that became a Duplicate upserts Duplicate Forms and removes its Forms row without metadata" |
+| **Duplicate repair: Owner sends `duplicate: true`** | Flag set. | Upserts Duplicate Forms and, since `25aecf5e`, removes the old Forms row after the upsert succeeds (before, it stayed). | same |
 | Either repair | CPL is not repriced (the patch is not source- or timestamp-affecting). `form_fill_work` is rescheduled (path `duplicate` changed). Calls already flipped to `form_fill` by this Form are not un-flipped by this path ([Form Fill](#form-fill-rule)). | — | `domainCommands/entityChange.ts` L418–L421 |
 
 Effects of a repair: EntityChange path `duplicate` under `updateSourceOwnedLead`; Sheet Sync `source_lead` / `form_lead.update` (or booking chain when Booked); Outreach sees the change through the `sales-outreach-lead-changes` tail; no Daily Operations fact. Production on 2026-11-20 shows **zero** `duplicate` changes after creation on FormLead `entity_changes` (any command), so every current Form `duplicate` value is its minting value or pre-dates change history.
 
 **Precedence.** Bad beats duplicate for the tab ([bad-leads.md](bad-leads.md#bad-form-leads)). Duplicate beats `no_sync` (a No-Sync duplicate still projects to Duplicate Forms, `src/services/sheetSync/noSyncLead.ts` L29). The Form duplicate flag never affects a Call's repeat `duplicate`; it only stops the Form from triggering Form Fill.
 
-**Production reconciliation input (read 2026-11-20 12:44 NY, coordinator scan).** One non-duplicate Form sits on both Forms and Duplicate Forms. It is `legacy_unknown`, created 2026-05-28, with `sheet_sync[]` entries only for `master_forms` and `source_forms`. Its Duplicate Forms row is explained by the rule above: when a non-bad Form's `duplicate` flips, the opposite primary row is never deleted. The flip predates change history (no `duplicate` EntityChange exists), so the exact writer is not recoverable from Mongo. A re-delivery today would also leave the row. Removal needs an explicit cleanup or a planner change.
+**Production reconciliation input (read 2026-11-20 12:44 NY, coordinator scan).** One non-duplicate Form sits on both Forms and Duplicate Forms. It is `legacy_unknown`, created 2026-05-28, with `sheet_sync[]` entries only for `master_forms` and `source_forms`. Its Duplicate Forms row was explained by the pre-`25aecf5e` rule: when a non-bad Form's `duplicate` flipped, the opposite primary row was never deleted. The session coordinator deleted that row at 13:15 New York on November 20, and under the current rule (PR #245) a re-delivery removes such a row. The flip predates change history (no `duplicate` EntityChange exists), so the exact writer is not recoverable from Mongo. A re-delivery today would also leave the row. Removal needs an explicit cleanup or a planner change.
 
 ### Worked example: a Form on Duplicate Forms
 
@@ -220,12 +220,12 @@ The code matches each point. The details follow.
 
 ### Granot updates on a Form Fill Call
 
-> Pending re-verification against the Track A merge (scheduled sibling catch-up / Record Link). Documented at 9955430d.
+> Re-verified against the Track A merge (PR #243, `15987e9c`; `main` = `25aecf5e`) on November 20. Rules changed by Track A cite `25aecf5e`. The sibling gate is unchanged, and scheduled runs now also catch a Call up from an already-current Form (bounded, 50 promotions per plan, 6-hour Form backoff; [granot-effects.md §6](granot-effects.md#6-scheduled-estimates-runs-follow-ups-for-already-current-leads)).
 
 A Form Fill Call keeps receiving Granot updates and stays on Duplicate Calls. There are two job paths:
 
 1. **Granot matched the Call directly.** `synchronizeLeadFromGranot` writes the job, priority, receiver and move facts on the Call itself. The Sheet planner re-derives the disposition on each update; `form_fill` still routes it to Duplicate Calls. The reference case below took this path.
-2. **Form→Call sibling mirror.** When Granot updates the customer's Form Lead, `mirrorFormLeadToCallSibling` copies the job, priority and receiver onto the qualified Call and sets `granot_form_sibling`. Its gate `eligibleSibling` (`granotLifecycle/callLeadFormSibling.ts` L121) requires `hasReportingEligibleCall`, `duplicate !== true` and `created_on_unmatched !== true`; `form_fill` is not checked. Sheet work for the mirror is enqueued only when the Call already has a synced Call row and is not excluded (`hasSyncedCallsRow`, L198–L202). A Form Fill Call passes and is updated in place on Duplicate Calls. Full rule: [granot-effects.md](granot-effects.md).
+2. **Form→Call sibling mirror.** When Granot updates the customer's Form Lead, `mirrorFormLeadToCallSibling` copies the job, priority and receiver onto the qualified Call and sets `granot_form_sibling`. Its gate `eligibleSibling` (`granotLifecycle/callLeadFormSibling.ts` L121) requires `hasReportingEligibleCall`, `duplicate !== true` and `created_on_unmatched !== true`; `form_fill` is not checked. Sheet work for the mirror is enqueued only when the Call already has a synced Call row and is not excluded (`hasSyncedCallsRow`, L245–L249 @ `25aecf5e`). A Form Fill Call passes and is updated in place on Duplicate Calls. Full rule: [granot-effects.md](granot-effects.md).
 
 ## How each flag routes and bills
 

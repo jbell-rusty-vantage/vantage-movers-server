@@ -359,7 +359,7 @@ The timeline does not read the Sheets disposition, `form_fill`, `bad_lead` or th
 | Idempotency | Read-only. |
 | Effects | None. |
 
-> Pending re-verification against the Track A merge (scheduled sibling catch-up / Record Link). Documented at 9955430d. Rule T2 and Pool check 5 depend on Record Link establishment.
+> Re-verified against the Track A merge (PR #243, `15987e9c`; `main` = `25aecf5e`) on November 20. Rule T2 and Pool check 5 depend on Record Link establishment. Since Track A, a scheduled run also establishes the Record Link for an already-current Form or admitted Call that has none ([granot-effects.md §6](granot-effects.md#6-scheduled-estimates-runs-follow-ups-for-already-current-leads)), and Pool admission treats a scheduled Observation whose Decision is `linked` (not only `applied`) as completed (`pool/admission.ts:inspectPoolCandidates` L168–L169 @ `25aecf5e`). The Job Number timeline code (`src/services/jobNumberTimeline/**`) is unchanged at `25aecf5e`.
 
 ## Entry points in this area
 

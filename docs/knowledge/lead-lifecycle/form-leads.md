@@ -209,12 +209,12 @@ The planner reloads the Lead and computes membership from current Mongo state (`
 | Lead state | Upsert | Stale rows deleted | Source |
 |---|---|---|---|
 | `no_sync: true`, not duplicate, not bad | none | every Form destination, including the transitional titles "Duplicates" and "Bad Leads" | `noSyncLead.ts:noSyncAppliesToNormalTabs` L13–L34, `jobPlanner.ts` L141–L166 |
-| Bad (`bad_lead` set, or trusted `external_sheet_review.kind === "bad_form"`) | Bad Form Leads | Forms and Duplicate Forms (old and new titles) | `hasFormBadProjection` L25–L27, `formLeadTargets` L32–L39, `staleFormTargetKeys` L42–L46 |
+| Bad (`bad_lead` set, or trusted `external_sheet_review.kind === "bad_form"`) | Bad Form Leads | Forms and Duplicate Forms (old and new titles) | `hasFormBadProjection` L25–L27, `formLeadTargets` L32–L39, `staleFormTargetKeys` L48–L53 @ `25aecf5e` |
 | Not bad, `duplicate: true` | Duplicate Forms | Bad Form Leads only | same |
 | Not bad, not duplicate | Forms | Bad Form Leads only | same |
 
 - **Deletes wait for upserts.** `batchWriter.ts:writeBatchedTargets` (L58–L79) runs every upsert first and defers a document's deletes while any of its upserts is not `synced` (`destination_upsert_pending`).
-- **A non-bad Form never loses its opposite primary row.** When `duplicate` flips, the old Forms or Duplicate Forms row stays (`staleFormTargetKeys` returns only the Bad Form Leads keys; test "Form Duplicate upserts Duplicates and does not delete leftover Forms" in `jobPlanner.test.ts`).
+- **Forms and Duplicate Forms are exclusive (since PR #245, `25aecf5e`).** When `duplicate` flips, the next delivery removes the opposite primary row after the destination upsert succeeds (`staleFormTargetKeys` L48–L53 @ `25aecf5e`; tests "Form that became a Duplicate upserts Duplicate Forms and removes its Forms row without metadata" and "Form that stopped being a Duplicate upserts Forms and removes old and new Duplicate Forms titles" in `jobPlanner.test.ts`). Before `25aecf5e` the old row stayed.
 - **Stale targets come from two sources.** `getDeleteTargets` (`googleSheets/targets.ts` L51–L81) deletes from the fallback target list and from every recorded `sheet_sync[]` entry whose target key is stale. So a missing `sheet_sync` entry does not block cleanup.
 - **Deletion.** `delete_source_lead` tombstone. `planTombstone` (`jobPlanner.ts` L277–L337) deletes the Mongo ID from every Form tab, old and new titles.
 
