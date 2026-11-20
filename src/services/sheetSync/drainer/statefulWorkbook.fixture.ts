@@ -27,7 +27,8 @@ export function deletionGrid(ranges: string[], rows: string[][]) {
 }
 
 /** Offline provider: faults can happen after the workbook has actually changed. */
-export function statefulWorkbook(initial: Record<string, string[][]>) {
+/** `protectedRanges` per tab title, returned with the removal read the way Google reports them. */
+export function statefulWorkbook(initial: Record<string, string[][]>, config: { protectedRanges?: Record<string, unknown[]> } = {}) {
   const rows = new Map(Object.entries(initial).map(([title, values]) => [title, structuredClone(values)]));
   const titles = [...rows.keys()];
   const requests: { operation: Operation; params: unknown; options?: RequestOptions }[] = [];
@@ -52,7 +53,8 @@ export function statefulWorkbook(initial: Record<string, string[][]>) {
       await finish("topology", fault);
       if (params.ranges) {
         const title = titleFrom(params.ranges[0]);
-        return { data: { sheets: [{ properties: { title, sheetId: titles.indexOf(title) }, data: deletionGrid(params.ranges, rows.get(title)!) }] } };
+        return { data: { sheets: [{ properties: { title, sheetId: titles.indexOf(title) }, data: deletionGrid(params.ranges, rows.get(title)!),
+          ...(config.protectedRanges?.[title] ? { protectedRanges: config.protectedRanges[title] } : {}) }] } };
       }
       return { data: { sheets: titles.map((title, sheetId) => ({ properties: { title, sheetId, gridProperties: { columnCount: 30 } } })) } };
     },

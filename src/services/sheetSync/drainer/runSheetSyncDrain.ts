@@ -134,6 +134,9 @@ export async function runSheetSyncDrain(
   const deadline = Date.now() + guardrails.maxRunDurationMs;
 
   try {
+    await requireActiveLease();
+    const reclaimed = await reclaimStaleProcessingJobs(new Date(), guardrails.leaseDurationMs);
+    if (reclaimed) logger.warn({ msg: "sheet_sync.drain.stale_leases_reclaimed", runId: runId.toString(), reclaimed });
     const claimed = await claimDueJobs(
       owner,
       runId,
@@ -352,6 +355,23 @@ export async function runSheetSyncDrain(
     await heartbeatWork;
     await releaseLease(activeLease);
   }
+}
+
+/**
+ * A worker killed outright leaves its jobs in `processing` with a lease nobody renews. Only the holder of the
+ * drain lease runs this, and only for job leases expired longer than one more lease period, so a live worker
+ * that is merely slow has already lost its job fence (every finalization checks `leased_until > now`). The job
+ * returns to `retrying`, due now, with the reason recorded; its next delivery is the normal idempotent
+ * canonical rewrite (rows are matched by Mongo ID, and a committed write with a lost response is recovered).
+ */
+export async function reclaimStaleProcessingJobs(now: Date, leaseMs: number): Promise<number> {
+  const expiredBefore = new Date(now.getTime() - leaseMs);
+  const result = await SheetSyncJob.updateMany(
+    { status: "processing", leased_until: { $lte: expiredBefore } },
+    { $set: { status: "retrying", due_at: now, leased_until: new Date(0),
+      last_error: "stale processing lease reclaimed", last_error_at: now } },
+  );
+  return result.modifiedCount;
 }
 
 async function claimDueJobs(

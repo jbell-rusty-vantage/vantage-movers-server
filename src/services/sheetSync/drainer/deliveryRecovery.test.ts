@@ -306,6 +306,31 @@ test("removing a row whose managed phone cell is stored as a formula deletes the
   assert.deepEqual(f.rows.get("Calls"), [headers, ["B", "neighbor"]]);
 });
 
+test("a protected range blocks a removal only when enforced against this service account", async () => {
+  const wholeTab = { range: { sheetId: 0 } };
+  const remove = async (protection: Record<string, unknown>) => {
+    const f = statefulWorkbook({ Calls: [headers, ["A", "old"], ["B", "neighbor"]] }, { protectedRanges: { Calls: [{ ...wholeTab, ...protection }] } });
+    const outcomes = await writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("delete")], quota: grant, ensureHeaders: false });
+    return { outcomes, rows: f.rows.get("Calls") };
+  };
+  const enforced = await remove({ warningOnly: false, requestingUserCanEdit: false });
+  assert.equal(enforced.outcomes[0]?.status, "failed");
+  assert.match(String(enforced.outcomes[0]?.error ?? JSON.stringify(enforced.outcomes[0])), /sheet_delete_protected_row/);
+  assert.deepEqual(enforced.rows, [headers, ["A", "old"], ["B", "neighbor"]]);
+  const legacyShape = await remove({});
+  assert.equal(legacyShape.outcomes[0]?.status, "failed", "a protection without the caller's edit right still blocks");
+  for (const protection of [{ requestingUserCanEdit: true }, { warningOnly: true }]) {
+    const allowed = await remove(protection);
+    assert.ok(allowed.outcomes.every((outcome) => outcome.status === "synced"), JSON.stringify(protection));
+    assert.deepEqual(allowed.rows, [headers, ["B", "neighbor"]]);
+  }
+  const otherRows = await (async () => {
+    const f = statefulWorkbook({ Calls: [headers, ["A", "old"], ["B", "neighbor"]] }, { protectedRanges: { Calls: [{ range: { sheetId: 0, startRowIndex: 0, endRowIndex: 1 } }] } });
+    return writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("delete")], quota: grant, ensureHeaders: false });
+  })();
+  assert.ok(otherRows.every((outcome) => outcome.status === "synced"), "a protected header row does not block removing a data row");
+});
+
 test("an annotated row clears its formula-stored managed phone and keeps the operator cell", async () => {
   const f = statefulWorkbook({ Calls: [[...headers, "Owner"], ["A", "+15555550123", "keep"], ["B", "neighbor"]] });
   const outcomes = await writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("delete")], quota: grant, ensureHeaders: false });
