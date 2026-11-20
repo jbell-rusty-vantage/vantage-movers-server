@@ -106,6 +106,8 @@ Track B is complete only when `COVERAGE.md` has zero unclassified rows in all fo
 
 The pack must explain both job paths: Granot updating a Call that it matched directly, and the Form→Call sibling mirror.
 
+**Excluded Leads that still have rows.** Document what happens to a Lead whose disposition becomes or already is `excluded`, and to any existing Sheet row it has. On November 20, five legacy June 9, 2026 Calls (`legacy_unknown`, no admission) still had rows: four on Calls and one on Duplicate Calls. Re-delivery leaves them in place. See [the review](SERVICE-REVIEW-2026-11-20.md#sheet-sync). The production reconciliation must count every such row.
+
 **Worked examples.** Include at least one per tab, traced from minting to the visible Sheet row with real field values. Use anonymized identities, never customer phone numbers or names. Required examples:
 - A Form Fill Call on Duplicate Calls that then receives its Form's job through the mirror.
 - A 90-day repeat Call.
