@@ -206,6 +206,8 @@ One re-verification pass checked every fix: 31 of 34 fixed, 3 new or partial iss
 
 PII scan of all 13 files, appendices included: no email addresses, no person names; the only phone-shaped strings are `+1555555xxxx` placeholders.
 
+**Re-check at `25aecf5e` (after Track A and PR #245).** The same verifier re-checked only the pack text changed for the merged code. The first pass found 6 mismatches (2 wrong-behavior: two Form tables still described the pre-#245 opposite-primary rule; 1 wrong-citation; 3 imprecise: the Form backoff scope, the attach case in the apply recheck, an "unchanged lines" claim). All were fixed, and the verifier signed off with no remaining mismatch. It confirmed in code: the sibling gate is unchanged (`callLeadFormSibling.ts` L121); Form Fill Calls are updated in place on Duplicate Calls (`hasSyncedCallsRow` L245–L249); follow-ups are capped at 50 per plan and placed after real updates; Record Links are owed only when the Lead has none and only for Forms or admitted Calls, checked at planning and again inside the transaction; the Form backoff is 6 hours, counted only from scheduled catch-ups.
+
 ## Tests
 
 Offline unit tests run in the worktree at `9955430d` with `node --import tsx --import ./ops/test-setup.ts --test <files>`. All cited unit files pass: R1 14 files; R2 23 files; R3 41 files (162 tests); R4 35 files (128 tests, 126 pass, 2 loopback-Mongo agreement tests skipped offline). R4's throwaway truth-table script found 0 mismatches between the filters and the decision functions over 4,800 Call combinations. Replica suites (`*.replica.test.ts`, `pnpm test:granot-lifecycle:replica`) are **not run yet**: the shared replica belongs to Track A until its release merges.
