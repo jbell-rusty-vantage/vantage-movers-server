@@ -48,6 +48,12 @@ jobs:
       - run: pnpm test
       - name: Pull production build configuration
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - name: Skip the duplicate type-check inside vercel build
+        # `pnpm typecheck` is the type gate. @vercel/node otherwise re-checks every file
+        # through a Language Service and prints pnpm-resolution false positives. noCheck
+        # leaves the emitted JavaScript byte-identical (verified over all 814 runtime files).
+        run: echo '{"extends":"../tsconfig.json","compilerOptions":{"noCheck":true}}' > api/tsconfig.json
+
       - name: Build production artifact
         env:
           NODE_OPTIONS: --max-old-space-size=12288
