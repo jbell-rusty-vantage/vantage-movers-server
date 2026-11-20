@@ -1,5 +1,67 @@
 # Resume the server optimization sprint from main
 
+## Start here — November 20 handoff
+
+**State.** `main` is serving `25ae0026` in production. The November 20 review of Sales Outreach, Sheet Sync, Granot runs and Lead updates, and RingCentral found one critical defect, in Sheet Sync. It was fixed and deployed in [PR #237](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/237). Every queue was empty and healthy at review time. [Full review, evidence and verified behaviour](SERVICE-REVIEW-2026-11-20.md)
+
+- **Disk:** each member uses about 24% of its 17.3 GB disk after the November 20 compaction.
+- **Hidden indexes:** 13 redundant Lead indexes are hidden and wait for the scheduled drop.
+
+**1. Confirm the scheduled index drop.** Windows Task Scheduler task "Vantage drop hidden redundant indexes" runs once at 22:17 New York on November 20, on the Owner's laptop. If the laptop is off then, `StartWhenAvailable` runs it at the next start.
+
+- **What it runs:** `.tmp/scheduled-index-drop-2026-11-20.ps1` (untracked), which calls `node ops/capacity/retire-redundant-indexes-2026-11-20.cjs --drop`.
+- **Guards:** the wrapper exits 3 if the tool lacks its hidden gate, and 4 before 03:04:35 UTC on November 21. The tool then refuses any target that is visible, has a changed key or lacks a visible covering compound.
+- **Log:** `.tmp/scheduled-index-drop-2026-11-20.log`. The before and after `listIndexes` files land in `docs/operations/evidence/redundant-indexes-{before,after}-*.json`.
+- **Verify:**
+  - The log ends with `exit 0`.
+  - All 13 names are absent from every collection's `listIndexes`.
+  - `call_leads.source_granularity_id_1` is still present.
+  - The Atlas slow-query log shows no new slow shape on `form_leads`, `call_leads`, `booked_leads`, `lead_messages` or `booking_lead_reconciliation_cases`.
+- **If it did not run:** run the same command manually. Unhide (`--unhide`) only to roll back before the drop.
+- **Rollback after the drop:** recreate each index from its before file with `createIndex`.
+- **Afterwards:** record the result in [INDEX-READ-BASELINE](INDEX-READ-BASELINE-2026-11-19.md#november-20-actions-owner-approved) and unregister the task with `Unregister-ScheduledTask -TaskName "Vantage drop hidden redundant indexes" -Confirm:$false`.
+
+**2. Fix the three Granot regressions from `5137f06f`.** Each one had zero measured production impact on November 20, so fix them as one bounded release. Details and file references are in the [review](SERVICE-REVIEW-2026-11-20.md#granot-runs-and-lead-updates).
+
+1. **Form→Call sibling catch-up.** Restore the Owner's October 28 sibling rule for a Call that qualifies after its Form already holds the job. Prefer mirroring when a scheduled row is `already_current` for a Form, or when the RingCentral queue creates the Call. Never create or qualify a Call outside the RingCentral queue.
+2. **Record Links.** Establish the Record Link for an `already_current` Lead without an active link, as the webhook processor does.
+3. **Post-commit retries.** Bound the scheduled path's post-commit Lead-link wake and sibling mirror. Use the webhook path's rule: 2 s, never throw, record the failure. A persistent error must no longer block the run until its 24-hour expiry.
+4. **Disputes.** Persist the Record Link dispute instead of discarding it on the skip path.
+
+**Test:**
+- an `already_current` Form with a later qualified Call;
+- an unlinked current Lead;
+- a mirror that always fails, with the rest of the run still completing;
+- an idempotent replay;
+- the existing Granot lifecycle replica suites (`*.replica.test.ts`), which need a local replica.
+
+Release through a PR, then observe one natural ALL and Pool slot.
+
+**3. Sheet Sync follow-ups.** None of these is urgent in the current workbook.
+
+- **Header changes:** decide how a managed header change ships. Delivery now refuses a tab whose header row lacks the full managed list (`sheet_identity_header_rewrite_unsafe`). A release that adds a column must migrate tab headers first.
+- **Protection:** before anyone protects a tab, make the removal check honour protection editors and warning-only protections.
+- **Stuck jobs:** jobs left in `processing` by a killed worker are pre-existing and need operator requeue. Consider stale-lease reclamation.
+
+**4. Index and read phase.** The plan is in the section below. Reclaim is done. The review found these slow shapes worth targeting first, all from before the hide:
+
+- `booked_leads`: 508 collection scans.
+- `call_leads` by `normalized_job_no`: about 1,335 keys examined for about 38 returned.
+- `form_leads`: 77 collection scans on `last_accepted_granot_observation.observation_id`.
+- `form_leads` duplicate-match `$or`: about 3,000 keys examined for 0 returned.
+
+[Targets](SERVICE-REVIEW-2026-11-20.md#index-phase-targets-found-during-the-review)
+
+**5. Minor items from the review.**
+- Restore the three-day purge for routine jobs retried once (`salesIntelligence/jobs.ts`, `c4176fab`).
+- Add unit coverage for the Outreach overlap `existingJobMatches` branch.
+- Optionally, add a periodic Number summary consistency check, since unchanged recounts are now skipped.
+
+**Operator tools added November 20.**
+- `ops/capacity/retire-redundant-indexes-2026-11-20.cjs` (`preflight`, `--hide`, `--unhide`, `--drop`).
+- `ops/capacity/compact-operator-2026-11-20.cjs` (`status`, `create <new private path>`, `failover`, `delete`). It uses the `MONGO.env` service account and never modifies `jbell_db_user`.
+- `scripts/storage-compact.ts` and `scripts/storage-reclaim-report.ts`. These are local and untracked.
+
 ## Granot receipt retention
 
 The next Granot session should determine when a receipt has finished matching or updating a Lead and how soon its full document can leave MongoDB. A receipt tracks one delivery. A scheduled Estimates run tracks many actions. Older HTTP automation stored a result in both places. New scheduled Estimates already bypass receipt capture, and eligible inbound `lead_created` and `priority_updated` receipts already move to verified Google Cloud Storage (GCS). A genuine webhook can arrive without any run. [Scheduled apply](../knowledge/granot-lifecycle/automation-apply.md) · [Inbound retirement](../knowledge/granot-lifecycle/capture.md#retirement-of-completed-inbound-lead-receipts)
@@ -21,16 +83,17 @@ The service storage passes are released. Production served `d5a1d33c` at 19:34 N
 1. **Measure.** Capture `$indexStats` and `$collStats` on all three members at matched hours for seven days. The first sample covered only 29.2 hours on the primary. Add a slow-query or profiler sample for the hottest collections. Record the members, the windows and counter resets.
 2. **Attribute.** Map each index with zero or low reads to its declared query owner in the Service doc. Map each hot read to its code path. Hot reads include the `_id` reads on `form_leads`, `granot_observations` and `granot_webhook_receipts`, the `sheet_sync_leases.scope_1` reads and the `granot_automation_runs.granot_run_recovery` reads. Mark unknown owners as unknown.
 3. **Propose.** For each change, give its bytes, its write amplification, the plans before and after on the owning queries, and its rollback. Prefer hiding an index before dropping it. Batch or project hot reads only where the business contract is unchanged.
-4. **Reclaim.** Plan per-member physical reclaim for `granot_webhook_receipts`, `granot_observations`, `sales_intelligence_jobs` and `sales_intelligence_audit_events`. These collections hold most of the 2,147.8 MiB reusable on the primary. Record disk use per member before and after.
+4. **Reclaim.** Done on November 20 for all members, including the oplog. Recheck the reusable space per member after large cleanups, because deletions inflate the oplog file again.
 
 **Authority.** This handoff grants no index, TTL, compact, deletion or deployment authority. Each production change needs explicit Owner approval with its scope recorded.
 
 Preserve RingCentral-only Call Lead qualification, saved historical qualifications, official Booking and Cancellation reporting, Master Sheet tab identities, command replay identities and recovery evidence.
 
 **November 20 progress.**
-- **Indexes:** 13 prefix-redundant Lead indexes are hidden in production (PR #235). Drop them with `node ops/capacity/retire-redundant-indexes-2026-11-20.cjs --drop` after 03:04 UTC on November 21, if no plan regression appears.
+- **Indexes:** 13 prefix-redundant Lead indexes are hidden in production (PR #235). The drop is scheduled for 22:17 New York on November 20. See "Start here" above.
 - **Compact:** done on all three members, including the oplog. A temporary operator ran it and was then deleted, and member 02 is now primary after a Test Failover. Disk use fell from 49.0/58.9/53.4% to 24.2/23.6/24.5%, returning 15,394.5 MB in total. Oplog windows held at 25.6 hours. [Results](INDEX-READ-BASELINE-2026-11-19.md#november-20-actions-owner-approved)
-- **Next:** drop the hidden indexes after 03:04 UTC on November 21. Then run the seven-day index series against the now-compact files.
+- **Review:** the four-service review found one critical Sheet Sync defect, fixed in PR #237 (`25ae0026`), and three Granot regressions to fix next. [Review](SERVICE-REVIEW-2026-11-20.md)
+- **Next:** confirm the scheduled drop, release the Granot fixes, then run the seven-day index series against the compacted files.
 
 **Clocks still open from earlier releases:**
 
