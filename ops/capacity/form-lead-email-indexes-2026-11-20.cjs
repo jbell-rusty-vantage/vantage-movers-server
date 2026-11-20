@@ -20,6 +20,9 @@ const fs = require("fs");
 const path = require("path");
 
 const COLLECTION = "form_leads";
+// Production by default. A rehearsal may name a disposable test database (testvantagemovers_*) only.
+const DATABASE = process.env.FORM_LEAD_INDEX_REHEARSAL_DB || "vantagemovers";
+if (DATABASE !== "vantagemovers" && !/^testvantagemovers_[a-z0-9]+$/.test(DATABASE)) throw new Error("rehearsal database must be testvantagemovers_*");
 const TARGETS = [
   { name: "form_lead_ingested_contact_email", key: { "ingested_contact_snapshot.email": 1 }, sparse: true },
   { name: "form_lead_granot_contact_email", key: { "granot_contact_snapshot.email": 1 }, sparse: true },
@@ -46,8 +49,9 @@ async function planOf(db) {
     { $match: { lead_source_company: { $type: "objectId" }, source_granularity_id: { $type: "objectId" } } },
     { $group: { _id: { lead_source_company: "$lead_source_company", source_granularity_id: "$source_granularity_id" }, n: { $sum: 1 } } },
     { $sort: { n: -1 } }, { $limit: 1 },
-  ]).toArray();
-  const explain = await db.collection(COLLECTION).find(contactShape(scope._id)).explain("executionStats");
+  ], { maxTimeMS: 15000 }).toArray();
+  if (!scope) return { scope_size: 0, keys: 0, docs: 0, returned: 0, ms: 0, indexes: [], collscan: false, empty: true };
+  const explain = await db.collection(COLLECTION).find(contactShape(scope._id)).maxTimeMS(15000).explain("executionStats");
   const s = explain.executionStats;
   return { scope_size: scope.n, keys: s.totalKeysExamined, docs: s.totalDocsExamined, returned: s.nReturned, ms: s.executionTimeMillis,
     indexes: [...new Set(JSON.stringify(explain.queryPlanner.winningPlan).match(/"indexName":"[^"]+"/g) ?? [])].map((x) => x.slice(13, -1)),
@@ -60,11 +64,13 @@ async function memberSizes(client) {
   const uri = new URL(process.env.MONGO_URI.replace(/^mongodb\+srv:/, "https:").replace(/^mongodb:/, "https:"));
   const out = [];
   for (const host of hello.hosts ?? []) {
-    const direct = new MongoClient(`mongodb://${host}/?directConnection=true&tls=true&authSource=admin&readPreference=secondaryPreferred`, {
-      auth: { username: decodeURIComponent(uri.username), password: decodeURIComponent(uri.password) }, serverSelectionTimeoutMS: 15000 });
+    // Atlas members need TLS and the URI's credentials; a loopback rehearsal replica has neither.
+    const secured = Boolean(uri.username);
+    const direct = new MongoClient(`mongodb://${host}/?directConnection=true&readPreference=secondaryPreferred${secured ? "&tls=true&authSource=admin" : ""}`, {
+      ...(secured ? { auth: { username: decodeURIComponent(uri.username), password: decodeURIComponent(uri.password) } } : {}), serverSelectionTimeoutMS: 15000 });
     try {
       await direct.connect();
-      const member = direct.db("vantagemovers");
+      const member = direct.db(DATABASE);
       const stats = await member.command({ collStats: COLLECTION });
       const state = await direct.db("admin").command({ hello: 1 });
       out.push({ member: host.split(".")[0], primary: state.isWritablePrimary === true,
@@ -81,7 +87,7 @@ async function memberSizes(client) {
 (async () => {
   const client = new MongoClient(process.env.MONGO_URI, { serverSelectionTimeoutMS: 20000, appName: "form-lead-email-indexes" });
   await client.connect();
-  const db = client.db("vantagemovers");
+  const db = client.db(DATABASE);
   const coll = db.collection(COLLECTION);
   try {
     const before = await coll.indexes();
@@ -107,6 +113,12 @@ async function memberSizes(client) {
 
     const results = [];
     if (mode === "create") {
+      const hidden = TARGETS.filter((t) => before.some((i) => i.name === t.name && i.hidden === true));
+      if (hidden.length) {
+        console.error(`already present but hidden: ${hidden.map((t) => t.name).join(", ")}; run --unhide (a rollback is in progress), not --create`);
+        process.exitCode = 4;
+        return;
+      }
       const missing = TARGETS.filter((t) => !before.some((i) => i.name === t.name));
       if (missing.length) await coll.createIndexes(missing.map((t) => ({ name: t.name, key: t.key, sparse: t.sparse })));
       results.push(...TARGETS.map((t) => ({ name: t.name, result: missing.includes(t) ? "created" : "already_present" })));
@@ -128,9 +140,11 @@ async function memberSizes(client) {
     fs.writeFileSync(afterFile, JSON.stringify({ at: new Date(), mode, results, verify, indexes: after }, null, 2));
     console.log(JSON.stringify({ results, verify, after: path.relative(process.cwd(), afterFile) }, null, 2));
     if (mode === "create" || mode === "verify") {
-      const ok = verify.definitions.every((d) => d.present && d.key_ok && d.sparse && !d.hidden) && !verify.plan.collscan
-        && TARGETS.every((t) => verify.plan.indexes.includes(t.name)) && verify.plan.keys < 100;
-      if (!ok) { console.error("verify failed: see the after file"); process.exitCode = 3; }
+      // An empty collection has no scope to plan; the definitions alone are checked.
+      const planOk = verify.plan.empty === true || (!verify.plan.collscan && TARGETS.every((t) => verify.plan.indexes.includes(t.name)) && verify.plan.keys < 100);
+      const ok = verify.definitions.every((d) => d.present && d.key_ok && d.sparse && !d.hidden) && planOk;
+      const hiddenNow = verify.definitions.filter((d) => d.hidden).map((d) => d.name);
+      if (!ok) { console.error(hiddenNow.length ? `verify failed: ${hiddenNow.join(", ")} hidden; run --unhide` : "verify failed: see the after file"); process.exitCode = 3; }
     }
   } finally {
     await client.close();
