@@ -326,14 +326,17 @@ async function rowRemovalRequests(
       throw new Error("sheet_delete_identity_changed");
     }
     const managed = (column: number) => group.headers.includes(map.actualHeaders?.[column] ?? "");
+    // A formula in a managed column is a value this service wrote: Google stores a USER_ENTERED value
+    // with a leading "+" (an E.164 phone number) as a formula, and every upsert overwrites managed
+    // columns. Only a value outside the managed columns, a note, rich text or validation is operator content.
     const hasOwnerContent = cells.some((cell, column) => cell.note || cell.textFormatRuns?.length ||
-      cell.dataValidation || cell.userEnteredValue?.formulaValue || (!managed(column) && cell.userEnteredValue));
+      cell.dataValidation || (!managed(column) && cell.userEnteredValue));
     const protectedRow = tab?.protectedRanges?.some(({ range }) => range &&
       (range.startRowIndex ?? 0) <= index && (range.endRowIndex ?? Infinity) > index);
     if (protectedRow) throw new Error("sheet_delete_protected_row");
     if (!hasOwnerContent) return [deleteRequest(sheetId, rowNumber)];
     return cells.flatMap((cell, column) => {
-      if (!managed(column) || !cell.userEnteredValue || cell.userEnteredValue.formulaValue) return [];
+      if (!managed(column) || !cell.userEnteredValue) return [];
       if (column !== map.idColumn && (cell.note || cell.textFormatRuns?.length || cell.dataValidation)) return [];
       return [{ repeatCell: { range: { sheetId, startRowIndex: index, endRowIndex: rowNumber,
         startColumnIndex: column, endColumnIndex: column + 1 }, cell: {}, fields: "userEnteredValue" } }];

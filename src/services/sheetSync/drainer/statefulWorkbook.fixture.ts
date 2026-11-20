@@ -19,7 +19,10 @@ export function identityRanges(ranges: string[], rows: string[][]) {
 export function deletionGrid(ranges: string[], rows: string[][]) {
   return ranges.map(range => {
     const startRow = Number(range.split("!").at(-1)!.split(":")[0]) - 1;
-    return { startRow, rowData: [{ values: rows[startRow]?.map(stringValue => ({ userEnteredValue: { stringValue } })) }] };
+    // Google stores a USER_ENTERED value with a leading "+" (an E.164 phone number) as a formula.
+    return { startRow, rowData: [{ values: rows[startRow]?.map(value => ({
+      userEnteredValue: value.startsWith("+") ? { formulaValue: value } : { stringValue: value },
+    })) }] };
   });
 }
 
