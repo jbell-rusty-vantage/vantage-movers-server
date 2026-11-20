@@ -52,6 +52,13 @@ async function token(env) {
   } else if (mode === "create") {
     const out = process.argv[3];
     if (!out) throw new Error("pass a private output path for the generated credentials");
+    // Create the credentials file exclusively, owner-only, before any Atlas change. An existing path is
+    // refused, because writeFileSync keeps an existing file's (possibly world-readable) permissions.
+    let fd;
+    try { fd = fs.openSync(out, "wx", 0o600); }
+    catch (e) { throw new Error(e.code === "EEXIST" ? "credentials path already exists; pass a new private path" : e.message); }
+    let written = false;
+    try {
     const role = await call("POST", `/groups/${GROUP}/customDBRoles/roles`, {
       roleName: ROLE, actions: [], inheritedRoles: [{ db: "local", role: "dbAdmin" }],
     });
@@ -68,8 +75,13 @@ async function token(env) {
       scopes: [{ name: CLUSTER, type: "CLUSTER" }],
     });
     if (!(user.status >= 200 && user.status < 300)) throw new Error(`user ${user.status} ${JSON.stringify(user.body)}`);
-    fs.writeFileSync(out, JSON.stringify({ username: USER, password }), { mode: 0o600 });
+    fs.writeSync(fd, JSON.stringify({ username: USER, password }));
+    written = true;
     console.log(JSON.stringify({ role: role.status, user: user.status, deleteAfter: user.body?.deleteAfterDate, credentials: "written to the private path" }));
+    } finally {
+      fs.closeSync(fd);
+      if (!written) fs.rmSync(out, { force: true });
+    }
   } else if (mode === "failover") {
     const r = await call("POST", `/groups/${GROUP}/clusters/${CLUSTER}/restartPrimaries`);
     console.log(JSON.stringify({ failover: r.status, body: r.status >= 300 ? r.body : "accepted" }));
