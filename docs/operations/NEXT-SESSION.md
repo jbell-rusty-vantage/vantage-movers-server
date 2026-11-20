@@ -1,5 +1,7 @@
 # Resume the server optimization sprint from main
 
+**After this handoff: the [next program](NEXT-PROGRAM-2026-11-20.md) (Owner, November 20).** It covers a Google Cloud Storage service, further reviews, a clean-code cleanup, git-triggered quality checkpoints, and agent profiles with CLI runners for every major service. State at hand-off: `main` `194e486d` serves production with PRs #243, #244 and #245.
+
 ## Next session: two tracks (Owner, November 20)
 
 Run both tracks in the same session, with separate agents.
