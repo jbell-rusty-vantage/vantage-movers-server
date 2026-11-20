@@ -232,6 +232,8 @@ Booking reconciliation (`bookingReconciliation.ts`, `employeeBookingMatching.ts`
 
 The legacy Granot CSV upload and S3 adapter have been removed.
 
+Booking Job Number validation has **no environment variable**. Its mode is runtime configuration in Mongo: `booking_job_number_control` `{ _id: "validation", mode: "shadow" | "enforce" }` (missing or unknown = `shadow`), read on each Booking write whose `job_no` fails the rule. Set and read it with `ops/booking-job-number/control.ts`; see [bookings.md](services/bookings.md#job-number-validation-owner-rule-2026-11-20).
+
 ## Operator tooling only
 
 Read under `ops/` or the gitignored `scripts/`, never by the API process. Do not add them to the server's Vercel environment.

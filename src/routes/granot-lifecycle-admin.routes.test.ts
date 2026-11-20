@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import { computeAdminActorSignature } from "../services/operationsRegistry/trustedActor";
 import { GRANOT_LIFECYCLE_ERROR_CODES, GranotLifecycleError } from "../services/granotLifecycle/errors";
 import { createGranotLifecycleAdminRouter } from "./granot-lifecycle-admin.routes";
+import { BookingJobNumberError } from "../services/bookings/bookingJobNumberGuard";
 
 const SECRET = "synthetic-admin-signing-secret";
 const receiptId = new mongoose.Types.ObjectId().toHexString();
@@ -87,6 +88,7 @@ app.use(
       } : null;
     },
     confirmBooking: async (input) => {
+      if (input.idempotency_key === "jobno-invalid") throw new BookingJobNumberError("no_digits");
       lastConfirm = input as unknown as Record<string, unknown>;
       return {
         case_id: input.case_id,
@@ -524,4 +526,19 @@ test("[AC-25] [AC-32] Release Owner routes are strict, idempotent, and use exact
     }),
   });
   assert.equal(forbidden.status, 400);
+});
+
+test("Owner confirm answers 422 with the reason when the Booking Job Number rule rejects the Job", async () => {
+  const path = `/api/v1/admin/granot-lifecycle/booking-cases/${receiptId}/confirm-booking`;
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { ...signedHeaders("owner", path), "Idempotency-Key": "jobno-invalid" },
+    body: JSON.stringify(confirmBody),
+  });
+  assert.equal(response.status, 422);
+  const body = await response.json() as { ok: boolean; code: string; error: string; issues: Array<{ path: string; message: string }> };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "booking.job_number_invalid");
+  assert.match(body.error, /Invalid Job Number/);
+  assert.deepEqual(body.issues, [{ path: "job_no", message: "no_digits" }]);
 });

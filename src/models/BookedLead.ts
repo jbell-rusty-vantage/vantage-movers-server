@@ -10,6 +10,10 @@ import {
   type SheetSyncEntry,
 } from "./schemaHelpers";
 import { normalizeJobNo } from "../services/bookings/bookingIdentity";
+import {
+  checkBookingJobNumber,
+  type BookingJobNumberWritePath,
+} from "../services/bookings/bookingJobNumberGuard";
 
 const AgentAllocationSchema = new Schema(
   {
@@ -150,6 +154,53 @@ BookedLeadSchema.pre("validate", function () {
       );
     }
   }
+});
+
+/**
+ * Job Number rule on every Mongoose Booking write (all create, update and reconciliation paths save
+ * a document). A new Booking or a changed `job_no` is checked; an untouched legacy value is not, so
+ * unrelated edits, cancellation and deletion of an old record keep working.
+ */
+BookedLeadSchema.pre("validate", async function checkJobNumber() {
+  if (!this.isNew && !this.isModified("job_no")) return;
+  const writePath: BookingJobNumberWritePath = !this.isNew
+    ? "update_booking"
+    : this.get("booking_origin") === "employee_booking"
+      ? "create_employee_booking"
+      : this.is_referral_booking === true
+        ? "create_referral_booking"
+        : this.is_leadless_booking === true
+          ? "create_leadless_booking"
+          : "create_lead_booking";
+  await checkBookingJobNumber({
+    connection: this.db,
+    session: this.$session(),
+    booking_id: this._id,
+    job_no: this.job_no,
+    write_path: writePath,
+  });
+});
+
+/** Query updates that set `job_no` get the same check and keep `normalized_job_no` in step. */
+BookedLeadSchema.pre(["updateOne", "updateMany", "findOneAndUpdate"], async function checkJobNumberUpdate() {
+  const update = this.getUpdate() as Record<string, unknown> | null;
+  if (!update || Array.isArray(update)) return;
+  const set = (update.$set ?? {}) as Record<string, unknown>;
+  const hasTop = Object.prototype.hasOwnProperty.call(update, "job_no");
+  const hasSet = Object.prototype.hasOwnProperty.call(set, "job_no");
+  if (!hasTop && !hasSet) return;
+  const jobNo = hasSet ? set.job_no : update.job_no;
+  const filter = this.getFilter() as { _id?: unknown };
+  await checkBookingJobNumber({
+    connection: this.model.db,
+    session: this.getOptions().session ?? null,
+    booking_id: filter._id ?? null,
+    job_no: jobNo,
+    write_path: "update_query",
+  });
+  const normalized = normalizeJobNo(typeof jobNo === "string" ? jobNo : null) ?? null;
+  if (hasSet) set.normalized_job_no = normalized;
+  else update.normalized_job_no = normalized;
 });
 
 BookedLeadSchema.virtual("agent").get(function () {

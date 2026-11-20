@@ -1,14 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MongoClient, ObjectId } from "mongodb";
-import {
-  normalizedJobCandidates,
-  legacyBookingJobFilter,
-} from "./indexedJobLookup";
+import { normalizedJobCandidates } from "./indexedJobLookup";
 import { jobNumberDigitCore } from "./bookingIdentity";
-import { poolBookingBlocks } from "../salesOutreach/pool/admission";
 
-test("indexed aliases and selective legacy booking reads preserve the original Mongo matches", async (t) => {
+test("indexed aliases preserve the original Mongo matches", async (t) => {
   if (process.env.GRANOT_LIFECYCLE_REPLICA_TESTS !== "true")
     return t.skip("requires disposable loopback replica");
   const c = new MongoClient("mongodb://127.0.0.1:27961/?replicaSet=storageRs", {
@@ -79,40 +75,4 @@ test("indexed aliases and selective legacy booking reads preserve the original M
       ).map((r) => String(r._id));
     assert.deepEqual(await ids(normalizedJobCandidates(jobs)), await ids(old));
   }
-  const bookings = db.collection<Parameters<typeof poolBookingBlocks>[0]>("bookings"),
-    ref = { model: "FormLead" as const, id: new ObjectId().toString() };
-  for (const [i, raw] of [
-    "P001",
-    "001",
-    "Ｐ００１",
-    "p001",
-    " P001 ",
-    "P001\n",
-    "AAA001",
-    "OTHER",
-    "Q-001",
-    "OTHER",
-  ].entries()) {
-    await bookings.insertOne({
-      job_no: raw,
-      ...(i === 8 ? {} : { normalized_job_no: i % 2 === 0 ? raw : "OTHER" }),
-      ...(i === 9 ? { lead_ref: ref.id } : {}),
-    });
-  }
-  const job = "001";
-  const effective = async (extra: Record<string, unknown>) =>
-    (
-      await bookings
-        .find({
-          $or: [normalizedJobCandidates([job], "scan"), { lead_ref: ref.id }, extra],
-        })
-        .toArray()
-    )
-      .filter((r) => poolBookingBlocks(r, ref, job))
-      .map((r) => String(r._id))
-      .sort();
-  assert.deepEqual(
-    await effective(legacyBookingJobFilter),
-    await effective({ job_no: { $type: "string" } }),
-  );
 });

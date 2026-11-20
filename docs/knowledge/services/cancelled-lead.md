@@ -188,6 +188,7 @@ Delete tombstone coalesces with pending `cancellation_chain` upserts for the sam
 ## Invariants
 
 - **One cancellation per booking** — enforced at resolve/create (`booking.cancelled` must be unset).
+- **Job Number rule does not block a Cancellation.** The Booking claim is a raw `$set: { cancelled }` that never changes `job_no`, and the `BookedLead` Job Number check runs only when a Booking is created or its `job_no` changes, so a Booking with a legacy invalid Job can still be cancelled ([bookings.md](./bookings.md#job-number-validation-owner-rule-2026-11-20)).
 - **Public path:** Referral Bookings blocked (409). Leadless cancel only when Best Relocation import sets `allowLeadless`.
 - **Traceability** — lead-attached cancellations store `booked_lead`, `lead_ref`, `lead_model`. Leadless/employee unresolved rows may omit lead refs (schema allows it).
 - **Do not bypass** `resolveBookedLeadForCancellation`, mirror helpers, or sheet-sync txn scheduling.

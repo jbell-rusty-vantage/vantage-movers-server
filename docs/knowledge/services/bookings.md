@@ -15,6 +15,9 @@ applies_to:
   - src/services/bookings/referralBooking.service.ts
   - src/services/bookings/leadlessBooking.service.ts
   - src/services/bookings/bestRelocationImportGuard.ts
+  - src/services/bookings/bookingJobNumber.ts
+  - src/services/bookings/bookingJobNumberGuard.ts
+  - src/models/BookedLead.ts
   - src/services/granotLifecycle/bookingConfirmation.ts
   - src/services/granotLifecycle/confirmAttachment.ts
   - src/services/granotLifecycle/bookingOwnerCommands.ts
@@ -239,12 +242,45 @@ Helper: `src/services/domainCommands/leadChangeEmission.ts` (before/after diff o
 | `submission_id` | Idempotency for repeat form posts; employee path uses a separate unique index |
 | `cancelled` | Set by cancellation flow (not this service) |
 | `normalized_job_no` | Pre-save from `job_no`; unique partial index `booked_lead_normalized_job_no_unique` (accepted alias `normalized_job_no_1`) |
+| `job_no` | Must satisfy the Booking Job Number rule on create or change (see Job Number validation) |
 
 **Lead linkage:** Non-referral, non-leadless bookings require `lead_ref` + `lead_model`. Schema enforces via pre-validate hook.
 
 **Upsert vs duplicate:** Second create for the same lead **updates** the booking unless `submission_id` matches — then no-op with the existing doc returned.
 
 **Unmatched Call Leads:** Best Relocation import (and any other remaining `resolveBookingSourceLead` Call path) may mint `created_on_unmatched: true` when call identity cannot be resolved. [Precise Booking Form](../../../../CONTEXT.md) Call Lead create never mints one. Sheet Sync skips a misleading Calls-tab row for those stubs (`jobPlanner.ts`). Distinct from [No-Sync Lead](../../../../CONTEXT.md).
+
+## Job Number validation (Owner rule, 2026-11-20)
+
+Every Booking must carry a valid Job Number, and a valid Job Number is never rejected. The rule is `classifyBookingJobNumber` (`bookings/bookingJobNumber.ts`, version `booking-job-number-v1`). It runs on `normalizeJobNo` output (NFKC, punctuation and whitespace runs to one space, uppercase):
+
+- exactly one token contains a number: an optional ASCII letter prefix and **4–9 ASCII digits** (the digit core);
+- a bare digit token may follow one letters-only token (a separated prefix, `P-5556759` → `P 5556759`);
+- every other token is letters only (Granot annotations such as `NEW`, `VIP`, `RIGOS`).
+
+Rejected, with a reason: `missing` (absent, empty or punctuation only), `no_digits` (free text such as a name), `multiple_numbers` (`EJBA03-LL-20260908-A`), `mixed_token` (`5556759A`, `LNS03W01`) and `digit_core_length` (fewer than 4 or more than 9 digits; a 10-digit value is a phone number).
+
+**Valid classes, measured read-only on production 2026-11-20** (`ops/booking-job-number/replay.ts`, 416,215 stored values across the 21 collections and 40 fields in `ops/booking-job-number/sources.ts`: Bookings, Cancellations, Form and Call Leads, Record Links, Granot observations, case observations, webhook and archived receipts, booking and release cases and discrepancies, case statements, history archive chunks, booking reconciliation cases, source-row receipts and states, Contact Numbers, Outreach subjects, Daily Operations events):
+
+| Class | Example | Values | Where |
+|---|---|---|---|
+| `prefixed` | `P5556818`, `RF5555499`, `AT5564415`, `EJBA5555555` (test) | 217,836 | Granot extension and collector, Bookings (603), Leads, Record Links, all Granot evidence |
+| `digits` | `5556835` | 197,797 | Bookings (471), Form Leads (4,541), Granot webhooks and cases |
+| `annotated` | `P5556759 new`, `P5556759 VIP`, `P5556759 VIP RIGOS` | 538 | July 2026 Form Leads (45) and their Record Links, Contact Numbers, Daily Operations |
+| `separated_prefix` | `P-5556759` | 0 stored | accepted so a hyphenated entry is never refused |
+
+All digit cores observed are 7 digits; no leading-zero or letter-suffix Job exists. 334 values needed normalization (lowercase annotations, whitespace). Rejected: only the two known bad Bookings and their derivatives (8 values): the September 8 employee-booking test (`6aa06db8…`, its test Call Lead `6aa06da7…` and its Daily Operations event) and the August 10 Booking whose `job_no` holds the customer's name (`6a7a47df…`). 36 empty strings (Granot observations, receipts and one Daily Operations event) are absent Job Numbers, not Booking inputs.
+
+**Enforcement point.** `BookedLead` checks the rule in `pre("validate")` for a new Booking or a changed `job_no` (every create, update and reconciliation path saves a document: `createBookingFromLead` including from-source, `createLeadlessBooking`, `createExistingReferralBooking`, `submitEmployeeBooking`, `updatePendingEmployeeBooking`, `updateBookedLead`, `confirmGranotBooking`, Granot Referral). Query updates (`updateOne`, `updateMany`, `findOneAndUpdate`) that set `job_no` are checked the same way and also rewrite `normalized_job_no`. The raw `BookedLead.collection.updateOne` writers (`updateBooking`, Granot Update/Release/Connect, cancellation claim) never set `job_no`. An untouched legacy value is not re-checked, so cancellation, unrelated edits and deletion of an old record still work.
+
+**Modes (runtime configuration in Mongo, never an env var).** `booking_job_number_control` `{ _id: "validation", mode }`. Missing or any value other than `enforce` reads as `shadow`:
+
+- `shadow` (default): the write proceeds; one `booking_job_number_checks` document per Booking and value (`_id` `<booking_id>:<sha256(raw)>`) records `reason`, `write_path`, `rule_version` and timestamps, never the raw text. It is written in the caller's transaction, so an aborted write leaves no record. Expected volume: under 10 documents a year (2 bad values in 1,077 Bookings over five months); no TTL.
+- `enforce`: the write throws `BookingJobNumberError` (`AppError`, HTTP **422**, code `booking.job_number_invalid`, message naming the reason). `/api/v1` answers `{ ok: false, error }`; the Granot lifecycle admin routes answer `{ ok: false, code, error, request_id, issues: [{ path: "job_no", message: <reason> }] }`. Nothing is written.
+
+Operator: `node --env-file=.env --import tsx ops/booking-job-number/control.ts status` (read-only: mode and would-reject counts by reason and path); `… set --mode=enforce --reason="…" --actor="…" --apply` (the Owner decides; `--mode=shadow` or deleting the document is the rollback).
+
+**Equivalence.** `bookingJobNumbersEquivalent` and `bookingJobNumberKey` compare digit cores by structure (the same token grammar, without the 4–9 digit write-time bound, so no equivalence that held before the rule is lost), so `P5556759 NEW`, `P 5556759`, `RF5556759` and `5556759` are one Job. `bookingJobNumberFilter` reads `booked_leads` by exact keys plus one anchored digit-core regex, both with `$type: "string"` so the partial `normalized_job_no` index is usable.
 
 ## Sheet Sync
 
@@ -280,7 +316,12 @@ Helper: `src/services/domainCommands/leadChangeEmission.ts` (before/after diff o
 ## Tests
 
 - `bookingMirror.test.ts` — `claimAvailableLeadForBooking` concurrency + no CPL rewrite; `preserveExistingCpl`
-- `indexedJobLookup.replica.test.ts` checks that indexed Job Number aliases and legacy lookup return the same Bookings on MongoDB.
+- `indexedJobLookup.replica.test.ts` checks that indexed Job Number aliases return the same rows as the original regex lookup on MongoDB.
+- `bookingJobNumber.test.ts` — the Job Number rule per class and rejection reason, equivalence keys and the Booking job filter.
+- `granot-lifecycle-admin.routes.test.ts` — Owner Confirm answers 422 `booking.job_number_invalid` with the reason.
+- `salesOutreach/pool/poolBookingRead.replica.test.ts` and `ops/pool-production/shared-duty.replica.ts` — Pool admission's Booking hold by `lead_ref` and by every valid Job class, and an index-only plan.
+- `bookingJobNumberWriters.test.ts` — inventory of raw `booked_leads` driver writers (which bypass the model hook); none may set `job_no`.
+- `bookingJobNumber.replica.test.ts` — the model hook in shadow and enforce (transaction-scoped record, abort leaves none, query updates) and 422 from `createBookingFromLead`, `createLeadlessBooking`, `createExistingReferralBooking`, `updateBookedLead`, `submitEmployeeBooking`, `updatePendingEmployeeBooking`; Granot Confirm and Referral enforce cases live in `bookingConfirmation.replica.test.ts` and `referralBooking.replica.test.ts`.
 - `bestRelocationImportGuard.test.ts` — source-company fence
 - `agentAllocation.service.test.ts` — inactive-agent resolve + receiver attribution
 - Domain-command adapters in `domainCommands.test.ts`

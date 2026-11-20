@@ -212,9 +212,15 @@ async function main() {
     { name: "missing_lead_model_objectid_pointer", values: { lead_ref: lead, job_no: "OTHER902" }, blocked: true },
     { name: "mismatched_lead_model_string_pointer", values: { lead_model: "CallLead", lead_ref: String(lead), job_no: "OTHER903" }, blocked: true },
     { name: "uppercase_string_pointer_without_model_or_job", values: { lead_ref: String(lead).toUpperCase() }, blocked: true },
-    { name: "raw_numeric_job_alias_without_pointer", values: { job_no: "100" }, blocked: true },
-    { name: "raw_prefixed_job_alias_partial_dangling_pointer", values: { lead_ref: oid(), job_no: "p100" }, blocked: true },
-    { name: "raw_NFKC_job_alias_outranks_conflicting_normalized_key", values: { job_no: " Ｐ１００ ", normalized_job_no: "OTHER904" }, blocked: true },
+    // Job anchors are read through the normalized index. Every Booking writer stores `normalized_job_no =
+    // normalizeJobNo(job_no)` (model hooks; raw driver writers never set job_no, see bookingJobNumberWriters.test.ts),
+    // and production had no missing or disagreeing key on 2026-11-20, so the former raw-Job scan was retired.
+    { name: "numeric_job_alias_without_pointer", values: { job_no: "100", normalized_job_no: "100" }, blocked: true },
+    { name: "prefixed_job_alias_partial_dangling_pointer", values: { lead_ref: oid(), job_no: "p100", normalized_job_no: "P100" }, blocked: true },
+    { name: "NFKC_job_alias", values: { job_no: " Ｐ１００ ", normalized_job_no: "P100" }, blocked: true },
+    { name: "separated_prefix_job_alias", values: { job_no: "P-100", normalized_job_no: "P 100" }, blocked: true },
+    { name: "granot_annotated_job_alias", values: { job_no: "P100 vip", normalized_job_no: "P100 VIP" }, blocked: true },
+    { name: "driver_only_job_without_normalized_key_is_not_read", values: { job_no: "100" }, blocked: false },
     { name: "unrelated_booking_ignored", values: { lead_model: "CallLead", lead_ref: oid(), job_no: "OTHER999", normalized_job_no: "OTHER999" }, blocked: false },
   ];
   const leadBeforeBookingReads = await getFormLeadModel().collection.findOne({ _id: lead });
