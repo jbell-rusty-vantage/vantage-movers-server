@@ -60,7 +60,7 @@ A job-only link is evidence and the ladder continues. A link with `lead_ref` is 
 
 Duplicate Form Leads are ineligible (`duplicate_form_lead_ineligible`). A Bad Form Lead may be returned only from Record Link / ref / ObjectId with `priority_only` / `bad_form_lead_priority_only`. Bad Leads are excluded from contact matching, Agent suggestion, Booking suggestion, and creation. `bad_lead` is never cleared.
 
-Same Lead found through current and immutable contact values is one candidate. Zero eligible contact candidates do not guess. More than one distinct eligible candidate is `ambiguous` / `multiple_eligible_matches`.
+The Form contact match `$or`s six paths. Each has an index (`form_lead_attach_*` for the three phones, `email_1`, and the sparse `form_lead_ingested_contact_email` and `form_lead_granot_contact_email` added on November 20), so it plans an index union of point lookups. Before the two email indexes, it scanned the whole Lead Source scope: about 3,090 keys for 0 returned, at about 180 ms. Same Lead found through current and immutable contact values is one candidate. Zero eligible contact candidates do not guess. More than one distinct eligible candidate is `ambiguous` / `multiple_eligible_matches`.
 
 ## Call Lead ladder
 
