@@ -135,7 +135,11 @@ export async function runSheetSyncDrain(
 
   try {
     await requireActiveLease();
-    const reclaimed = await reclaimStaleProcessingJobs(new Date(), guardrails.leaseDurationMs);
+    // Housekeeping never fails the drain: a bad row is logged and the drain still claims due work.
+    const reclaimed = await reclaimStaleProcessingJobs(new Date(), guardrails.leaseDurationMs).catch((error: unknown) => {
+      logger.error({ msg: "sheet_sync.drain.stale_lease_reclaim_failed", runId: runId.toString(), error: error instanceof Error ? error.message : String(error) });
+      return 0;
+    });
     if (reclaimed) logger.warn({ msg: "sheet_sync.drain.stale_leases_reclaimed", runId: runId.toString(), reclaimed });
     const claimed = await claimDueJobs(
       owner,
@@ -357,16 +361,17 @@ export async function runSheetSyncDrain(
   }
 }
 
+/** A job whose worker died this many times stops being reclaimed and fails for operator review. */
+export const MAX_STALE_LEASE_RECLAIMS = 3;
+
 /**
  * A worker killed outright leaves its jobs in `processing` with a lease nobody renews. Only the holder of the
  * drain lease runs this, and only for job leases expired longer than one more lease period, so a live worker
  * that is merely slow has already lost its job fence (every finalization checks `leased_until > now`). The job
  * returns to `retrying`, due now, with the reason recorded; its next delivery is the normal idempotent
  * canonical rewrite (rows are matched by Mongo ID, and a committed write with a lost response is recovered).
+ * Each reclaim is counted in `stale_reclaims`; at `MAX_STALE_LEASE_RECLAIMS` the job fails for operator review.
  */
-/** A job whose worker died this many times stops being reclaimed and fails for operator review. */
-export const MAX_STALE_LEASE_RECLAIMS = 3;
-
 export async function reclaimStaleProcessingJobs(now: Date, leaseMs: number): Promise<number> {
   const expiredBefore = new Date(now.getTime() - leaseMs);
   const exhausted = await SheetSyncJob.updateMany(
