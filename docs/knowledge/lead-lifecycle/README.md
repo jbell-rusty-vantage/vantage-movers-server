@@ -101,24 +101,25 @@ Source: `src/services/leads/callLeadReportingDisposition.ts:getCallLeadReporting
 
 **Form Leads** (first match wins):
 
-| # | Condition | Tab | Billable / CPL |
+| # | Condition | Tab | Priced in Insights (live CPL) |
 |---|---|---|---|
-| 1 | `no_sync: true`, not duplicate, not bad | none (skip `no_sync`) | see [reporting-and-sheets.md](reporting-and-sheets.md) |
-| 2 | `bad_lead` set, or trusted `external_sheet_review.kind = bad_form` | Bad Form Leads (exclusive, even when duplicate or booked) | see reporting-and-sheets.md |
-| 3 | `duplicate: true` | Duplicate Forms | see reporting-and-sheets.md |
-| 4 | otherwise | Forms | see reporting-and-sheets.md |
+| 1 | `bad_lead` set, or trusted `external_sheet_review.kind = bad_form` | Bad Form Leads (exclusive, even when duplicate or booked) | yes when not duplicate (open Owner question) |
+| 2 | `duplicate: true` | Duplicate Forms | no ($0, status `duplicate`) |
+| 3 | `no_sync: true` | none (rows deleted from every Form tab) | yes |
+| 4 | otherwise | Forms | yes |
 
-There is no Form `excluded` disposition in code.
+There is no Form `excluded` disposition in code. The stamped `cpl` on a Form is the full rate even when it is a duplicate; readers apply the $0. Detail: [reporting-and-sheets.md](reporting-and-sheets.md#billable-value-and-the-cpl-used).
 
 **Call Leads** (first match wins):
 
 | # | Condition | Disposition and tab | Billable |
 |---|---|---|---|
-| 1 | No admission (`hasReportingEligibleCall` false), or `created_on_unmatched: true` | `excluded`: no tab planned | no |
-| 2 | `no_sync: true` and disposition would be `calls` | none (skip `no_sync`) | yes in server billing filters (no_sync affects Sheets only) |
-| 3 | `duplicate: true` (90-day repeat), `form_fill: true`, or trusted duplicate review | `duplicate_calls`: Duplicate Calls | no |
-| 4 | Trusted `bad_call` review, or confirmed final caller-side Missed result arriving in [01:00, 07:00) America/New_York (`overnight_missed_call`) | `bad_call_leads`: Bad Call Leads | no |
-| 5 | otherwise | `calls`: Calls | yes |
+| 1 | No admission (`hasReportingEligibleCall` false), or `created_on_unmatched: true` | `excluded`: no tab planned, and existing rows are left in place | no |
+| 2 | `duplicate: true` (90-day repeat), `form_fill: true`, or trusted duplicate review | `duplicate_calls`: Duplicate Calls | no |
+| 3 | Trusted `bad_call` review, or confirmed final caller-side Missed result arriving in [01:00, 07:00) America/New_York (`overnight_missed_call`) | `bad_call_leads`: Bad Call Leads | no |
+| 4 | otherwise | `calls`: Calls | yes |
+
+**No-Sync on Calls.** `no_sync` never changes the disposition or billing. The Sheet planner checks it first: when `no_sync: true`, the Call is not `duplicate: true`, and the disposition is not `duplicate_calls` or `bad_call_leads`, it deletes the Call's rows from all three Call tabs and upserts nothing (`sheetSync/noSyncLead.ts:noSyncAppliesToNormalTabs` L28–L33, `jobPlanner.ts` L141–L171). That includes an excluded Call without `duplicate: true`, whose rows are otherwise left alone. An excluded Call with `duplicate: true` keeps its rows even with `no_sync`. No production Call has `no_sync: true` today. See [reporting-and-sheets.md](reporting-and-sheets.md#no-sync).
 
 Duplicate takes precedence over bad for Calls, and the bad reason codes are kept. Bad takes precedence over duplicate for Forms. Admission is decided by `src/services/leads/callLeadAdmission.ts:hasReportingEligibleCall` L52–L62: saved RingCentral qualification, the closed Best Relocation historical inventory, or the trusted final-import admission.
 

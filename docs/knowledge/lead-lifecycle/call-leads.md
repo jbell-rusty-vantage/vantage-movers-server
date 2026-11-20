@@ -71,13 +71,13 @@ Reporting: getCallLeadReportingDecision → excluded | calls | duplicate_calls |
 
 ## 1. Mint paths
 
-There is exactly one mint path: `new CallLead(...)` inside `beginRingCentralCallLeadIngestion` (`src/services/leads/callLead.service.ts` L206–L257). A repository-wide search for `new CallLead(`, `CallLead.create(`, `insertMany` and `bulkWrite` on `call_leads` finds no other runtime writer. The only other inserts are synthetic seeds in `ops/insights/seed-synthetic.ts` and replica harnesses under `ops/sales-outreach/*.replica.ts` (test-harness).
+There is exactly one mint path: `new CallLead(...)` inside `beginRingCentralCallLeadIngestion` (`src/services/leads/callLead.service.ts` L206–L257). A repository-wide search for `new CallLead(`, `CallLead.create(`, `insertMany` and `bulkWrite` on `call_leads` finds no other runtime writer. The only other inserts are test or proof harnesses: synthetic seeds in `ops/insights/seed-synthetic.ts`, replica harnesses under `ops/sales-outreach/*.replica.ts` and `ops/call-billing-review/replica.ts`, `ops/local-integration/phase1-metrics-proof.ts` and `ops/slimming/rehearsal/seed.ts`.
 
 | Rule | Detail |
 |---|---|
 | **Source** | `src/services/leads/callLead.service.ts:beginRingCentralCallLeadIngestion` L206–L257 @ `9955430d` |
 | **Precondition** | `hasQualifiedRingCentralCall(input.ringcentral)` and both `ringcentral.route_assignment_id` and `ringcentral.route_id` present, else `V1ServiceError(409, "RingCentral inbound queue qualification is required")` (L210–L212). |
-| **Caller** | Only `ingestRingCentralQualifiedCall` (`src/services/ringcentral/ringcentral-call-lead-ingest.service.ts` L366–L369) in write mode `create`. The injectable adapter `ingestRingCentralCallLead` (L295–L316) is used only when a test injects `createLead`. |
+| **Caller** | Only `ingestRingCentralQualifiedCall` (`src/services/ringcentral/ringcentral-call-lead-ingest.service.ts` L366–L369) in write mode `create`. The adapter `ingestRingCentralCallLead` (L295–L316) is the default `createLead`; a test can inject a replacement (L130, L326–L328). Its alias `createRingCentralCallLead` (`leads/callLead.service.ts` L876–L880) has no caller. |
 | **Precedence** | Idempotency skip and adoption run first; create happens only when neither succeeded. |
 | **Time window / clock** | No window. `timestamp` is `toFloridaTimestamp(input.timestamp)` (L223): the New York wall-clock of the call start, stored as if it were UTC. `ringcentral.start_time` keeps the true UTC instant. |
 | **Idempotency** | `ringcentral_processed_calls` terminal row looked up by telephony session, session or Call Log id (ingest L156–L189); the unique sparse index on `ringcentral.telephony_session_id` (`src/models/CallLead.ts` L215–L218); duplicate-key race returns `skipped_already_processed` (ingest L394–L425). The create EntityChange is not an idempotent canonical command: it carries a fresh `command_execution_id` (L259–L289). |
@@ -105,7 +105,7 @@ There is exactly one mint path: `new CallLead(...)` inside `beginRingCentralCall
 |---|---|
 | **Source** | `src/services/ringcentral/call-qualification.ts:qualifyRingCentralCall` L19–L36; `call-log-vetting.ts:vetRingCentralCallLogRecord` L58–L129, `readParentElapsedSeconds` L131–L139 @ `9955430d` |
 | **Direction** | Parent record `direction === "Inbound"` (else `not_inbound`). |
-| **Mapped inbound number** | The target `to.phoneNumber` on the parent record, or on a leg with the same caller and no other telephony session, must resolve through the effective-dated Operations Registry route snapshot at the call start: `resolveRingCentralInboundRoute(snapshot, normalized, startTime)` (`findTarget` L185–L205). The resolution supplies the Source Company slug, canonical `company_id`, `granularity_id` (the **Source Granularity**), labels, `route_id` and `assignment_id`. No static fallback: `call-lead-sources.ts` is a migration/test seed only (L1–L69). Unmapped → `target_number_not_matched`. |
+| **Mapped inbound number** | The target `to.phoneNumber` on the parent record, or on an `Inbound` leg with the same caller and no other telephony session (`call-log-vetting.ts` L74–L79), must resolve through the effective-dated Operations Registry route snapshot at the call start: `resolveRingCentralInboundRoute(snapshot, normalized, startTime)` (`findTarget` L185–L205). The resolution supplies the Source Company slug, canonical `company_id`, `granularity_id` (the **Source Granularity**), labels, `route_id` and `assignment_id`. No static fallback: `call-lead-sources.ts` is a migration/test seed only (L1–L69). Unmapped → `target_number_not_matched`. |
 | **Elapsed time** | Parent elapsed time ≥ 120 s (`CALL_LEAD_MINIMUM_ELAPSED_SECONDS`, L3). Precise `durationMs/1000` wins; rounded `duration` is used only when `durationMs` is absent, and exactly `120` rounded seconds is treated as unknown (L131–L139). Answering is optional. Legs are never summed and never supply the duration (L83–L85). Else `under_120_seconds`. |
 | **Caller phone** | Normalized parent `from.phoneNumber` present (else `missing_caller_phone_number`). No caller substitution from legs. |
 | **Finished record** | `root.finished === true` (else `call_completion_unconfirmed`), `type === "Voice"`, a start time, and a Call Log id or telephony session id (L98–L106). |
@@ -182,7 +182,7 @@ The other RingCentral crons do not touch Call Leads: `ringcentral-analytics-reco
 | Rule | Detail |
 |---|---|
 | **Source** | `src/services/domainCommands/ringcentralFinalResult.ts:planRingCentralFinalResultUpdate` L23–L60, `loadCall` L62–L77, `persistRingCentralFinalCallLogResult` L88–L165 @ `9955430d` |
-| **At create** | The four fields `final_result`, `final_result_observed_at`, `final_result_call_log_id`, `final_result_answered` are written at create from the vetted record (ingest L312–L317; `callLead.service.ts` L387–L390). `final_result_observed_at` is the Call Log read time, not the call time. |
+| **At create** | The four fields `final_result`, `final_result_observed_at`, `final_result_call_log_id`, `final_result_answered` are written at create from the vetted record (ingest L312–L317; `callLead.service.ts` L387–L390). `final_result_observed_at` is the observation time, not the call time: on the cron path the lease-claim instant (`windowTo`, taken before pages are read; `call-log-sync.service.ts` L233, L319), on the webhook path `new Date()` when the descriptor is built (`call-log-vetting.ts` L152, L178). |
 | **Later observation** | `persistRingCentralFinalCallLogResult` runs when the call is already processed (ingest L168–L170), after adoption (L218–L221) and after a duplicate-key race (L412–L414). It needs a saved qualified Call with the same telephony session or Call Log id, a matching observation Call Log id, and a valid start. |
 | **Watermark** | `ringcentral.final_result_observed_at`. An observation at or before the saved watermark is ignored (L38–L39). Same facts, newer time → watermark-only `updateOne` in a transaction, with no command record, no EntityChange, no `domain_revision` change and no Sheet intent (L118–L131). Changed facts → canonical `recordRingCentralFinalCallLogResult` (L132–L157). |
 | **Fields written by the command** | `ringcentral.final_result`, `final_result_observed_at`, `final_result_answered`, `final_result_call_log_id`, `ringcentral.call_log_id`, and `ringcentral.start_time` only when missing (L49–L59). Never qualification, source, duplicate, caller or Granot facts. |
@@ -247,7 +247,7 @@ The ordinary Granot receiver writes (`synchronizeLeadFromGranot`, sibling mirror
 | Rule | Detail |
 |---|---|
 | **Source** | `routes/v1.routes.ts` L556–L571 → `domainCommands/existingWrites.ts:runExistingUpdateSourceOwnedLead` L179– → `callLead.service.ts:correctCallLead` L425–L465 @ `9955430d` |
-| **Allowed fields** | `updateCallLeadSchema` (`validation/v1/leads.validation.ts` L256–L282, L297–L304): source fields, `timestamp`, `job_no`, contact, `duration`, times, location, `cubic_feet`, `over_*`, receiver fields, **`duplicate`** and `no_sync`. Not `form_fill`, `created_on_unmatched`, `ringcentral`, `external_*`, `ringcentral_convergence` or revisions (`omitForbiddenLeadLifecycleFields`, `granotLifecycleSchemas.ts` L380–L400). |
+| **Allowed fields** | `updateCallLeadSchema` (`validation/v1/leads.validation.ts` L256–L282, L297–L304): source fields, `timestamp`, `job_no`, contact, `duration`, times, location, `cubic_feet`, `over_*`, receiver fields, **`duplicate`** and `no_sync`. Not `form_fill`, `created_on_unmatched`, `ringcentral`, `external_*`, `ringcentral_convergence` or revisions (the strict `updateCallLeadSchema` refuses `form_fill` and `created_on_unmatched`; `leads/leadIngestionProvenance.ts:omitForbiddenLeadLifecycleFields` L222–L232 strips the forbidden list defined in `models/granotLifecycleSchemas.ts` L380–L400). |
 | **Guards** | `duplicate: true` on a booked Call → `ConflictError` (L494–L508). The 90-day guard is not re-run. |
 | **Effects** | Reprice when source, `timestamp` or `duplicate` changes; receiver `manual` default; save, refresh the attached Booking chain and persist `call_lead.update` (L467–L480). EntityChange `updateSourceOwnedLead`. A `phone_number`/source/`duplicate` change schedules Form Fill work. Production: 8 Call rows, last 2026-09-06; one set `duplicate` (2026-09-03). |
 | **Lifecycle meaning** | PATCH can move a qualified Call between Calls and Duplicate Calls by setting `duplicate`, and can hide it with `no_sync`. It can never qualify or admit a Call. See finding R2-F4. |
@@ -277,7 +277,7 @@ Read-only coordinator scan, 2026-11-20 12:38 NY: 209 Sheet rows on Master Leads 
 | 2 `vantage_admin` Calls, 2026-09-01 and 09-02 | Manual Admin creates (now closed), no RingCentral facts, not in the inventory. | Same. |
 | 1 `granot_lead_created` Call, 2026-09-02 | Created by Granot `create_if_missing` (now closed), still `ringcentral_convergence.state: "pending"`, never adopted. Its ±12 h adoption window has long passed. | Same. |
 
-A narrow exception: an excluded Call with `no_sync: true` would have every Call row deleted, because the No-Sync branch runs before the excluded check (`jobPlanner.ts` L141–L167; `sheetSync/noSyncLead.ts` L13–L34). Production has no `no_sync: true` Calls.
+A narrow exception: an excluded Call with `no_sync: true` and without `duplicate: true` would have every Call row deleted, because the No-Sync branch runs before the excluded check; with `duplicate: true`, No-Sync does not apply and the rows stay (`jobPlanner.ts` L141–L167; `sheetSync/noSyncLead.ts` L13–L34). Production has no `no_sync: true` Calls.
 
 Server reporting excludes all of these from billing, Insights and the sibling gate with no date cutoff. The Owner decided (Nov 20) not to remove pre-November-3 Calls or their rows retroactively, and directed that the Calls tab gets no backfill or major change; removals and inspection there are manual. These rows are an Owner item only. This pack proposes no repair.
 
@@ -289,10 +289,10 @@ Server reporting excludes all of these from billing, Insights and the sibling ga
 | Webhook final confirmation | `ringcentral/webhook-call-log-qualification.test.ts` |
 | Shared ingest order, adoption before duplicate | `ringcentral/ringcentral-call-lead-ingest.service.test.ts`, `ringcentral/callLeadConvergence.test.ts` (replica: `callLeadConvergence.replica.test.ts`) |
 | Call Log sync window, lease, oldest-first | `ringcentral/call-log-sync.service.test.ts` (replica: `call-log-sync-lease.replica.test.ts`) |
-| Mint guard, closed create paths | `leads/callLead.service.test.ts`, `granotLifecycle/createLeadFromGranot.test.ts`, `models/GranotCrmSource.test.ts`, `validation/v1.validation.test.ts` |
+| Mint guard, closed create paths | `leads/callLead.service.test.ts`, `granotLifecycle/createLeadFromGranot.test.ts`, `validation/v1.validation.test.ts`; the "Only RingCentral can create Call Leads" Granot check is only in `granotLifecycle/createLeadFromGranot.replica.test.ts` (not run) |
 | Admission branches | `leads/callLeadAdmission.test.ts` |
 | Final result watermark | `domainCommands/ringcentralFinalResult.test.ts`, `ops/best-relocation-retirement/callBackfill.test.ts` |
 | Move date recovery | `granotLifecycle/callLeadMoveDateRepair.test.ts` (replica: `ops/sales-outreach/call-lead-move-dates.replica.ts`) |
-| Excluded Call plans no Sheet write | `sheetSync/drainer/jobPlanner.test.ts` |
+| Excluded Call plans no Sheet write | `sheetSync/drainer/jobPlanner.test.ts` L433–L441 covers the `created_on_unmatched` branch only; the missing-admission branch (`jobPlanner.ts` L171) has no test (gap) |
 
 Run results are in the coverage file `R2-tests.tsv`.

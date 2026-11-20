@@ -151,7 +151,7 @@ Production (read 2026-11-20 17:37 UTC): 2,078 Form Lead creations, latest 2026-1
 
 The Form must be non-duplicate, not bad, and hold `job_no` and `normalized_job_no` (L134). The Call must pass `eligibleSibling`:
 
-- `hasReportingEligibleCall` (`leads/callLeadAdmission.ts` L52–L61): a saved RingCentral inbound queue qualification, **or** one of the 69 preserved Best Relocation historical IDs (`hasLegacyBestRelocationCall` L43), **or** a trusted final-import `external_call_admission` whose company and feed match;
+- `hasReportingEligibleCall` (`leads/callLeadAdmission.ts` L52–L61): a saved RingCentral inbound queue qualification, **or** one of the 69 preserved Best Relocation historical IDs carrying the Best Relocation slug, company ID and Call feed ID (`hasLegacyBestRelocationCall` L43–L49), **or** a trusted final-import `external_call_admission` on a Lead with `source_company: "best_relocation_leads"` whose company and feed match the fact (L57–L60);
 - **and** `duplicate !== true` (not a 90-day repeat);
 - **and** `created_on_unmatched !== true`.
 
@@ -169,14 +169,14 @@ The loader also pre-filters with `reportingEligibleCallLeadFilter()` (L182, L188
 |---|---|
 | `job_no`, `normalized_job_no` | Only when the Call has no job (L155–L158). A different job is never overwritten. |
 | `granot_priority` | When the Form's differs (L159). |
-| `receiver_agent`, `receiver_agent_name_snapshot`, `receiver_agent_source` (the Form's, default `granot_username_match`), `receiver_agent_source_value`, `receiver_agent_set_at` | Only over an empty receiver or an automatic one (`ringcentral_answered`, `ringcentral_rep_call`, `granot_username_match`); never over `manual` or a source-less receiver (L42, L160–L167). |
+| `receiver_agent`, `receiver_agent_name_snapshot`, `receiver_agent_source` (the Form's, default `granot_username_match`), `receiver_agent_source_value`, `receiver_agent_set_at` | Only when the Form has a receiver with a non-empty name snapshot and its Agent differs from the Call's, and only over an empty receiver or an automatic one (`ringcentral_answered`, `ringcentral_rep_call`, `granot_username_match`); never over `manual` or a source-less receiver (L42, L160–L167). |
 | `granot_form_sibling` `{form_lead_id, normalized_job_no, basis, linked_at}` | When missing or for another job (L168–L170). |
 
 It never creates a Lead and never writes the Form Lead, a Record Link, a Decision, `booked` or the Call's `last_accepted_granot_observation`.
 
 | Aspect | Rule |
 |---|---|
-| Idempotency | Key `granot-form-sibling:<form>:<call>:r<call revision>:<sha256 of values>` (L241–L246). It re-plans inside the transaction and CASes on the Call's `domain_revision` (L250–L261). |
+| Idempotency | Key `granot-form-sibling:<form>:<call>:r<call revision>:<first 32 hex of the sha256 of the mirrored values>`; the hash leaves out `receiver_agent_set_at` and `granot_form_sibling` (L241–L246). It re-plans inside the transaction and CASes on the Call's `domain_revision` (L250–L261). |
 | EntityChange | `mirrorFormLeadToCallSibling` on the Call Lead (L263–L265). |
 | Sheet Sync | `source_lead` / `call_lead.update` only when the Call already has a synced row on Calls, Duplicate Calls or Bad Call Leads, its disposition is not `excluded`, effective No-Sync does not apply, **and** `job_no` or the receiver name changed (L198–L202, L267–L270). Priority-only mirrors plan no Sheet work. The planner keeps a Form Fill Call on Duplicate Calls. A never-delivered Call is not newly admitted. |
 | Outreach | The tail recognizes this command touching `granot_form_sibling` and nominates a related-Form job `sod:lead-change:FormLead:<form>:related:CallLead:<call>:change:<change>` (`subjects/feed.ts` L95–L108). The Desk then excludes the Call as `form_lead_holds_job`. |
@@ -189,7 +189,7 @@ It never creates a Lead and never writes the Form Lead, a Record Link, a Decisio
 
 | Path | When | Bound |
 |---|---|---|
-| Processor (webhook, extension, pre-schema-3 automation receipts) | After any Form Lead result `applied`, `linked`, `created` or `already_current`, live writes only, not shadow mode (`processor.ts` L240–L258, `FORM_SIBLING_OUTCOMES` L274) | 2 s, never throws (`boundedLeadLinkWake` L277–L288, `LEAD_LINK_WAKE_TIMEOUT_MS` L271) |
+| Processor (webhook, extension, pre-schema-3 automation receipts) | After any Form Lead result `applied`, `linked`, `created` or `already_current`, live writes only, not shadow mode, and only when the receipt loads and an initiator resolves; otherwise the mirror is skipped with no log (`processor.ts` L240–L258, L245–L253, `FORM_SIBLING_OUTCOMES` L274) | 2 s, never throws (`boundedLeadLinkWake` L277–L288, `LEAD_LINK_WAKE_TIMEOUT_MS` L271) |
 | Scheduled direct apply (schema 3) | **Only after an `applied` Form change** (`scheduledLeadChange.ts` L153–L162, L197–L198, L227–L235) | **Unbounded, awaited, errors escape** |
 | Owner backfill script | On demand | n/a |
 

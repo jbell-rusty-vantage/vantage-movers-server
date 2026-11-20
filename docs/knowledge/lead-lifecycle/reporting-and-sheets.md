@@ -75,7 +75,7 @@ The Call decision is one pure function, `getCallLeadReportingDecision`. The plan
 
 | # | Condition | Disposition | Tab | Billable | Sheet Sync action on re-delivery |
 |---|---|---|---|---|---|
-| 1 | `no_sync === true` and the decision is **not** `duplicate_calls` or `bad_call_leads` (this includes excluded and Unmatched Calls) | `calls` or `excluded` (unchanged) | none | unchanged by No-Sync: `calls` stays billable | Delete the row from all three Call tabs. No upsert. |
+| 1 | `no_sync === true`, `duplicate !== true`, and the decision is **not** `duplicate_calls` or `bad_call_leads` (this includes excluded and Unmatched Calls without `duplicate: true`) | `calls` or `excluded` (unchanged) | none | unchanged by No-Sync: `calls` stays billable | Delete the row from all three Call tabs. No upsert. |
 | 2 | `created_on_unmatched === true` | `excluded`, reason `created_on_unmatched` | none | false | Nothing. No upsert, no delete. |
 | 3 | No reporting admission: `hasReportingEligibleCall` is false | `excluded`, reason `missing_call_reporting_admission` | none | false | Nothing. No upsert, no delete. |
 | 4 | `duplicate === true` (90-day repeat), or `form_fill === true`, or a trusted external review of kind `duplicate_call` | `duplicate_calls` | Duplicate Calls | false | Upsert Duplicate Calls, then delete Calls and Bad Call Leads rows. |
@@ -84,12 +84,12 @@ The Call decision is one pure function, `getCallLeadReportingDecision`. The plan
 
 Notes on the precedence:
 
-- Rows 2 and 3 are checked together in the decision function, and both reason codes are recorded when both apply. Row 1 is checked first by the planner, so `no_sync` still deletes the rows of an excluded or Unmatched Call (`jobPlanner.ts` L141–L166 run before L167–L171).
+- Rows 2 and 3 are checked together in the decision function, and both reason codes are recorded when both apply. Row 1 is checked first by the planner, so `no_sync` still deletes the rows of an excluded or Unmatched Call, unless that Call has `duplicate: true` (`noSyncLead.ts` L29 returns false for any duplicate before the disposition is read; `jobPlanner.ts` L141–L166 run before L167–L171).
 - Rows 4 and 5 keep every reason. A duplicate that is also bad stays on Duplicate Calls and keeps `external_bad_call` or `overnight_missed_call` in `reason_codes` (L36–L38). Production shows this: 3 Calls carry `repeat_call_duplicate+external_bad_call`.
 - **Overnight missed call** (row 5) needs all of: `ringcentral.final_result` trimmed and lower-cased equals `missed`; `final_result_observed_at` is a valid Date; `final_result_call_log_id` is non-blank and equals `ringcentral.call_log_id`; `ringcentral.start_time` is a Date whose America/New_York hour is in [01, 07); and `final_result_answered === false` (L29–L35). The clock is `ringcentral.start_time` only. It never falls back to `createdAt` or a wall-clock string. If `final_result_answered === true` the decision records `conflicting_final_result`, and the Call stays on Calls and billable.
 - `booked`, `cancelled`, Job Number, priority and receiver never change the Call tab or billability. The truth table below confirms this for every combination.
 - No-Sync never changes billability. A No-Sync qualified Call is billable and has no row (`callLeadReportingDisposition.test.ts`, "No-Sync does not change billing").
-- A Call that carries a trusted `bad_form` review (schema-valid only with a Forms-tab source) defeats No-Sync through `hasFormBadProjection` (`noSyncLead.ts` L30). Its tab is then decided by rows 2–6. No production Call carries one.
+- A Call that carries a trusted `bad_form` review (schema-valid only with a `Forms` or `Local Forms` tab source, sheet IDs 0 and 584355266; `leads/externalSheetReview.ts` L6, L21–L22) defeats No-Sync through `hasFormBadProjection` (`noSyncLead.ts` L30). Its tab is then decided by rows 2–6. No production Call carries one.
 
 **Reporting admission** (`hasReportingEligibleCall`, `src/services/leads/callLeadAdmission.ts` L52–L61). Any one of three admits a Call:
 
@@ -97,7 +97,7 @@ Notes on the precedence:
 |---|---|---|
 | RingCentral inbound queue qualification (saved, including preserved historical) | `ringcentral.ingestion_source` is `call_log_sync` or `webhook`; `qualification_reason` is `call_log_inbound_target_elapsed_at_least_120s` or the older `call_log_inbound_target_answered_over_120s`; `duration_seconds` is a finite number ≥ 120; `telephony_session_id` or `call_log_id` is a non-blank string | `src/services/ringcentral/callLeadQualification.ts:hasQualifiedRingCentralCall` L11–L18 |
 | Best Relocation historical inventory | `_id` is one of the 69 IDs in `LEGACY_BEST_RELOCATION_CALL_IDS` (manifest `best-relocation-legacy-reporting-v1`), `source_company: "best_relocation_leads"`, `lead_source_company` = `6a4d240f3117eacd97823868`, `source_granularity_id` = `6a4d240f04c6e063cb6621f3` | `callLeadAdmission.ts:hasLegacyBestRelocationCall` L43–L49 |
-| Best Relocation final import | `external_call_admission` parses under `externalCallAdmissionSchema` (policy `best-relocation-final-import-v1`, tracker workbook, `source_sheet_id` 1191420872, tab `Calls`, Date `source_arrival_at` and `applied_at`, 24-hex run and receipt IDs), and the Lead's company and feed match the fact | `callLeadAdmission.ts:externalCallAdmissionSchema` L16–L29, `hasReportingEligibleCall` L57–L60 |
+| Best Relocation final import | `external_call_admission` parses under `externalCallAdmissionSchema` (policy `best-relocation-final-import-v1`, tracker workbook, `source_sheet_id` 1191420872, tab `Calls`, Date `source_arrival_at` and `applied_at`, 24-hex run and receipt IDs), and the Lead has `source_company: "best_relocation_leads"` and its company and feed match the fact | `callLeadAdmission.ts:externalCallAdmissionSchema` L16–L29, `hasReportingEligibleCall` L57–L60 |
 
 A Call with a RingCentral reason but 119 s, or any other reason string, is not admitted. ISO-string dates never admit (BSON Date checks only).
 
@@ -250,7 +250,7 @@ Only Call Leads can be excluded. A Call is `excluded` when it has no reporting a
 | Case | What re-delivery does | Source |
 |---|---|---|
 | Excluded, `no_sync` not set | Plans nothing: no upsert, **no delete**. Any existing row on Calls, Duplicate Calls or Bad Call Leads stays as it is. The job completes as `synced` with no writes. | `jobPlanner.ts` L167–L171; `runSheetSyncDrain.ts` L181–L186, L222–L228 |
-| Excluded with `no_sync: true` | Deletes its rows from all three Call tabs. | `jobPlanner.ts` L141–L166 |
+| Excluded with `no_sync: true` | Deletes its rows from all three Call tabs, unless the Call has `duplicate: true`; then it plans nothing and the rows stay. | `noSyncLead.ts` L28–L33; `jobPlanner.ts` L141–L171 |
 | Excluded, then deleted through `deleteCallLead` | The tombstone removes every Call-tab row. | [Tombstones](#tombstones) |
 | Becomes excluded later | Current writers do not do this: saved admission evidence is not removed and `created_on_unmatched` is no longer set (see [call-leads.md](call-leads.md)). A Call starts excluded or never is. | — |
 
@@ -262,7 +262,7 @@ The five legacy June 9 Calls left after the formula-phone repair (Calls rows 234
 
 ## No-Sync
 
-`no_sync === true` keeps an ordinary Lead off the normal tabs. Missing, `false` or `null` stay syncable (`noSyncLead.ts:isNoSyncLead` L9–L11). It does not apply to a Form duplicate, a Bad Form, or a Call routed to Duplicate Calls or Bad Call Leads (L28–L33). When it applies, the planner deletes every row of the Lead's type and upserts nothing. No-Sync changes neither Call billing nor the Form Insights price. Booked Deals still writes for the Lead's Booking. Writers of `no_sync` are documented in [form-leads.md](form-leads.md) and [call-leads.md](call-leads.md).
+`no_sync === true` keeps an ordinary Lead off the normal tabs. Missing, `false` or `null` stay syncable (`noSyncLead.ts:isNoSyncLead` L9–L11). It does not apply to any Lead with `duplicate: true` (Form or Call, including an excluded Call), a Bad Form, or a Call routed to Duplicate Calls or Bad Call Leads (L28–L33). When it applies, the planner deletes every row of the Lead's type and upserts nothing. No-Sync changes neither Call billing nor the Form Insights price. Booked Deals still writes for the Lead's Booking. Writers of `no_sync` are documented in [form-leads.md](form-leads.md) and [call-leads.md](call-leads.md).
 
 ## Managed and operator cells
 

@@ -33,7 +33,7 @@ This page proves the pack is complete at `main` = `9955430d`. The brief's rule i
 |---|---|
 | Zero unclassified entry points, commands, field writers and routing readers at a named SHA | **Met** at `9955430d` (totals below). |
 | Routing table covers every flag combination; production reconciliation explains every difference | **Met.** The table reproduces `getCallLeadReportingDecision`, `billableCallLeadFilter`, `reportingEligibleCallLeadFilter` and `planExpectedSheetTabs` over 4,800 Call and 512 Form flag combinations with 0 mismatches ([reporting-and-sheets.md](reporting-and-sheets.md)). Production differences are explained [below](#production-reconciliation). |
-| Verifier sign-off with every mismatch fixed | See [Verification](#verification). |
+| Verifier sign-off with every mismatch fixed | **Met.** 357 rules verified, 34 mismatches fixed, one re-verification pass, signed off. See [Verification](#verification). |
 | `form-lead.md`, `call-lead.md`, `ringcentral-call-lead-qualification.md` corrected and pointing to the pack; `docs/index.md` links it | **Met.** Corrections are listed under [Service doc corrections](#service-doc-corrections). |
 | Every Owner-directive conflict listed, no code changes | **Met.** See [Owner-directive findings](#owner-directive-findings). |
 | Merged through a PR with a docs-only diff | **Open.** The PR is open. Every push to `main` deploys production, so merging needs the Owner's approval. |
@@ -122,7 +122,7 @@ Never recorded on a Lead in production: `markCallLeadFormFill`, `repairCallFormF
 
 ## Production reconciliation
 
-Read-only. Mongo `find`/`countDocuments`/`aggregate` on a secondary; Sheets `values.get` only. Sheets read 13:08:27–13:08:34 New York, Mongo 13:08:34–13:08:52, November 20, 2026. This run is after the Owner-directed bad-Form cleanup of 12:48–13:01 (see [reporting-and-sheets.md](reporting-and-sheets.md)).
+Read-only. Mongo `find`/`countDocuments`/`aggregate` on a secondary; Sheets `values.get` only. Final run: Sheets read 13:37:10–13:37:15 New York, Mongo 13:37:15–13:37:20, November 20, 2026. Earlier runs at 12:44 and 13:08 are kept below because the session coordinator made Owner-directed Form-tab fixes between them (see [Form-tab fixes during the session](#form-tab-fixes-during-the-session)). Track B itself wrote nothing.
 
 Two independent computations agree exactly:
 - **Code decision per document:** `planExpectedSheetTabs` and `getCallLeadReportingDecision` over every Form, Call, Booking and Cancellation (imported from the worktree at `9955430d`).
@@ -130,9 +130,9 @@ Two independent computations agree exactly:
 
 | Disposition | Mongo Leads (code) | Mongo Leads (table query) | Tab | Mongo IDs on tab | Matched | Expected, absent | On tab, not expected |
 |---|---:|---:|---|---:|---:|---:|---:|
-| Form → Forms | 7,816 | 7,816 | Forms | 7,814 | 7,811 | 5 | 3 |
-| Form → Duplicate Forms | 192 | 192 | Duplicate Forms | 195 | 192 | 0 | 3 |
-| Form → Bad Form Leads | 1,035 | 1,035 | Bad Form Leads | 1,040 | 1,035 | 0 | 5 |
+| Form → Forms | 7,816 | 7,816 | Forms | 7,816 | 7,816 | 0 | 0 |
+| Form → Duplicate Forms | 192 | 192 | Duplicate Forms | 192 | 192 | 0 | 0 |
+| Form → Bad Form Leads | 1,035 | 1,035 | Bad Form Leads | 1,035 | 1,035 | 0 | 0 |
 | Form → none (`no_sync`) | 1 | 1 | — | — | — | — | — |
 | Call → Calls (billable) | 1,457 | 1,457 | Calls | 1,606 | 1,402 | 55 | 204 |
 | Call → Duplicate Calls | 430 | 430 | Duplicate Calls | 432 | 426 | 4 | 6 |
@@ -143,16 +143,12 @@ Two independent computations agree exactly:
 
 Totals: 9,044 Form Leads, 2,118 Call Leads. Every tab row had a Mongo ID and no ID appeared twice on one tab. Call admission: 1,794 saved RingCentral qualification (1,614 `call_log_inbound_target_answered_over_120s`, 180 `call_log_inbound_target_elapsed_at_least_120s`), 69 closed Best Relocation historical inventory, 43 trusted final-import admission, 212 none.
 
-### Every difference explained
+### Every remaining difference explained (13:37 run)
+
+The three Form tabs match exactly. Every remaining difference is on the Call and Booked tabs.
 
 | Tab | Difference | Count | Cause | Code mechanism | Owner action |
 |---|---|---:|---|---|---|
-| Forms | expected, absent | 3 | `legacy_unknown` non-bad Forms whose only row is on Bad Form Leads | No `bad_lead` or review change exists for them and `sheet_sync` has no Bad Form Leads entry; the server never wrote that row. A hand move in the workbook. | The next delivery upserts Forms and removes the Bad Form Leads row. Owner decides whether to wait or move by hand. |
-| Forms | expected, absent | 2 | `wordpress_form` non-bad Forms on no tab | `sheet_sync` records a synced Forms row; no tombstone or delete job exists. Removed by hand. | Re-appended on the next intent for each Lead. |
-| Forms | on tab, not expected | 3 | Mongo ID in no collection (ObjectIds from May 28–June 12) | No `entity_changes`, no Sheet job. Deleted before canonical history started (August 20) without a tombstone, so nothing removes the row. | Owner removes by hand if wanted. |
-| Duplicate Forms | on tab, not expected | 2 | Mongo ID in no collection (June 10 and 12) | Same as above. | Same. |
-| Duplicate Forms | on tab, not expected | 1 | `legacy_unknown` non-duplicate Form, also on Forms | A non-bad Form whose `duplicate` flips keeps its old primary row (`leadReportingTargets.ts:staleFormTargetKeys` L42–L46, pinned by `jobPlanner.test.ts`). Its pair ID is one of the deleted May 28 Forms. | Re-delivery will not remove it. Owner decision. |
-| Bad Form Leads | on tab, not expected | 5 | Non-bad Forms: the 3 above, plus 2 also on Forms | Hand copies or moves; no server write. | As for the 3 above. |
 | Calls | expected, absent | 55 | Billable Calls (31 `legacy_unknown` June–August, 24 `ringcentral` August 23–October 26) | `sheet_sync` records a synced Calls row; their only jobs are synced `call_lead.create`/`update`; no tombstone. Removed by hand, consistent with the Owner handling the Calls tab manually. | **Owner item.** Sheet Sync finds rows by Mongo ID and appends when absent (`batchWriter.ts` L145–L154), so each row returns on that Call's next intent. |
 | Calls | on tab, not expected | 203 | Excluded Calls: 200 `legacy_unknown` (June 9–17), 2 `vantage_admin` (September 1–2), 1 `granot_lead_created` (September 2, never adopted) | No admission (`missing_call_reporting_admission`). The planner plans nothing for an excluded Call (`jobPlanner.ts` L171), so rows written before November 3 stay. Server reporting and billing exclude them. | **Owner item.** Calls-tab removals are Owner-manual (directive November 20). |
 | Calls | on tab, not expected | 1 | `legacy_unknown` Form Fill Call (row 317) | Disposition `duplicate_calls`; last written July 6, before Form Fill moved to Duplicate Calls on November 3. No job since. | The next intent moves it to Duplicate Calls. Owner item. |
@@ -162,11 +158,51 @@ Totals: 9,044 Form Leads, 2,118 Call Leads. Every tab row had a Mongo ID and no 
 | Booked Deals | on tab, not expected | 1 | Booking created by `createBookingFromLead` 2026-09-06 23:12 UTC on a manually created Call; both records later removed | No `deleteBookedLead`/`deleteCallLead` change and no tombstone: removed outside the canonical delete paths, so the row stays. | Owner removes by hand if wanted. |
 | Cancelled Deals | expected, absent | 4 | August 19–20 residue: 3 Cancellations whose Form Lead and Booking no longer exist and never synced, plus 1 with no Lead link | Never delivered. | Same as the fixtures. |
 
+### Form-tab fixes during the session
+
+The Form differences below were found and explained by code, then fixed by the session coordinator on the Owner's direction through ordinary Sheet Sync re-delivery or exact-row deletes (evidence in the main checkout's untracked `.tmp/bad-form-cleanup-2026-11-20/`). Track B made no writes.
+
+| When (New York) | Action | Rows |
+|---|---|---:|
+| 12:48–13:01 | Re-delivery (`bad_form_primary_cleanup`) of pre-November-3 Bad Forms that still had a Forms row | 592 Forms rows removed |
+| 13:15 | Deleted the Duplicate Forms row of the non-duplicate Form that was also on Forms | 1 |
+| 13:25 | Re-delivery of the 7 hand-moved or hand-removed non-bad Forms | 7 Forms rows restored, 5 Bad Form Leads rows removed |
+| 13:27 | Deleted the rows whose Mongo ID is in no collection | 3 Forms, 2 Duplicate Forms |
+
+Differences at 13:08 (after the 592-row cleanup, before the later fixes):
+
+| Tab | Difference | Count | Cause | Code mechanism |
+|---|---|---:|---|---|
+| Forms | expected, absent | 3 | `legacy_unknown` non-bad Forms whose only row is on Bad Form Leads | No `bad_lead` or review change exists for them and `sheet_sync` has no Bad Form Leads entry; the server never wrote that row. A hand move in the workbook. |
+| Forms | expected, absent | 2 | `wordpress_form` non-bad Forms on no tab | `sheet_sync` records a synced Forms row; no tombstone or delete job exists. Removed by hand. |
+| Forms | on tab, not expected | 3 | Mongo ID in no collection (ObjectIds from May 28–June 12) | No `entity_changes`, no Sheet job. Deleted before canonical history started (August 20) without a tombstone, so nothing removes the row. |
+| Duplicate Forms | on tab, not expected | 2 | Mongo ID in no collection (June 10 and 12) | Same as above. |
+| Duplicate Forms | on tab, not expected | 1 | `legacy_unknown` non-duplicate Form, also on Forms | A non-bad Form whose `duplicate` flips keeps its old primary row (`leadReportingTargets.ts:staleFormTargetKeys` L42–L46, pinned by `jobPlanner.test.ts`). Its pair ID is one of the deleted May 28 Forms. |
+| Bad Form Leads | on tab, not expected | 5 | Non-bad Forms: the 3 above, plus 2 also on Forms | Hand copies or moves; no server write. |
+
 The 212 excluded Calls hold 209 rows (203 Calls, 6 Duplicate Calls); 3 hold none. The coordinator's independent sheet-to-Mongo scan at 12:38 New York found the same 209 rows and the same anomalies (before the bad-Form cleanup, which removed the 592 bad Forms' Forms rows).
 
 ## Verification
 
-Pending: the independent verifier has not reported yet.
+An independent verifier that wrote none of the pack re-derived the rules from code at `9955430d` (November 20, first pass 13:18–13:32 New York).
+
+| Measure | Count |
+|---|---:|
+| Rules with a code citation, enumerated across the 9 pack files, COVERAGE.md (L26–L228) and the 3 corrected Service docs | 547 |
+| Locked-contract rules verified (all of them) | 293 |
+| Other rules verified (seeded 25% sample, mulberry32 seed `20261120`) | 64 |
+| Confirmed on first pass | 324 |
+| Mismatches on first pass | 33, plus 1 found outside the sample |
+
+First-pass mismatches by severity: 6 wrong-behavior (2 root causes), 3 wrong-citation, 24 imprecise. No rule contradicted a locked contract. The two wrong-behavior causes were:
+- **M1.** The pack said `no_sync: true` deletes every row of an excluded Call. It does not when that Call has `duplicate: true`: `noSyncLead.ts:noSyncAppliesToNormalTabs` L29 returns false for any duplicate before the disposition is read. Fixed in five places.
+- **M2.** COVERAGE finding 5 said the Form-Lead booking preference applies only to Employee Booking Submissions. `evaluateEmployeeBookingMatch` also applies it on the Owner `from-source` Call path, the `autoAttachBookingLead` rematch cron and the Owner refresh, pending-edit and reopen actions. Finding 5 now says the preference is skipped by `confirmGranotBooking`, the Owner resolve action and `connectBookingToLead`.
+
+The verifier's own pure-function runs (no database) reproduced the routing tables: 4,800 Call and 512 Form combinations with 0 mismatches against the pack's tables, and `billable === (disposition === "calls")` in every Call combination. The Mongo filter agreement it could not test offline was confirmed against production instead: `billableCallLeadFilter` counted 1,457, equal to the per-document decision, and `reportingEligibleCallLeadFilter` counted 1,906 = 1,794 + 69 + 43 by the object predicates.
+
+One re-verification pass checked every fix: 31 of 34 fixed, 3 new or partial issues in the edited sentences (a function name, a No-Sync condition, an origin clause), plus one adjacent omission. All four were fixed. **The verifier signed off at 13:38 New York with no remaining mismatch** (the production filter cross-check is the coordinator's, not the verifier's).
+
+PII scan of all 13 files, appendices included: no email addresses, no person names; the only phone-shaped strings are `+1555555xxxx` placeholders.
 
 ## Tests
 
@@ -190,7 +226,7 @@ Each finding quotes the locked rule, says what code does at `9955430d`, and prop
 2. **A hand-removed row of a billable Call comes back.** Rule (2026-11-20): the Owner handles Calls-tab removals manually. Code: `batchWriter.ts` L145–L154 appends when the Mongo ID is missing, so a removed row of a Call that still routes to Calls returns on its next Granot update, booking, cancellation, Form Fill change, receiver fill or final result. 55 billable Calls and 4 Form Fill Calls are in that state now. Manual removal sticks only for excluded Calls.
 3. **Scheduled Granot runs do not catch a Call up from an already-current Form.** Rule (2026-10-28/29): a Granot update to a Form Lead mirrors job, priority and receiver onto the same customer's qualified Call. Code: `granotHttpCollector/scheduledLeadChange.ts` L153–L162 and L227–L235 mirror only after an applied Form change; the webhook processor also mirrors after `already_current` (`granotLifecycle/processor.ts` L240–L258). Zero current impact (42 eligible jobless Calls in 30 days, none waiting). **Track A is fixing this.**
 4. **The retired Best Relocation sheet path is still reachable for Bookings.** Rule (2026-11-03): external ingestion remains retired. Code: `POST /api/v1/booked-leads/from-source` accepts `ingestion_source: "best_relocation_sheet"` (`validation/v1/bookings.validation.ts` L87) and `existingWrites.ts:runExistingCreateBookedLeadFromSource` L639–L677 does not strip it, unlike Form create, leadless Booking and cancellation. The resolver then matches a Best Relocation Call by job or phone and rewrites its phone and job with no eligibility check (`bookings/bookingSourceResolver.ts` L39–L98). It creates no Call.
-5. **"Booking intake prefers the Form Lead" applies only to Employee Booking Submissions.** Rule (2026-10-29). Code: only `employeeBookings/leadMatchEvaluator.ts:preferFormLeadForSharedJob` L292–L313 applies it. `confirmGranotBooking`, the production path, attaches the Granot identity target with no Form-over-Call check (`granotLifecycle/confirmAttachment.ts` L34–L57); Owner resolve paths and `connectBookingToLead` apply none. No current instance measured.
+5. **"Booking intake prefers the Form Lead" is skipped by the main production booking path.** Rule (2026-10-29). Code: `employeeBookings/leadMatchEvaluator.ts:preferFormLeadForSharedJob` L292–L313, through `evaluateEmployeeBookingMatch`, applies it to Employee Booking Submissions, the Owner `POST /booked-leads/from-source` Call path, the `autoAttachBookingLead` rematch cron and the Owner refresh, pending-edit and reopen actions. `confirmGranotBooking`, which made 374 of the Lead booking revisions in production, attaches the Granot identity target with no Form-over-Call check (`granotLifecycle/confirmAttachment.ts` L34–L57); the Owner resolve action and `connectBookingToLead` apply none either. No current instance measured.
 6. **Desk eligibility does not read Call admission.** Rule (2026-11-03): only qualified Calls take part in the lifecycle (restated 2026-11-20). Code: `salesOutreach/subjects/eligibility.ts` L39–L53 and `leadFacts.ts` L56–L86 never check `hasReportingEligibleCall`. Latent: 0 affected subjects at 12:47 New York. The Daily Operations rebuild and legacy Analytics summary/source/geographic reports also count unqualified Calls (`dailyOperations/rebuild.ts` L226–L252 and L399–L438; `analytics/summary.service.ts` L15; `analyticsFilters.ts` L91–L110). [downstream-consumers.md](downstream-consumers.md).
 7. **Glossary: Ingestion Origin and Ingested Contact Snapshot.** Rule (CONTEXT.md): every Lead gets a server-assigned origin and an immutable contact snapshot at creation. Code: `employeeBookings/bookingLeadAttachment.service.ts:createAndAttachReconciliationFormLead` L165–L175 sets neither. Never run in production.
 8. **Glossary: Form duplicate.** Rule (CONTEXT.md): a Form is a Duplicate Lead when its Source Granularity already has an eligible non-duplicate Form with the same phone or email. Code: `granotLifecycle/createLeadFromGranot.ts:createGranotFormLead` L581–L739 never runs `findDuplicateFormLeadMatch`; and WordPress/Admin Forms store New York wall-clock time as UTC while Granot Forms store real UTC, so "earlier" is off by 4–5 hours across origins (`formLead.service.ts` L356, `createLeadFromGranot.ts` L715, `duplicateLead.service.ts` L104–L117).

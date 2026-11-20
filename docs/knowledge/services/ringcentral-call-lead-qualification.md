@@ -96,7 +96,7 @@ The singleton needs the unique `{ key: 1 }` index `ringcentral_call_log_sync_sta
 
 **Cadence and rollback:** `vercel.json` runs `/api/cron/ringcentral-call-log-sync` at `*/30 * * * *`. Roll back by restoring `0 */2 * * *` first, then `RINGCENTRAL_CALL_LOG_SYNC_ENABLED=false`, then (only if adoption is unsafe) `RINGCENTRAL_GRANOT_ADOPTION_ENABLED=false`. Keep the additive lease/telemetry fields and the unique safety index. Do not rewind a successful cursor without a reviewed recovery plan.
 
-**Local script:** `node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/ringcentral/ringcentral-call-log-sync-run.ts` (local untracked tooling: `scripts/` is not in the tracked tree at `9955430d`).
+**Local script:** `node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/ringcentral/ringcentral-call-log-sync-run.ts` (local untracked tooling: this runner is not tracked at `9955430d`; tracked `scripts/` holds only `okf-progress.mjs`, `okf-query.mjs` and `dev_ops/seed-oi-team-fixture.ts`).
 
 ## 4. Shared ingest (`ringcentral-call-lead-ingest.service.ts`) — promotion gate
 
@@ -229,7 +229,7 @@ Logger `msg` keys and Section 33 metrics only; nothing is persisted (the Operati
 | `GET /api/dev/ringcentral/*` | Candidates, sessions, decisions, processed calls, config |
 | `pnpm ringcentral:webhook:monitor` | Live webhook inspection |
 | `pnpm ringcentral:workflow:test` | End-to-end qualification scenarios |
-| `scripts/dev_ops/ringcentral/ringcentral-call-log-sync-run.ts` (via `tsx`) | Manual cron run + artifact JSON, including masked lease owner, runtime, and cursor-advanced |
+| `scripts/dev_ops/ringcentral/ringcentral-call-log-sync-run.ts` (via `tsx`; untracked local tooling at `9955430d`) | Manual cron run + artifact JSON, including masked lease owner, runtime, and cursor-advanced |
 
 ## Related modules
 
@@ -244,8 +244,8 @@ Logger `msg` keys and Section 33 metrics only; nothing is persisted (the Operati
 | `processed-calls-store.ts` | Ingest idempotency ledger |
 | `call-log-sync-state.store.ts` | Singleton cursor + five-minute renewable run lease with owner-fenced writes |
 | `ringcentral-metrics.ts` | Section 33 RingCentral runtime/adoption/contention metrics |
-| `scripts/migrations/ringcentral-processed-call-indexes.ts` | Report/apply/verify unique call-log race fence |
-| `scripts/migrations/granot-lifecycle-indexes.ts` | Report/apply/verify the unique Call Log sync state singleton key index |
+| `scripts/migrations/ringcentral-processed-call-indexes.ts` (not tracked at `9955430d`; local checkouts only) | Report/apply/verify unique call-log race fence |
+| `scripts/migrations/granot-lifecycle-indexes.ts` (not tracked at `9955430d`; local checkouts only) | Report/apply/verify the unique Call Log sync state singleton key index |
 | `shadow-call-leads-store.ts` | Shadow-mode staging |
 | `leads/callLead.service.ts` | `createRingCentralCallLead` — Mongo + Sheet Sync |
 | [`call-lead.md`](./call-lead.md) | Call Lead create semantics, CPL, sheet tabs |

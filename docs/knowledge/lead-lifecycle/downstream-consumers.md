@@ -95,7 +95,7 @@ All line ranges are at `main` = `9955430d`. Production reads were read-only on N
 8. `review: legacy_closed_reopening_required` when the loader marks a legacy closure. Today nothing sets it.
 9. Otherwise `eligible`.
 
-`no_sync` and `form_fill` are not read. The Desk projection (`DESK_LEAD_PROJECTION`) does not load `ringcentral`, `external_call_admission` or `external_sheet_review`. So RingCentral qualification, the Bad Call dispositions and the external review never reach the Desk.
+`no_sync` and `form_fill` are not read. The Desk projection (`DESK_LEAD_PROJECTION`) loads only `ringcentral.original_caller.normalized_phone_number` from `ringcentral`, as a phone fallback (`leadFacts.ts` L79). It loads no qualification or admission field, and not `external_call_admission` or `external_sheet_review`. So RingCentral qualification, the Bad Call dispositions and the external review never reach the Desk.
 
 | | |
 |---|---|
@@ -383,7 +383,7 @@ The timeline does not read the Sheets disposition, `form_fill`, `bad_lead` or th
 
 These are also listed in [COVERAGE.md](COVERAGE.md#owner-directive-findings).
 
-- **F1. The Desk does not read RingCentral qualification.** Owner directive, November 20: "only RingCentral-queue-qualified Call Leads get minted and take part in the lifecycle." `evaluateDeskEligibility` (eligibility.ts L39–L53) and `DESK_LEAD_PROJECTION` (leadFacts.ts L56–L86) never load `ringcentral` or `external_call_admission`. An unqualified Call with a job and a non-legacy origin could be admitted by expansion. Intake refuses only `legacy_import` and `legacy_unknown` origins (sync.ts L363, L377). Measured: no unqualified Call is a subject today.
+- **F1. The Desk does not read RingCentral qualification.** Owner directive, November 20: "only RingCentral-queue-qualified Call Leads get minted and take part in the lifecycle." `evaluateDeskEligibility` (eligibility.ts L39–L53) and `DESK_LEAD_PROJECTION` (leadFacts.ts L56–L86) never load a RingCentral qualification field or `external_call_admission` (the projection reads only the caller phone fallback from `ringcentral`). An unqualified Call with a job and a non-legacy origin could be admitted by expansion. Intake refuses only `legacy_import` and `legacy_unknown` origins (sync.ts L363, L377). Measured: no unqualified Call is a subject today.
 - **F2. Unqualified Calls still count in some Call totals.** Owner directive, November 3: "only RingCentral inbound queue qualification may create a Call Lead or make it eligible for Calls reporting and lead billing." The Daily Operations rebuild counts every non-duplicate, matched Call in `leads.call` (rebuild.ts L399–L438). The legacy `getSummary` counts every Call Lead (summary.service.ts L15). Billing filters are correct in both places.
 - **F3. Bad Forms are priced at full live CPL in Insights.** `toLeadFact` sets `billable = !duplicate` for Forms (facts.ts L139–L140). The legacy lead cost also includes them (leadCost.service.ts L22–L32). No locked directive says whether a Bad Form is billable. This is an Owner question.
 - **F4. Bad Call Leads and Form Fill Calls remain working Desk subjects.** This follows the November 4 review: Form Fill is a reporting disposition, and an overnight missed call does not set `bad_lead`. Recorded so the Owner sees that "Bad Call Leads" means Sheets and billing only.
