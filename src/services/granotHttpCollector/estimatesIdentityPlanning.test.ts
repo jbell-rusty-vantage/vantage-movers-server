@@ -5,7 +5,7 @@ import type { LeadIdentityStore, IdentityCallLead, IdentityFormLead, IdentityRec
 import type { SourcePolicyStore } from "../granotLifecycle/sourcePolicy";
 import type { GranotSourceCollection } from "./index";
 import { assembleEstimatesPlan } from "./runWorkflow";
-import type { EstimatesFollowUpStore, EstimatesPlanAction } from "./estimatesIdentityPlanning";
+import { FOLLOW_UP_PROMOTION_CAP, type EstimatesFollowUpStore, type EstimatesPlanAction } from "./estimatesIdentityPlanning";
 
 const company = "64b000000000000000000001", granularity = "64b000000000000000000002", leadId = "64b000000000000000000003";
 const runId = "64b000000000000000000004";
@@ -115,39 +115,89 @@ test("fresh report holds all competing new Jobs for one Form target, permits ali
   assert.ok(priorityOnly.actions.every((action) => "classification" in action && action.classification === "update" && action.desired_state_summary?.changed_paths.every((field) => field === "granot_priority")));
 });
 
+function followUpStore(input: { links?: Awaited<ReturnType<EstimatesFollowUpStore["findActiveLinks"]>>; siblings?: string[]; eligibleCalls?: string[];
+  backedOff?: string[]; fail?: boolean } = {}) {
+  const reads: string[][] = [];
+  const store: EstimatesFollowUpStore = {
+    async findActiveLinks(jobs) { if (input.fail) throw new Error("synthetic read timeout"); reads.push(jobs); return input.links ?? []; },
+    async findEligibleCallLeads(ids) { reads.push(ids); return new Set((input.eligibleCalls ?? []).filter((id) => ids.includes(id))); },
+    async findFormsNeedingSiblingUpdate(ids) { reads.push(ids); return new Set((input.siblings ?? []).filter((id) => ids.includes(id))); },
+    async findRecentScheduledSiblingCatchUps(ids) { reads.push(ids); return new Set((input.backedOff ?? []).filter((id) => ids.includes(id))); },
+  };
+  return { store, reads };
+}
+
 test("an already-current row is promoted only for the Record Link or Call sibling work it still owes", async () => {
   const forms = [{ id: leadId, duplicate: false, ref_no: "exact", lead_source_company: company, source_granularity_id: granularity,
     job_no: "123", normalized_job_no: "123", granot_priority: "0" }];
   const deps = stores("FormLead", { forms });
-  const plan = async (links: Awaited<ReturnType<EstimatesFollowUpStore["findActiveLinks"]>>, siblings: string[] = []) => {
-    const reads: string[][] = [];
-    const result = await assembleEstimatesPlan([source("Synthetic", [{ ref_no: "exact" }])], { runId, canonical: { ...deps.canonical, followUpStore: {
-      async findActiveLinks(jobs) { reads.push(jobs); return links; },
-      async findFormsNeedingSiblingUpdate(ids) { reads.push(ids); return new Set(siblings.filter((id) => ids.includes(id))); },
-    } } });
+  const plan = async (input: Parameters<typeof followUpStore>[0], canonical = deps.canonical) => {
+    const { store, reads } = followUpStore(input);
+    const result = await assembleEstimatesPlan([source("Synthetic", [{ ref_no: "exact" }])], { runId, canonical: { ...canonical, followUpStore: store } });
     return { action: formAction(result), counters: result.counters, reads };
   };
   const owner = { normalized_job_no: "123", lead_ref: { model: "FormLead", id: leadId } };
-  const current = await plan([owner]);
+  const current = await plan({ links: [owner] });
   assert.equal(current.action.classification, "unchanged");
   assert.equal(current.action.desired_state_summary?.outcome, "already_current");
   assert.equal(current.action.follow_up, undefined);
-  assert.deepEqual(current.reads, [["123"], [leadId]], "one batched read of each per plan");
+  assert.deepEqual(current.reads, [["123"], [], [leadId], []], "one batched read of each kind per plan");
 
-  const unlinked = await plan([]);
+  const unlinked = await plan({});
   assert.equal(unlinked.action.classification, "update");
   assert.deepEqual(unlinked.action.follow_up, ["record_link"]);
   assert.deepEqual(unlinked.action.desired_state_summary?.changed_paths, [], "no Lead field changes");
   assert.equal(unlinked.counters.follow_up_record_link, 1);
   assert.equal(unlinked.counters.unchanged ?? 0, 0);
 
-  assert.deepEqual((await plan([{ ...owner, lead_ref: null }])).action.follow_up, ["record_link"]);
+  assert.deepEqual((await plan({ links: [{ ...owner, lead_ref: null }] })).action.follow_up, ["record_link"]);
   const contested = { ...owner, lead_ref: { model: "FormLead", id: "64b000000000000000000098" } };
-  assert.deepEqual((await plan([contested])).action.follow_up, ["record_link"], "an undisputed contested link records its dispute once");
-  assert.equal((await plan([{ ...contested, disputed: true }])).action.classification, "unchanged", "an already-disputed link leaves no new history");
+  assert.equal((await plan({ links: [contested] })).action.classification, "unchanged", "an already-current row never contests a link");
 
-  const sibling = await plan([owner], [leadId]);
+  const viaLink = stores("FormLead", { forms, link: { id: "64b000000000000000000097", normalized_job_no: "P123", lead_ref: { model: "FormLead", id: leadId }, disputed: false } });
+  const aliased = await plan({}, viaLink.canonical);
+  assert.equal(aliased.action.report_identity?.match_method, "granot_record_link");
+  assert.equal(aliased.action.classification, "unchanged", "a Lead reached through an equivalent link already has one: no alias link");
+
+  const sibling = await plan({ links: [owner], siblings: [leadId] });
   assert.equal(sibling.action.classification, "update");
   assert.deepEqual(sibling.action.follow_up, ["form_sibling"]);
   assert.equal(sibling.counters.follow_up_form_sibling, 1);
+  const backedOff = await plan({ links: [owner], siblings: [leadId], backedOff: [leadId] });
+  assert.equal(backedOff.action.classification, "unchanged", "a recent scheduled catch-up attempt backs off");
+  assert.equal(backedOff.counters.follow_up_form_sibling_backoff, 1);
+
+  const failed = await plan({ fail: true });
+  assert.equal(failed.action.classification, "unchanged", "a failed follow-up read promotes nothing");
+  assert.equal(failed.counters.follow_up_unavailable, 1);
+});
+
+test("a Call Lead owes a Record Link only while admitted to reporting", async () => {
+  const calls = [{ id: leadId, duplicate: false, source_granularity_id: granularity, normalized_phone_number: "2015550142",
+    job_no: "123", normalized_job_no: "123", granot_priority: "0" }];
+  const deps = stores("CallLead", { calls });
+  const plan = async (eligibleCalls: string[]) => formAction(await assembleEstimatesPlan([source("Synthetic", [{}])],
+    { runId, canonical: { ...deps.canonical, followUpStore: followUpStore({ eligibleCalls }).store } }));
+  const excluded = await plan([]);
+  assert.equal(excluded.desired_state_summary?.outcome, "already_current", JSON.stringify(excluded.desired_state_summary));
+  assert.equal(excluded.classification, "unchanged");
+  assert.deepEqual((await plan([leadId])).follow_up, ["record_link"]);
+});
+
+test("follow-up promotions are capped per plan and placed after the plan's real updates", async () => {
+  const rows = Array.from({ length: FOLLOW_UP_PROMOTION_CAP + 3 }, (_, i) => ({ ref_no: `ref-${i}`, job_no: `5${String(i).padStart(4, "0")}` }));
+  const forms = rows.map((row, i) => ({ id: `64b0000000000000000${String(1000 + i).padStart(5, "0")}`, duplicate: false, ref_no: row.ref_no,
+    lead_source_company: company, source_granularity_id: granularity, job_no: row.job_no, normalized_job_no: row.job_no, granot_priority: "0" }));
+  forms.push({ id: "64b00000000000000000ffff", duplicate: false, ref_no: "changed", lead_source_company: company, source_granularity_id: granularity,
+    job_no: "59999", normalized_job_no: "59999", granot_priority: "3" });
+  const deps = stores("FormLead", { forms });
+  const plan = await assembleEstimatesPlan([source("Synthetic", [...rows, { ref_no: "changed", job_no: "59999" }])],
+    { runId, canonical: { ...deps.canonical, followUpStore: followUpStore().store } });
+  const updates = plan.actions.filter((action) => action.classification === "update");
+  assert.equal(updates.length, FOLLOW_UP_PROMOTION_CAP + 1);
+  assert.equal(updates[0]!.follow_up, undefined, "the real Priority update comes first");
+  assert.ok(updates.slice(1).every((action) => action.follow_up?.[0] === "record_link"));
+  assert.equal(plan.counters.follow_up_record_link, FOLLOW_UP_PROMOTION_CAP);
+  assert.equal(plan.counters.follow_up_deferred, 3);
+  assert.equal(plan.actions.filter((action) => action.classification === "unchanged").length, 3);
 });

@@ -26,7 +26,9 @@ import { reviewScheduledRun } from "../granotHistory/scheduledRunArchive";
 import {
   BEST_RELOCATION_ADMISSION_CALL_FEED_ID,
   BEST_RELOCATION_ADMISSION_COMPANY_ID,
+  EXTERNAL_CALL_ADMISSION_POLICY_VERSION,
 } from "../leads/callLeadAdmission";
+import { BEST_RELOCATION_TRACKER_ID } from "../leads/externalSheetReview";
 import { LEGACY_BEST_RELOCATION_CALL_IDS } from "../leads/legacyBestRelocationCalls";
 import { getCallLeadReportingDecision } from "../leads/callLeadReportingDisposition";
 import type { EstimatesPlanAction } from "./estimatesIdentityPlanning";
@@ -264,7 +266,7 @@ test("an already-current Form catches up its later qualified Call: Form Fill sta
   }
 });
 
-test("an unlinked current Lead gets its Record Link once; a contested Record Link records its dispute once", async (t) => {
+test("an unlinked current Lead gets its Record Link once; a real change that meets a contested Record Link records its dispute once", async (t) => {
   if (!(await replicaReady(t))) return;
   const f = await fixture();
   try {
@@ -294,33 +296,39 @@ test("an unlinked current Lead gets its Record Link once; a contested Record Lin
     const next = await assembleEstimatesPlan([f.source(f.formLabel, [{ job_no: f.job(5), ref_no: `fu-ref-5-${f.suffix}` }], new Date(+capturedAt + 60_000))], { runId: oid().toHexString() });
     assert.equal(actionFor(next, f.job(5)).classification, "unchanged");
 
-    // Dispute: the Lead command finds the job's exact Record Link naming another Lead. Identity follows that link
-    // first, so the seam stands in for the link the Lead command reads inside the transaction.
-    const contestedLead = await f.form(6);
-    const other = await f.form(7);
-    await f.link(f.job(7), { model: "FormLead", id: other });
-    const contestedLink = () => getGranotRecordLinkModel().findOne({ normalized_job_no: f.job(7), state: "active" }).lean().orFail();
+    // Dispute, real data and no seam: two equivalent-job links name different Leads (A<digits> -> Y, X<digits> -> X).
+    // The ladder reaches Y through the A link; a real Priority change then makes the Lead command read the exact
+    // X link, which names X. The dispute commits once instead of being discarded.
+    const digits = f.job(6);
+    const formY = await f.form(6, { job_no: `A${digits}`, normalized_job_no: `A${digits}` });
+    await f.link(`A${digits}`, { model: "FormLead", id: formY });
+    const formX = await f.form(7, { job_no: `X${digits}`, normalized_job_no: `X${digits}` });
+    await f.link(`X${digits}`, { model: "FormLead", id: formX });
     const disputeRun = oid().toHexString();
-    const disputePlan = await assembleEstimatesPlan([f.source(f.formLabel, [{ job_no: f.job(6), ref_no: `fu-ref-6-${f.suffix}` }], capturedAt)], { runId: disputeRun });
-    const dispute = actionFor(disputePlan, f.job(6));
-    assert.deepEqual(dispute.follow_up, ["record_link"]);
-    const applyContested = (run: string, at: Date) => applyScheduledLeadChange({ action_id: dispute.action_id, initiator: initiatorFor(run), captured_at: at, request_id: run,
-      lifecycle_apply: { ...dispute.lifecycle_apply!, operation_id: `${run}:${dispute.action_id}` } }, writeFlags,
-      { findActiveLink: async (_job, session) => getGranotRecordLinkModel().findOne({ normalized_job_no: f.job(7), state: "active" }).session(session ?? null).lean() });
-    const contested = await applyContested(disputeRun, capturedAt);
+    const disputePlan = await assembleEstimatesPlan([f.source(f.formLabel, [{ job_no: `X${digits}`, prior: "3" }], capturedAt)], { runId: disputeRun });
+    const change = actionFor(disputePlan, `X${digits}`);
+    assert.deepEqual(change.lifecycle_apply?.expected_target, { model: "FormLead", id: String(formY) }, "the ladder reaches Y through the A link");
+    assert.equal(change.classification, "update");
+    assert.equal(change.follow_up, undefined, "a real change, not a follow-up");
+    const applyChange = (run: string, at: Date) => applyScheduledLeadChange({ action_id: change.action_id, initiator: initiatorFor(run), captured_at: at, request_id: run,
+      lifecycle_apply: { ...change.lifecycle_apply!, operation_id: `${run}:${change.action_id}` } }, writeFlags);
+    const yBefore = await getFormLeadModel().findById(formY).lean().orFail();
+    const contested = await applyChange(disputeRun, capturedAt);
     assert.equal(contested.outcome, "conflict");
     assert.ok(contested.decision_id);
     assert.equal(contested.post_commit?.form_sibling, undefined, "no sibling update after a conflict");
-    const disputed = await contestedLink();
+    const disputed = await getGranotRecordLinkModel().findOne({ normalized_job_no: `X${digits}`, state: "active" }).lean().orFail();
     assert.equal(disputed.disputed, true, "the dispute is persisted, not discarded");
     assert.equal(disputed.dispute_reason, "record_link_conflict");
-    assert.equal(String(disputed.lead_ref?.id), String(other), "the contested link keeps its Lead");
+    assert.equal(String(disputed.lead_ref?.id), String(formX), "the contested link keeps its Lead");
     assert.equal((await getSynchronizationDecisionModel().findById(contested.decision_id).lean().orFail()).outcome, "conflict");
     assert.equal(await getEntityChangeModel().countDocuments({ "entity.id": String(disputed._id), "entity.model": "GranotRecordLink" }), 1);
-    assert.equal((await getFormLeadModel().findById(contestedLead).lean().orFail()).last_accepted_granot_observation, undefined, "the Lead is untouched");
-    assert.equal((await applyContested(disputeRun, capturedAt)).decision_id, contested.decision_id, "replay");
+    const yAfter = await getFormLeadModel().findById(formY).lean().orFail();
+    assert.equal(yAfter.granot_priority, yBefore.granot_priority, "the Lead change is not applied");
+    assert.equal(yAfter.domain_revision, yBefore.domain_revision);
+    assert.equal((await applyChange(disputeRun, capturedAt)).decision_id, contested.decision_id, "replay");
     const laterRun = oid().toHexString();
-    const later = await applyContested(laterRun, new Date(+capturedAt + 60_000));
+    const later = await applyChange(laterRun, new Date(+capturedAt + 60_000));
     assert.equal(later.outcome, "conflict");
     assert.equal(later.decision_id, undefined, "an already-disputed link leaves no hourly history");
   } finally {
@@ -390,6 +398,113 @@ test("a sibling update that always fails is recorded and the rest of the schedul
     assert.equal(review.status, "ready", "a run with linked and follow-up receipts can still retire");
   } finally {
     await GranotAutomationRun.deleteOne({ _id: runId });
+    await f.cleanup();
+  }
+});
+
+const sheetJobs = (ids: mongoose.Types.ObjectId[]) => mongoose.connection.db!.collection("sheet_sync_jobs").countDocuments({ entity_id: { $in: ids.map(String) } });
+
+test("real data: equivalent links stay untouched; an admitted current Call Lead is linked without a Sheet job; an excluded Call is not; a trusted Best Relocation import is a sibling", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const f = await fixture();
+  try {
+    const capturedAt = await postActivationCaptureAt();
+    const runId = oid().toHexString();
+    // Two equivalent-job links with no seam: X<digits> -> Form X and P<digits> -> Form Y.
+    const digits = f.job(11);
+    const formX = await f.form(11, { job_no: `X${digits}`, normalized_job_no: `X${digits}` });
+    const formY = await f.form(12, { job_no: `P${digits}`, normalized_job_no: `P${digits}` });
+    await f.link(`X${digits}`, { model: "FormLead", id: formX });
+    await f.link(`P${digits}`, { model: "FormLead", id: formY });
+    // An admitted (RingCentral-qualified) current Call Lead without a link, and an excluded (unqualified) one.
+    const admitted = await f.call(13, { job_no: f.job(13), normalized_job_no: f.job(13), granot_priority: "0" });
+    const excluded = await f.call(14, { job_no: f.job(14), normalized_job_no: f.job(14), granot_priority: "0", ringcentral: null });
+    // A Form whose only sibling is a trusted final-import Best Relocation Call holding its job (job basis).
+    const formB = await f.form(15, { granot_priority: "4" });
+    await f.link(f.job(15), { model: "FormLead", id: formB });
+    const imported = await f.call(15, { source_company: "best_relocation_leads", ringcentral: null, job_no: f.job(15), normalized_job_no: f.job(15),
+      lead_source_company: new mongoose.Types.ObjectId(BEST_RELOCATION_ADMISSION_COMPANY_ID),
+      source_granularity_id: new mongoose.Types.ObjectId(BEST_RELOCATION_ADMISSION_CALL_FEED_ID),
+      external_call_admission: { policy_version: EXTERNAL_CALL_ADMISSION_POLICY_VERSION, source_workbook_id: BEST_RELOCATION_TRACKER_ID, source_sheet_id: 1191420872,
+        source_tab: "Calls", stable_source_row_id: `fu-row-${f.suffix}`, source_content_hash: "a".repeat(64), source_company_id: BEST_RELOCATION_ADMISSION_COMPANY_ID,
+        source_granularity_id: BEST_RELOCATION_ADMISSION_CALL_FEED_ID, source_arrival_at: new Date("2026-10-01T12:00:00Z"), ingestion_run_id: oid().toHexString(),
+        source_row_receipt_id: oid().toHexString(), applied_at: new Date("2026-11-03T20:00:00Z") } });
+    assert.equal((await callState(imported)).disposition, "calls", "the trusted import is reporting-eligible");
+    const linksBefore = await getGranotRecordLinkModel().find({ normalized_job_no: { $in: [`X${digits}`, `P${digits}`] } }).lean();
+
+    const plan = await assembleEstimatesPlan([
+      f.source(f.formLabel, [
+        { job_no: `X${digits}`, ref_no: `fu-ref-11-${f.suffix}` },
+        { job_no: `P${digits}`, ref_no: `fu-ref-12-${f.suffix}` },
+        { job_no: digits },
+        { job_no: f.job(15), ref_no: `fu-ref-15-${f.suffix}`, prior: "4" },
+      ], capturedAt),
+      f.source(f.callLabel, [{ job_no: f.job(13), phone: f.phone(13) }, { job_no: f.job(14), phone: f.phone(14) }], capturedAt),
+    ], { runId });
+    const apply = (action: EstimatesPlanAction) => applyScheduledLeadChange({ action_id: action.action_id, lifecycle_apply: action.lifecycle_apply!,
+      initiator: initiatorFor(runId), captured_at: capturedAt, request_id: runId }, writeFlags);
+
+    for (const job of [`X${digits}`, `P${digits}`, digits]) {
+      const action = actionFor(plan, job);
+      assert.notEqual(action.follow_up?.includes("record_link"), true, `${job}: ${action.classification} ${action.reason}`);
+      if (action.classification === "update") await apply(action);
+    }
+    const linksAfter = await getGranotRecordLinkModel().find({ normalized_job_no: { $in: [`X${digits}`, `P${digits}`, digits] } }).lean();
+    assert.deepEqual(linksAfter.map((l) => [l.normalized_job_no, String(l.lead_ref?.id), l.disputed, l.domain_revision]).sort(),
+      linksBefore.map((l) => [l.normalized_job_no, String(l.lead_ref?.id), l.disputed, l.domain_revision]).sort(), "no new, moved or disputed link from real equivalent links");
+
+    const admittedAction = actionFor(plan, f.job(13));
+    assert.equal(admittedAction.desired_state_summary?.outcome, "already_current", JSON.stringify(admittedAction.desired_state_summary));
+    assert.deepEqual(admittedAction.follow_up, ["record_link"]);
+    const excludedAction = actionFor(plan, f.job(14));
+    assert.equal(excludedAction.desired_state_summary?.outcome, "already_current");
+    assert.equal(excludedAction.classification, "unchanged", "an excluded Call Lead takes no part");
+    const jobsBefore = await sheetJobs([admitted, excluded]);
+    const linked = await apply(admittedAction);
+    assert.equal(linked.outcome, "linked");
+    assert.equal(linked.post_commit?.form_sibling, undefined);
+    assert.equal(String((await getGranotRecordLinkModel().findOne({ normalized_job_no: f.job(13) }).lean().orFail()).lead_ref?.id), String(admitted));
+    const forced = await apply(excludedAction);
+    assert.equal(forced.outcome, "already_current", "even a stale plan cannot link an excluded Call");
+    assert.equal(forced.decision_id, undefined);
+    assert.equal(await getGranotRecordLinkModel().countDocuments({ normalized_job_no: f.job(14) }), 0);
+    assert.equal(await sheetJobs([admitted, excluded]), jobsBefore, "the link-only path queues no Sheet job");
+    assert.equal((await callState(admitted)).row.domain_revision, 3, "no Lead field changed");
+
+    const importedAction = actionFor(plan, f.job(15));
+    assert.deepEqual(importedAction.follow_up, ["form_sibling"]);
+    assert.equal((await apply(importedAction)).post_commit?.form_sibling, "updated");
+    const after = await callState(imported);
+    assert.equal(after.row.granot_priority, "4", "the trusted Best Relocation import is reached");
+    assert.equal(String(after.row.granot_form_sibling?.form_lead_id), String(formB));
+    assert.deepEqual(after.row.external_call_admission?.stable_source_row_id, `fu-row-${f.suffix}`);
+    assert.equal(after.disposition, "calls");
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("a sibling catch-up that keeps failing backs off instead of committing evidence every hour", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const f = await fixture();
+  try {
+    const capturedAt = await postActivationCaptureAt();
+    const form = await f.form(16);
+    await f.link(f.job(16), { model: "FormLead", id: form });
+    await f.call(16);
+    const planAt = async (at: Date, runId: string) => assembleEstimatesPlan([f.source(f.formLabel, [{ job_no: f.job(16), ref_no: `fu-ref-16-${f.suffix}` }], at)],
+      { runId, canonical: { now: () => new Date() } });
+    const first = oid().toHexString();
+    const action = actionFor(await planAt(capturedAt, first), f.job(16));
+    assert.deepEqual(action.follow_up, ["form_sibling"]);
+    const failed = await applyScheduledLeadChange({ action_id: action.action_id, lifecycle_apply: action.lifecycle_apply!, initiator: initiatorFor(first),
+      captured_at: capturedAt, request_id: first }, writeFlags, { mirrorFormSibling: async () => { throw new Error("synthetic persistent failure"); } });
+    assert.equal(failed.post_commit?.form_sibling, "failed");
+    const next = await planAt(new Date(+capturedAt + 60_000), oid().toHexString());
+    assert.equal(actionFor(next, f.job(16)).classification, "unchanged", "the next hour backs off");
+    assert.equal(next.counters.follow_up_form_sibling_backoff, 1);
+    assert.equal(await getSynchronizationDecisionModel().countDocuments({ "target.id": String(form) }), 1);
+  } finally {
     await f.cleanup();
   }
 });

@@ -8,7 +8,8 @@ import {
   getGranotObservationModel,
   type GranotObservationDocument,
 } from "../../models/GranotObservation";
-import { getGranotRecordLinkModel, type GranotRecordLinkDocument } from "../../models/GranotRecordLink";
+import { getCallLeadModel } from "../../models/CallLead";
+import { hasReportingEligibleCall } from "../leads/callLeadAdmission";
 import type { ClientSession } from "mongoose";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { refreshEstimatesPriorityChange } from "./estimatesOutreachRefresh";
@@ -24,6 +25,7 @@ import {
   loadFormSiblingCandidates,
   mirrorFormLeadToCallSibling,
   planFormSiblingUpdate,
+  SIBLING_CALL_PROJECTION,
 } from "../granotLifecycle/callLeadFormSibling";
 import { createMongoLeadIdentityStore } from "../granotLifecycle/identity";
 import { normalizeGranotReceipt } from "../granotLifecycle/normalization";
@@ -40,6 +42,7 @@ import { createMongoSourcePolicyStore } from "../granotLifecycle/sourcePolicy";
 import {
   applySynchronizeLeadOperation,
   finalizeSynchronizedLead,
+  findExactActiveRecordLink,
 } from "../granotLifecycle/synchronizeLeadFromGranot";
 import type { SynchronizationOutcome } from "../granotLifecycle/types";
 import { wakeLeadLinksAfterChange } from "../numberActivity/leadLinkJobs";
@@ -56,8 +59,6 @@ const COMMITTED: ReadonlySet<string> = new Set<CommittedOutcome>(["applied", "li
 
 /** Seams for the post-commit steps (tests); defaults are the production effects and the webhook path's 2 s bound. */
 export type ScheduledLeadChangeDeps = {
-  /** The exact active Record Link read inside the transaction (also passed to the Lead command). */
-  findActiveLink?: (normalizedJobNo: string, session?: ClientSession) => Promise<GranotRecordLinkDocument | null>;
   wakeLeadLinks?: typeof wakeLeadLinksAfterChange;
   mirrorFormSibling?: typeof mirrorFormLeadToCallSibling;
   postCommitTimeoutMs?: number;
@@ -66,8 +67,8 @@ export type ScheduledLeadChangeDeps = {
 /**
  * A scheduled action commits Observation and Decision evidence only when it does real work for its Lead:
  * - a Lead change (`applied`);
- * - for an already-current Lead, the Record Link the webhook processor would establish (`linked`), or the
- *   Record Link dispute it would record once (`conflict`);
+ * - a Record Link dispute the Lead command finds while applying a change, recorded once (`conflict`);
+ * - for an already-current Lead without any active Record Link, that link (`linked`);
  * - for an already-current Form Lead whose qualified Call sibling is behind, an `already_current` Decision
  *   that the sibling update cites (Owner 2026-10-28 sibling rule).
  * Any other result aborts the transaction and leaves no per-Lead history.
@@ -156,7 +157,6 @@ export async function applyScheduledLeadChange(
     activated_at: activation?.activated_at ?? null,
     shadow_mode: flags.shadow_mode,
   });
-  const findActiveLink = deps.findActiveLink ?? findExactActiveLink;
   let committed: CommittedOutcome | undefined;
   try {
     await executeCanonicalCommandWithPostCommit({
@@ -195,10 +195,13 @@ export async function applyScheduledLeadChange(
             && decision.evaluated_gates.every((gate) => gate.allowed);
           if (!current) throw new SkippedChange(decision.outcome === "pending_match" ? "unmatched" : decision.outcome);
           // The webhook processor's association rule (`liveAssociationNeeded`) on the exact job.
-          const link = prepared.job ? await findActiveLink(prepared.job.normalized_job_no, session) : null;
-          const linkOwed = !!prepared.job && (!link?.lead_ref || String(link.lead_ref.id) !== target.id);
-          // A dispute is recorded once; later rows for the same contested job leave no history.
-          if (linkOwed && link?.lead_ref && link.disputed === true) throw new SkippedChange("conflict");
+          // The Lead has no active Record Link: the ladder did not reach it through one, and no active link holds
+          // the exact job (or that link has no Lead). A link naming another Lead is never contested from here.
+          const link = prepared.job && identity.match_method !== "granot_record_link"
+            ? await findExactActiveRecordLink(prepared.job.normalized_job_no, session) : undefined;
+          // Only an admitted Call takes part in the lifecycle (Owner, November 20).
+          const linkOwed = link !== undefined && !link?.lead_ref
+            && (target.model === "FormLead" || await admittedCallLead(target.id, session));
           if (!linkOwed) {
             if (target.model !== "FormLead") throw new SkippedChange("already_current");
             const sibling = await loadFormSiblingCandidates(target.id, session);
@@ -239,7 +242,6 @@ export async function applyScheduledLeadChange(
               job: prepared.job,
               decided_at: now,
               target,
-              findActiveLink,
             },
           },
           session,
@@ -311,10 +313,10 @@ export async function applyScheduledLeadChange(
   };
 }
 
-/** The Lead command's own rule (`classifyLinkAction`): the active link for the exact normalized job. */
-function findExactActiveLink(normalizedJobNo: string, session?: ClientSession): Promise<GranotRecordLinkDocument | null> {
-  return getGranotRecordLinkModel().findOne({ provider: "granot", normalized_job_no: normalizedJobNo, state: "active" })
-    .session(session ?? null).lean<GranotRecordLinkDocument>().exec();
+/** A reporting-eligible Call (`hasReportingEligibleCall`) that was not created on an unmatched observation. */
+async function admittedCallLead(id: string, session: ClientSession): Promise<boolean> {
+  const row = await getCallLeadModel().findById(id, SIBLING_CALL_PROJECTION).session(session).lean();
+  return !!row && hasReportingEligibleCall(row) && row.created_on_unmatched !== true;
 }
 
 async function committedOutcome(decisionId: Types.ObjectId): Promise<CommittedOutcome | undefined> {

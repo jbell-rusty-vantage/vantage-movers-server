@@ -194,16 +194,22 @@ export async function loadFormSiblingCandidates(formLeadId: string, session?: Cl
 
 /**
  * Which of these Form Leads the sibling update would write now (read-only; the scheduled Estimates catch-up).
- * Two batched reads find any Call that could be a sibling: an eligible Call holding the Form's exact job or its
- * digit core, or an eligible Call in the Form's Lead Source Company sharing one of its phones. Only a Form with
- * such a candidate is planned exactly, with the same loader and `planFormSiblingUpdate` the update uses, so the
- * eligibility gate stays in one place. A Call whose only tie is a letter-prefixed variant of the Form's job
- * (`P123` against `X123`) is not found here; the Form's next applied change or webhook still reaches it.
+ * Two batched, time-bounded reads load the candidate Calls with the planner's fields:
+ * - eligible Calls holding a Form's exact job or its digit core (the Job basis);
+ * - eligible jobless Calls in a Form's Lead Source Company sharing one of its phones (the phone basis; the
+ *   planner applies the `FORM_SIBLING_WINDOW_DAYS` window). The read uses the two phone indexes; a date range
+ *   made the planner pick the company/date index and examine far more documents.
+ * Each Form is planned with the unchanged `planFormSiblingUpdate` against those candidates, so an established
+ * pair costs no further read. Only a Form that would write is confirmed with the update's own loader, which
+ * also sees letter-prefixed job variants. A Call whose only tie is such a variant (`P123` against `X123`)
+ * is therefore not found here; the Form's next applied change or webhook still reaches it.
  */
-export async function findFormsNeedingSiblingUpdate(formLeadIds: readonly string[]): Promise<Set<string>> {
+export async function findFormsNeedingSiblingUpdate(formLeadIds: readonly string[], options: { maxTimeMS?: number } = {}): Promise<Set<string>> {
   const needed = new Set<string>();
   if (!formLeadIds.length) return needed;
-  const forms = (await getFormLeadModel().find({ _id: { $in: [...new Set(formLeadIds)] } }, SIBLING_FORM_PROJECTION).lean<SiblingFormLead[]>())
+  const maxTimeMS = options.maxTimeMS ?? 5_000;
+  const forms = (await getFormLeadModel().find({ _id: { $in: [...new Set(formLeadIds)] } }, SIBLING_FORM_PROJECTION)
+    .maxTimeMS(maxTimeMS).lean<SiblingFormLead[]>())
     .filter((form) => form.duplicate !== true && !form.bad_lead && form.job_no && form.normalized_job_no);
   if (!forms.length) return needed;
   const jobs = [...new Set(forms.flatMap((form) => [form.normalized_job_no!, jobNumberDigitCore(form.normalized_job_no!) ?? form.normalized_job_no!]))];
@@ -211,20 +217,22 @@ export async function findFormsNeedingSiblingUpdate(formLeadIds: readonly string
   // As stored on the Form (normally an ObjectId), the same value the per-Form loader queries with.
   const companies = forms.flatMap((form) => form.lead_source_company ? [form.lead_source_company] : []);
   const calls = getCallLeadModel();
-  const byJob = await calls.find({ $and: [reportingEligibleCallLeadFilter(), { normalized_job_no: { $in: jobs } }] },
-    { normalized_job_no: 1 }).lean<Array<{ normalized_job_no?: string | null }>>();
+  const byJob = await calls.find({ $and: [reportingEligibleCallLeadFilter(), { normalized_job_no: { $in: jobs } }] }, SIBLING_CALL_PROJECTION)
+    .maxTimeMS(maxTimeMS).lean<SiblingCallLead[]>();
   const byPhone = phones.length && companies.length
     ? await calls.find({ $and: [reportingEligibleCallLeadFilter(), { lead_source_company: { $in: companies } },
+      { $or: [{ normalized_job_no: null }, { normalized_job_no: "" }] },
       { $or: [{ normalized_phone_number: { $in: phones } }, { "ingested_contact_snapshot.normalized_phone_number": { $in: phones } }] }] },
-    { lead_source_company: 1, normalized_phone_number: 1, "ingested_contact_snapshot.normalized_phone_number": 1 })
-      .lean<Array<{ lead_source_company?: Id | null; normalized_phone_number?: string | null; ingested_contact_snapshot?: PhoneSnapshot }>>()
+    { ...SIBLING_CALL_PROJECTION, normalized_phone_number: 1, "ingested_contact_snapshot.normalized_phone_number": 1 })
+      .maxTimeMS(maxTimeMS).lean<Array<SiblingCallLead & { normalized_phone_number?: string | null; ingested_contact_snapshot?: PhoneSnapshot }>>()
     : [];
   for (const form of forms) {
     const formPhones = formSiblingPhones(form);
-    const possible = byJob.some((call) => jobNumbersEquivalent(call.normalized_job_no, form.normalized_job_no))
-      || byPhone.some((call) => same(call.lead_source_company, form.lead_source_company)
-        && [call.normalized_phone_number, call.ingested_contact_snapshot?.normalized_phone_number].some((phone) => !!phone && formPhones.includes(phone)));
-    if (!possible) continue;
+    const jobMatches = byJob.filter((call) => jobNumbersEquivalent(call.normalized_job_no, form.normalized_job_no));
+    // As the loader: a Job candidate decides the ladder before any phone fallback.
+    const phoneMatches = jobMatches.some(eligibleSibling) ? [] : byPhone.filter((call) => same(call.lead_source_company, form.lead_source_company)
+      && [call.normalized_phone_number, call.ingested_contact_snapshot?.normalized_phone_number].some((phone) => !!phone && formPhones.includes(phone)));
+    if (planFormSiblingUpdate(form, jobMatches, phoneMatches, new Date(0)).kind !== "update") continue;
     const current = await loadFormSiblingCandidates(String(form._id));
     if (current.form && planFormSiblingUpdate(current.form, current.jobMatches, current.phoneMatches, new Date(0)).kind === "update") needed.add(String(form._id));
   }

@@ -366,7 +366,7 @@ async function classifyLinkAction(
   }
   const existing = await (input.execution.findActiveLink
     ? input.execution.findActiveLink(job.normalized_job_no, session)
-    : defaultFindActiveLink(job.normalized_job_no, session));
+    : findExactActiveRecordLink(job.normalized_job_no, session));
   if (!existing) {
     return { kind: "establish" };
   }
@@ -836,7 +836,8 @@ async function loadLeadSnapshot(
   };
 }
 
-async function defaultFindActiveLink(
+/** The active Record Link for the exact normalized job (the rule `classifyLinkAction` applies). */
+export async function findExactActiveRecordLink(
   normalizedJobNo: string,
   session?: ClientSession,
 ): Promise<GranotRecordLinkDocument | null> {
