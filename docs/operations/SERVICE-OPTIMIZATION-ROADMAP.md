@@ -1,5 +1,18 @@
 # Server optimization: sequence and progress
 
+**Next program (Owner, November 20).** After the open handoff items close, round out the upgrade in five workstreams: a Google Cloud Storage service, further reviews, a clean-code cleanup, git-triggered quality checkpoints, and agent profiles with CLI runners per stack and service. [Program](NEXT-PROGRAM-2026-11-20.md)
+
+**November 20 releases and Sheet cleanup.**
+
+- **Releases:** PR #243 restored the Granot scheduled sibling catch-up, Record Links, bounded post-commit steps and dispute persistence. It caps follow-ups at 50 per plan and backs off for 6 hours. PR #245 made Forms and Duplicate Forms exclusive on re-delivery and rechecks row identity before every positional Sheet update. PR #244 added the [Lead lifecycle pack](../knowledge/lead-lifecycle/README.md). Each PR passed an independent review. `main` `194e486d` serves production. The 15:00 ALL and Pool slot observation is in progress.
+- **Sheet cleanup (Owner-approved):**
+  - 592 pre-November 3 Bad Forms were removed from Forms.
+  - 7 Forms were re-delivered to their correct tab.
+  - 6 orphan rows and a stale Duplicate Forms row were removed.
+  - A test booking row was removed.
+  - The August replica-test fixtures were purged: 37 Cancellations and 3 Bookings.
+- **Result:** every Form, Booked and Cancelled tab matches MongoDB exactly. The Owner handles the Calls tabs manually. [COVERAGE](../knowledge/lead-lifecycle/COVERAGE.md)
+
 **Next Granot session.** Determine which fulfilled receipts still need their original body for replay or recovery, and which can be removed using evidence already held on the Lead, Decision or closed run. The historical cleanup and inbound archiver are live. The remaining proof is safe retirement for each eligible channel and whether daily removals keep pace with arrivals. [Receipt retention handoff](NEXT-SESSION.md#granot-receipt-retention)
 
 **November 20 service review.** Four independent reviews covered Sales Outreach, Sheet Sync, Granot runs and Lead updates, and RingCentral, checked against read-only production data. They found one critical Sheet Sync defect: rows whose managed phone cell Google stored as a formula could not be removed. PR #237 fixed it and is deployed on `25ae0026`. Granot has three important regressions from `5137f06f`, all with zero measured impact: the Form→Call sibling catch-up, Record Links for already-current Leads, and unbounded post-commit retries. They are the next release. Sales Outreach and RingCentral are sound. The hidden index drop is safe and scheduled for 22:17 New York on November 20. [Review](SERVICE-REVIEW-2026-11-20.md) · [Handoff](NEXT-SESSION.md#start-here--november-20-handoff)
