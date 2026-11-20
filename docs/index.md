@@ -8,6 +8,8 @@ description: Type-grouped entrypoint for agent-readable concepts.
 
 Everyday work: [operate the server](operations/README.md) and [safe local agent setup](../CLOUD_AGENTS.md). Start with the task runbook; use this catalog when a deeper invariant or implementation reference is needed.
 
+Lead lifecycle (November 20 Owner directive): start at the Reference pack [knowledge/lead-lifecycle/README.md](knowledge/lead-lifecycle/README.md). It covers how Form Leads and Call Leads are minted, become duplicates, Form Fill, bad, booked or cancelled, and where each state lands on the Master Sheets, billing, CPL and downstream consumers, at `main` `9955430d`. [COVERAGE.md](knowledge/lead-lifecycle/COVERAGE.md) is the completeness proof.
+
 Optimization program: [service sequence and progress ledger](operations/SERVICE-OPTIMIZATION-ROADMAP.md), with the [current next-session prompt](operations/NEXT-SESSION.md). The November 17–19 service storage releases are complete. The next phase is collection-wide index and read optimization, which starts from the [November 19 baseline](operations/INDEX-READ-BASELINE-2026-11-19.md). Each Service doc lists its collections, declared indexes and query shapes under "Storage, indexes and read paths".
 
 November 17 capacity continuation: [isolated W0/W5 release and qualification record](capacity-review-2026-11-16/QUALIFIED-RELEASE-2026-11-17.md), [fresh all-member capacity/recovery audit](capacity-review-2026-11-16/PRODUCTION-CAPACITY-AUDIT-2026-11-17.md), and [bounded retention-query/index proposal](capacity-review-2026-11-16/W4-ATLAS-DIAGNOSIS-2026-11-17.md). Application deployment, sustained qualification and database-operation approval remain separate.
@@ -118,6 +120,21 @@ Kept as stubs with `status: retired`. Each names what was removed, what remains 
 | Path | Description |
 | --- | --- |
 | [environment.md](knowledge/environment.md) | Every environment variable the server reads, by owning module, plus the names retired by the slimming that the operator deletes from Vercel after the deploy. Values are never stored. |
+
+## Reference (Lead lifecycle)
+
+| Path | Description |
+| --- | --- |
+| [lead-lifecycle/README.md](knowledge/lead-lifecycle/README.md) | **Start here.** State model, mint-to-terminal diagram, reporting precedence summary, locked Owner directives and the November 20 production snapshot. |
+| [lead-lifecycle/form-leads.md](knowledge/lead-lifecycle/form-leads.md) | Every Form minting path, normalization, source and granularity, CPL at creation, updates and deletion. |
+| [lead-lifecycle/call-leads.md](knowledge/lead-lifecycle/call-leads.md) | RingCentral-only Call minting, the 120-second rule, adoption, final result and watermark, preserved and Best Relocation admissions, updates and deletion. |
+| [lead-lifecycle/duplicates-and-form-fill.md](knowledge/lead-lifecycle/duplicates-and-form-fill.md) | Form duplicate rule, 90-day Call repeat, Form Fill, and how each flag routes and bills. |
+| [lead-lifecycle/bad-leads.md](knowledge/lead-lifecycle/bad-leads.md) | Every path to Bad Form Leads and Bad Call Leads, the overnight missed call, and reversal. |
+| [lead-lifecycle/granot-effects.md](knowledge/lead-lifecycle/granot-effects.md) | Everything Granot writes on a Lead: job, priority, receiver, Record Links and the Form→Call sibling mirror. |
+| [lead-lifecycle/bookings-and-cancellations.md](knowledge/lead-lifecycle/bookings-and-cancellations.md) | How a Lead becomes booked or cancelled, leadless and referral Bookings, and the cancellation mirror. |
+| [lead-lifecycle/reporting-and-sheets.md](knowledge/lead-lifecycle/reporting-and-sheets.md) | The complete routing table (tab, billable, CPL), tab moves, stale-row removal, tombstones and managed cells. |
+| [lead-lifecycle/downstream-consumers.md](knowledge/lead-lifecycle/downstream-consumers.md) | What each state means to the Desk, Pool, Daily Operations, Insights, Numbers and the Job Number timeline. |
+| [lead-lifecycle/COVERAGE.md](knowledge/lead-lifecycle/COVERAGE.md) | Completeness proof: entry points, commands, field writers and routing readers, tests, production reconciliation and Owner findings. |
 
 ## Reference (Sales Outreach Desk)
 
