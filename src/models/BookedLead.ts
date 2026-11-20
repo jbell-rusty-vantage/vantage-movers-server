@@ -31,10 +31,10 @@ const BookedLeadSchema = new Schema(
       ref: "Customer",
       index: true,
     },
+    // lead_ref_1 retired 2026-11-20: { lead_ref, lead_model } serves lead_ref reads.
     lead_ref: {
       type: Schema.Types.ObjectId,
       refPath: "lead_model",
-      index: true,
     },
     lead_model: { ...leadModelField, required: false },
     customer_name: { type: String, trim: true },

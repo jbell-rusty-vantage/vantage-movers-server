@@ -81,11 +81,12 @@ const ringCentralCallMetadataSchema = new Schema(
 const CallLeadSchema = new Schema(
   {
     granot_job_form_link: granotJobFormLinkField,
-    source_company: sourceCompanyField,
+    // source_company_1 and lead_source_company_1 are prefixes of declared compound indexes
+    // (retired 2026-11-20). source_granularity_id_1 stays: ops/best-relocation-retirement/callBackfillScan.ts requires it.
+    source_company: { ...sourceCompanyField, index: false },
     lead_source_company: {
       type: Schema.Types.ObjectId,
       ref: "LeadSourceCompany",
-      index: true,
     },
     source_granularity_id: { type: Schema.Types.ObjectId, index: true },
     source_granularity_key: { type: String, trim: true, lowercase: true, index: true },

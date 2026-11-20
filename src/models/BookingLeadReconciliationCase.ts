@@ -103,14 +103,12 @@ const BookingLeadReconciliationCaseSchema = new Schema(
       enum: ["employee_booking", "owner_booking", "external_sheet_ingestion"],
       required: true,
       default: "employee_booking",
-      index: true,
     },
     status: {
       type: String,
       enum: ["pending", "resolved", "dismissed"],
       required: true,
       default: "pending",
-      index: true,
     },
     reason: {
       type: String,
@@ -126,7 +124,6 @@ const BookingLeadReconciliationCaseSchema = new Schema(
         "matching_unavailable",
       ],
       required: true,
-      index: true,
     },
     submission: {
       submission_id: { type: String, required: true, trim: true },
@@ -184,6 +181,7 @@ const BookingLeadReconciliationCaseSchema = new Schema(
   },
 );
 
+// origin_1, status_1 and reason_1 retired 2026-11-20: each is a prefix of a compound index below.
 BookingLeadReconciliationCaseSchema.index({ status: 1, createdAt: -1 });
 BookingLeadReconciliationCaseSchema.index({ origin: 1, status: 1, createdAt: -1 });
 BookingLeadReconciliationCaseSchema.index({ status: 1, "retry.next_attempt_at": 1 });
