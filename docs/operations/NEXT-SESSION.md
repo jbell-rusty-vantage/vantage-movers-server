@@ -1,5 +1,13 @@
 # Resume the server optimization sprint from main
 
+## Next session: two tracks (Owner, November 20)
+
+Run both tracks in the same session, with separate agents.
+
+- **Track A, engineering:** the "Start here" handoff below. Confirm the scheduled index drop, release the three Granot fixes, then take the Sheet Sync follow-ups and the index phase.
+- **Track B, Lead lifecycle documentation:** document completely, and from the current code, how Form Leads, Duplicate Forms, Bad Form Leads, Call Leads, Duplicate Calls and Bad Call Leads are created and move through their lifecycle. The [brief](LEAD-LIFECYCLE-DOCUMENTATION-BRIEF.md) sets the outputs, the four mandatory inventories and the verification. Track B is complete only when its coverage file has zero unclassified rows and an independent verifier signs off.
+- **Hand-off between tracks:** after Track A merges, Track B re-verifies its Granot sibling and Form Fill sections against the merged code. Track A's sibling fix must satisfy Track B's documented gate.
+
 ## Start here — November 20 handoff
 
 **State.** `main` is serving `25ae0026` in production. The November 20 review of Sales Outreach, Sheet Sync, Granot runs and Lead updates, and RingCentral found one critical defect, in Sheet Sync. It was fixed and deployed in [PR #237](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/237). Every queue was empty and healthy at review time. [Full review, evidence and verified behaviour](SERVICE-REVIEW-2026-11-20.md)
