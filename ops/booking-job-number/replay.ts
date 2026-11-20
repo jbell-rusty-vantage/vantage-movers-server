@@ -9,6 +9,7 @@
  * reported as `missing` separately (they are absent Job Numbers, not Booking inputs).
  */
 import { writeFileSync } from "node:fs";
+import { getMongoDatabaseName } from "../../src/config/domain/runtime";
 import { MongoClient } from "mongodb";
 import { classifyBookingJobNumber } from "../../src/services/bookings/bookingJobNumber";
 import { JOB_NUMBER_SOURCES, jobNumberShape } from "./sources";
@@ -22,7 +23,7 @@ const get = (row: unknown, path: string) =>
 
 async function main() {
   await client.connect();
-  const db = client.db("vantagemovers");
+  const db = client.db(getMongoDatabaseName());
   const names = new Set((await db.listCollections({}, { nameOnly: true }).toArray()).map((row) => row.name));
   const report: Record<string, unknown> = {};
   const totals = { values: 0, valid: 0, missing: 0, rejected: 0, classes: {} as Record<string, number>, normalized_input: 0 };
@@ -53,7 +54,7 @@ async function main() {
     }
     report[collection] = perField;
   }
-  const out = { generated_at: new Date().toISOString(), database: "vantagemovers", totals, rejects, report };
+  const out = { generated_at: new Date().toISOString(), database: getMongoDatabaseName(), totals, rejects, report };
   console.log(JSON.stringify({ totals, rejects }, null, 1));
   if (jsonArg) writeFileSync(jsonArg, JSON.stringify(out, null, 1));
 }

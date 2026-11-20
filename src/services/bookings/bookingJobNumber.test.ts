@@ -7,6 +7,7 @@ import {
   bookingJobNumbersEquivalent,
   classifyBookingJobNumber,
 } from "./bookingJobNumber";
+import { BookingJobNumberError } from "./bookingJobNumberGuard";
 
 const accepted = (raw: string, jobClass: string, core: string) => {
   const verdict = classifyBookingJobNumber(raw);
@@ -101,4 +102,24 @@ test("Booking job filter: exact keys plus one anchored digit-core regex on the n
   for (const key of ["5556759", "P5556759", "RF5556760", "P 5556759", "P5556760 NEW", "JOB P5556759 VIP RIGOS"])
     assert.equal(regex.test(key), true, key);
   for (const key of ["15556759", "P55567590", "P5556761", "5556759A"]) assert.equal(regex.test(key), false, key);
+});
+
+test("plausible near-miss spellings never seen in production are rejected (Owner reviews shadow records before enforce)", () => {
+  rejected("P5556759-1", "multiple_numbers");
+  rejected("P5556759 (2nd)", "multiple_numbers");
+  rejected("5,556,759", "multiple_numbers");
+  rejected("5556759A", "mixed_token");
+  rejected("\u0420" + "5556759", "mixed_token"); // Cyrillic Р prefix, not ASCII P
+});
+
+test("BookingJobNumberError answers 422 with a stable code and the reason as a job_no issue", () => {
+  const error = new BookingJobNumberError("no_digits");
+  assert.equal(error.statusCode, 422);
+  assert.deepEqual(error.toHttpBody(), {
+    ok: false,
+    code: "booking.job_number_invalid",
+    error: "Invalid Job Number: The Job Number contains no number; it looks like free text such as a name.",
+    issues: [{ path: "job_no", message: "no_digits" }],
+  });
+  assert.equal(error.toHttpBody("req-1").request_id, "req-1");
 });

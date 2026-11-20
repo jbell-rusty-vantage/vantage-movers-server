@@ -677,13 +677,7 @@ function sendError(res: Response, error: unknown, requestIdValue?: string) {
     return res.status(error.statusCode).json(error.toHttpBody());
   }
   if (isBookingJobNumberError(error)) {
-    return res.status(error.statusCode).json({
-      ok: false,
-      code: error.code,
-      error: error.message,
-      request_id: requestIdValue ?? null,
-      issues: [{ path: "job_no", message: error.reason }],
-    });
+    return res.status(error.statusCode).json(error.toHttpBody(requestIdValue ?? null));
   }
   if (isRegistryError(error)) {
     const ownerRequired =

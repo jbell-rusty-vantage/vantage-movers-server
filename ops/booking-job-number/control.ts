@@ -1,7 +1,9 @@
 /**
  * Booking Job Number validation control (runtime configuration in Mongo, never an env var).
  *
- * Status (read-only): mode, rule version and the would-reject records by reason and write path.
+ * Status (read-only): mode, rule version, the would-reject records by reason and write path, and the
+ * normalization invariant (last hourly cron result plus a live count of Bookings whose
+ * `normalized_job_no` disagrees with `normalizeJobNo(job_no)`; must be 0).
  *   node --env-file=.env --import tsx ops/booking-job-number/control.ts status
  *
  * Set the mode (the Owner decides `enforce`; `shadow` is the default and the rollback):
@@ -13,6 +15,10 @@
 import { MongoClient } from "mongodb";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime";
 import { BOOKING_JOB_NUMBER_RULE_VERSION } from "../../src/services/bookings/bookingJobNumber";
+import {
+  BOOKING_JOB_NORMALIZATION_STATE_ID,
+  findBookingJobNormalizationDrift,
+} from "../../src/services/bookings/bookingJobNormalizationInvariant";
 import {
   BOOKING_JOB_NUMBER_CHECKS_COLLECTION,
   BOOKING_JOB_NUMBER_CONTROL_COLLECTION,
@@ -45,7 +51,11 @@ async function main() {
       effective_mode: row && (row as { mode?: unknown }).mode === "enforce" ? "enforce" : "shadow",
       would_reject_records: await checks.countDocuments({ verdict: "would_reject" }),
       by_reason: byReason,
-      booking_ids: (await checks.find({}, { projection: { booking_id: 1, reason: 1, write_path: 1, first_seen_at: 1 } }).sort({ first_seen_at: -1 }).limit(50).toArray()),
+      booking_ids: (await checks.find({}, { projection: { booking_id: 1, reason: 1, write_path: 1, value_length: 1, first_seen_at: 1 } }).sort({ first_seen_at: -1 }).limit(50).toArray()),
+      normalization_invariant: {
+        last_cron_result: await control.findOne({ _id: BOOKING_JOB_NORMALIZATION_STATE_ID }),
+        live: await findBookingJobNormalizationDrift(db).then(({ drift, scanned }) => ({ drift_count: drift.length, booking_ids: drift.slice(0, 20), scanned_candidates: scanned })),
+      },
     }, null, 1));
     return;
   }

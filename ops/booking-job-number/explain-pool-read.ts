@@ -7,6 +7,7 @@
  * (`executionStats`, no writes) the current read (`poolBookingFilter`) and, for comparison, the
  * retired shape that also OR-ed the raw-Job `$expr` fallback. Prints winning stages and counts only.
  */
+import { getMongoDatabaseName } from "../../src/config/domain/runtime";
 import { MongoClient, type Document } from "mongodb";
 import { normalizedJobCandidates } from "../../src/services/bookings/indexedJobLookup";
 import { poolBookingFilter } from "../../src/services/salesOutreach/pool/admission";
@@ -34,7 +35,7 @@ function stages(node: unknown, out: string[] = []): string[] {
 
 async function main() {
   await client.connect();
-  const db = client.db("vantagemovers");
+  const db = client.db(getMongoDatabaseName());
   const leads = await db.collection("form_leads").find({ normalized_job_no: { $type: "string" } }, { projection: { normalized_job_no: 1 } })
     .sort({ _id: -1 }).limit(batch).toArray();
   const refs = leads.map((lead) => ({ model: "FormLead" as const, id: String(lead._id) }));

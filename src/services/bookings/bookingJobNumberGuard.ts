@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { ClientSession, Connection } from "mongoose";
 import { AppError } from "../errors/AppError";
 import { ERROR_CODES } from "../errors/errorCodes";
@@ -16,7 +15,7 @@ import {
  */
 export const BOOKING_JOB_NUMBER_CONTROL_COLLECTION = "booking_job_number_control";
 export const BOOKING_JOB_NUMBER_CONTROL_ID = "validation";
-/** One document per Booking and rejected value: `${booking_id}:${sha256(raw)}`. */
+/** One document per Booking, reason and value length: `${booking_id}:${reason}:${length}`. */
 export const BOOKING_JOB_NUMBER_CHECKS_COLLECTION = "booking_job_number_checks";
 
 export type BookingJobNumberMode = "shadow" | "enforce";
@@ -37,6 +36,17 @@ export class BookingJobNumberError extends AppError {
       metadata: { reason, rule_version: BOOKING_JOB_NUMBER_RULE_VERSION, ...metadata },
     });
     this.reason = reason;
+  }
+
+  /** HTTP body for every route: stable `code`, the public message and the reason as a `job_no` issue. */
+  toHttpBody(requestId?: string | null) {
+    return {
+      ok: false as const,
+      code: this.code,
+      error: this.message,
+      ...(requestId === undefined ? {} : { request_id: requestId }),
+      issues: [{ path: "job_no", message: this.reason }],
+    };
   }
 }
 
@@ -61,7 +71,8 @@ export async function readBookingJobNumberMode(
  * Checks one Booking Job Number write. Valid values return immediately without I/O. An invalid
  * value throws a 422 `BookingJobNumberError` in `enforce`; in `shadow` it records a would-reject
  * (inside the caller's transaction when there is one, so aborted writes leave no record) and the
- * write continues. Raw text is never stored: only its SHA-256, the reason and the write path.
+ * write continues. The value is never stored, hashed or logged (a name is customer data and an
+ * unsalted hash of a name is reversible by guessing): only its reason, length and the write path.
  */
 export async function checkBookingJobNumber(input: {
   connection: Connection;
@@ -79,12 +90,12 @@ export async function checkBookingJobNumber(input: {
     throw new BookingJobNumberError(verdict.reason, { write_path: input.write_path, booking_id: bookingId });
   }
   if (input.connection.readyState === 1 && input.connection.db) {
-    const valueHash = createHash("sha256").update(String(input.job_no ?? "")).digest("hex");
+    const valueLength = typeof input.job_no === "string" ? input.job_no.length : 0;
     const now = input.now ?? new Date();
     await input.connection.db.collection<{ _id: string }>(BOOKING_JOB_NUMBER_CHECKS_COLLECTION).updateOne(
-      { _id: `${bookingId ?? "unknown"}:${valueHash}` },
+      { _id: `${bookingId ?? "unknown"}:${verdict.reason}:${valueLength}` },
       {
-        $setOnInsert: { first_seen_at: now, booking_id: bookingId, value_sha256: valueHash },
+        $setOnInsert: { first_seen_at: now, booking_id: bookingId, value_length: valueLength },
         $set: {
           last_seen_at: now,
           verdict: "would_reject",

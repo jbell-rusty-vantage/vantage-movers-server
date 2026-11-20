@@ -181,26 +181,63 @@ BookedLeadSchema.pre("validate", async function checkJobNumber() {
   });
 });
 
-/** Query updates that set `job_no` get the same check and keep `normalized_job_no` in step. */
+/** The Booking a query targets, for the would-reject record: only a single ObjectId or 24-hex `_id`. */
+function queryBookingId(filter: unknown): string | null {
+  const id = (filter as { _id?: unknown } | null)?._id;
+  if (id instanceof mongoose.Types.ObjectId) return id.toHexString();
+  return typeof id === "string" && /^[0-9a-f]{24}$/i.test(id) ? id.toLowerCase() : null;
+}
+
+/**
+ * Query writes get the same check. An update that sets `job_no` (`$set`, `$setOnInsert` or a
+ * top-level key) or unsets it is checked and its `normalized_job_no` rewritten in step; a
+ * replacement is checked as a whole document. `$rename` of `job_no` and aggregation-pipeline
+ * updates cannot be checked reliably, so they are refused outright (no code path uses them).
+ */
 BookedLeadSchema.pre(["updateOne", "updateMany", "findOneAndUpdate"], async function checkJobNumberUpdate() {
-  const update = this.getUpdate() as Record<string, unknown> | null;
-  if (!update || Array.isArray(update)) return;
-  const set = (update.$set ?? {}) as Record<string, unknown>;
-  const hasTop = Object.prototype.hasOwnProperty.call(update, "job_no");
-  const hasSet = Object.prototype.hasOwnProperty.call(set, "job_no");
-  if (!hasTop && !hasSet) return;
-  const jobNo = hasSet ? set.job_no : update.job_no;
-  const filter = this.getFilter() as { _id?: unknown };
+  const update = this.getUpdate() as Record<string, unknown> | unknown[] | null;
+  if (!update) return;
+  if (Array.isArray(update)) {
+    throw new Error("BookedLead pipeline updates are not supported: they bypass the Job Number rule.");
+  }
+  const rename = update.$rename as Record<string, unknown> | undefined;
+  if (rename && (Object.hasOwn(rename, "job_no") || Object.values(rename).includes("job_no"))) {
+    throw new Error("BookedLead $rename of job_no is not supported: it bypasses the Job Number rule.");
+  }
+  const operators = ["$set", "$setOnInsert"]
+    .map((op) => update[op] as Record<string, unknown> | undefined)
+    .filter((target): target is Record<string, unknown> => Boolean(target) && Object.hasOwn(target!, "job_no"));
+  const unset = update.$unset as Record<string, unknown> | undefined;
+  const unsetsJob = Boolean(unset && Object.hasOwn(unset, "job_no"));
+  const top = Object.hasOwn(update, "job_no");
+  if (!operators.length && !unsetsJob && !top) return;
+  const written = [...operators.map((target) => target.job_no), ...(top ? [update.job_no] : []), ...(unsetsJob ? [undefined] : [])];
+  for (const jobNo of written) {
+    await checkBookingJobNumber({
+      connection: this.model.db,
+      session: this.getOptions().session ?? null,
+      booking_id: queryBookingId(this.getFilter()),
+      job_no: jobNo,
+      write_path: "update_query",
+    });
+  }
+  const normalizedOf = (value: unknown) => normalizeJobNo(typeof value === "string" ? value : null) ?? null;
+  for (const target of operators) target.normalized_job_no = normalizedOf(target.job_no);
+  if (top) update.normalized_job_no = normalizedOf(update.job_no);
+  if (unsetsJob) unset!.normalized_job_no = "";
+});
+
+BookedLeadSchema.pre(["replaceOne", "findOneAndReplace"], async function checkJobNumberReplacement() {
+  const replacement = this.getUpdate() as Record<string, unknown> | null;
+  if (!replacement) return;
   await checkBookingJobNumber({
     connection: this.model.db,
     session: this.getOptions().session ?? null,
-    booking_id: filter._id ?? null,
-    job_no: jobNo,
+    booking_id: queryBookingId(this.getFilter()),
+    job_no: replacement.job_no,
     write_path: "update_query",
   });
-  const normalized = normalizeJobNo(typeof jobNo === "string" ? jobNo : null) ?? null;
-  if (hasSet) set.normalized_job_no = normalized;
-  else update.normalized_job_no = normalized;
+  replacement.normalized_job_no = normalizeJobNo(typeof replacement.job_no === "string" ? replacement.job_no : null) ?? null;
 });
 
 BookedLeadSchema.virtual("agent").get(function () {

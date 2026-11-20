@@ -22,6 +22,10 @@ import { submitEmployeeBooking } from "../employeeBookings/submitEmployeeBooking
 import { updatePendingEmployeeBooking } from "../employeeBookings/bookingLeadReconciliation.service";
 import { randomUUID } from "node:crypto";
 import {
+  BOOKING_JOB_NORMALIZATION_STATE_ID,
+  runBookingJobNormalizationInvariant,
+} from "./bookingJobNormalizationInvariant";
+import {
   BOOKING_JOB_NUMBER_CHECKS_COLLECTION,
   BOOKING_JOB_NUMBER_CONTROL_COLLECTION,
   BOOKING_JOB_NUMBER_CONTROL_ID,
@@ -287,4 +291,51 @@ test("submitEmployeeBooking and updatePendingEmployeeBooking: enforce answers 42
   await updatePendingEmployeeBooking(String(caseDoc._id), { revision: caseDoc.revision ?? 0, job_no: `${next} new` } as never, actor);
   assert.equal((await BookedLead.findById(booked.booking_id).lean())?.normalized_job_no, `${next} NEW`);
   await setMode(null);
+});
+
+test("query hook: $setOnInsert, $unset and replacements are checked; pipeline and $rename are refused; ids are safe", async (t) => {
+  if (!skipUnlessReady(t)) return;
+  const row = await bookingDoc(uniqueJob()).save();
+  await setMode("enforce");
+  const upsertId = new mongoose.Types.ObjectId();
+  await assert.rejects(
+    BookedLead.updateOne({ _id: upsertId }, { $setOnInsert: { job_no: "Upsert Customer" } }, { upsert: true }).exec(),
+    isJobNumberError("no_digits"),
+  );
+  await assert.rejects(BookedLead.updateOne({ _id: row._id }, { $unset: { job_no: 1 } }).exec(), isJobNumberError("missing"));
+  await assert.rejects(
+    BookedLead.replaceOne({ _id: row._id }, { ...row.toObject(), job_no: "Replace Customer" }).exec(),
+    isJobNumberError("no_digits"),
+  );
+  await assert.rejects(BookedLead.updateOne({ _id: row._id }, [{ $set: { job_no: "x" } }], { updatePipeline: true } as never).exec(), /pipeline updates are not supported/);
+  await assert.rejects(BookedLead.updateOne({ _id: row._id }, { $rename: { job_no: "old_job_no" } }).exec(), /\$rename of job_no/);
+  const replacementJob = uniqueJob();
+  await BookedLead.replaceOne({ _id: row._id }, { ...row.toObject(), job_no: ` ${replacementJob.toLowerCase()} ` }).exec();
+  assert.equal((await BookedLead.findById(row._id).lean())?.normalized_job_no, replacementJob);
+  await setMode(null);
+  await BookedLead.updateMany({ _id: { $in: [row._id] } }, { $set: { job_no: "Many Customer" } }).exec();
+  const recorded = await db().collection(BOOKING_JOB_NUMBER_CHECKS_COLLECTION).find({ write_path: "update_query", reason: "no_digits", booking_id: null }).toArray();
+  assert.ok(recorded.some((r) => String(r._id).startsWith("unknown:no_digits:")), "a non-scalar _id filter is recorded as unknown, never [object Object]");
+  assert.equal(await db().collection(BOOKING_JOB_NUMBER_CHECKS_COLLECTION).countDocuments({ _id: { $regex: "object" } } as never), 0);
+});
+
+test("normalization invariant: counts missing or disagreeing keys, stores the result, logs, and throttles itself", async (t) => {
+  if (!skipUnlessReady(t)) return;
+  const raw = db().collection("booked_leads");
+  const consistent = await bookingDoc(` ${uniqueJob().toLowerCase()} new`).save();
+  const missing = new mongoose.Types.ObjectId(), stale = new mongoose.Types.ObjectId();
+  await raw.insertMany([
+    { _id: missing, job_no: "P7999001" },
+    { _id: stale, job_no: "P7999002", normalized_job_no: "P7999003" },
+  ]);
+  await db().collection(BOOKING_JOB_NUMBER_CONTROL_COLLECTION).deleteOne({ _id: BOOKING_JOB_NORMALIZATION_STATE_ID } as never);
+  const now = new Date();
+  const first = await runBookingJobNormalizationInvariant(db(), now);
+  assert.deepEqual(first, { skipped: false, drift_count: 2 });
+  const state = await db().collection(BOOKING_JOB_NUMBER_CONTROL_COLLECTION).findOne({ _id: BOOKING_JOB_NORMALIZATION_STATE_ID } as never);
+  assert.deepEqual(new Set((state as unknown as { booking_ids: string[] }).booking_ids), new Set([String(missing), String(stale)]));
+  assert.equal(((state as unknown as { booking_ids: string[] }).booking_ids).includes(String(consistent._id)), false);
+  assert.deepEqual(await runBookingJobNormalizationInvariant(db(), new Date(now.getTime() + 10 * 60_000)), { skipped: true });
+  await raw.deleteMany({ _id: { $in: [missing, stale] } });
+  assert.deepEqual(await runBookingJobNormalizationInvariant(db(), new Date(now.getTime() + 60 * 60_000)), { skipped: false, drift_count: 0 });
 });
