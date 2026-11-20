@@ -123,7 +123,7 @@ The pack must explain both job paths: Granot updating a Call that it matched dir
    - Explain every difference.
    - Read Sheets with values and `spreadsheets.get` only, and Mongo with find and aggregate only. Record the time and counts.
 4. **Track A interaction.** Track A changes the Granot sibling catch-up and Record Link logic. After Track A merges, re-verify `granot-effects.md` and `duplicates-and-form-fill.md` against the merged code.
-   - The mirror must keep its gate: the Call is qualified through the RingCentral queue, is not a 90-day repeat `duplicate` and is not `created_on_unmatched`.
+   - The mirror must keep its gate: the Call is reporting-eligible under `hasReportingEligibleCall` (`leads/callLeadAdmission.ts`). That means RingCentral inbound queue qualification, or a preserved historical or trusted final-import Best Relocation admission. It is also not a 90-day repeat `duplicate` and not `created_on_unmatched`.
    - It must keep updating a Form Fill Call in place on Duplicate Calls.
 
 ## Agent organization
