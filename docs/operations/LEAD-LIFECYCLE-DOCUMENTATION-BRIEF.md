@@ -50,7 +50,13 @@ Track B is complete only when `COVERAGE.md` has zero unclassified rows in all fo
    - Deletion: `deleteFormLead`, `deleteCallLead`, `deleteBookedLead`, `deleteCancelledLead`.
    - Bookings: `createBookingFromLead`, `createLeadlessBooking`, `createExistingReferralBooking`, `submitEmployeeBooking`, `attachBookingToLead`, `autoAttachBookingLead`, `resolveBookingLeadReconciliation`, `updateBooking`, `updateBookedLead`.
    - Cancellations: `createCancellation`, `updateCancelledLead`.
-   - Regenerate the list with `git grep -hoE 'command_name: "[A-Za-z]+"' -- src ':!*.test.ts' | sort -u`.
+   - Regenerate the list with `git grep -hoE 'command_name: "[A-Za-z]+"' -- src ':!*.test.ts' | sort -u`. **This grep is incomplete**, because some names are defined through constants. Also union it with the distinct `command_name` values that production has recorded on Form and Call `entity_changes` (read-only aggregate). On November 20 production also showed these commands:
+     - `confirmGranotBooking`: 144 Call and 229 Form revisions, latest on November 19.
+     - `admitBestRelocationFinalCallV1` and `reconcileExternalSheetReviewV1`: the November 4 Best Relocation reconciliation.
+     - `fillReceiverAgentFromAnsweredCall`, `backfillReceiverAgent` and `backfillDeskReceiverFromGranot`.
+     - `createLeadFromGranot` on 8 Call Leads, last on September 3. That is before Granot Call creation was retired.
+
+     Document each name as current, historical-only or retired, and say which reader still depends on its records.
 3. **Field writers.** For each lifecycle field, list every non-test writer. Generate the list with `git grep`, then classify each hit as documented or not a lifecycle write.
    - **Fields:** `duplicate`, `form_fill`, `bad_lead`, `created_on_unmatched`, `no_sync`, `booked`, `cancelled`, `job_no` and `normalized_job_no`, `granot_priority`, `receiver_agent` and `receiver_agent_source`, `granot_form_sibling`, `ringcentral.qualification_reason`, `ringcentral.final_result*`, `external_sheet_review`, `external_call_admission`, `cpl` and `cpl_resolution_status`, `local`, `move_date`, `sheet_sync.*`, `domain_revision`.
    - **November 20 rough counts of writing files:**
@@ -80,6 +86,25 @@ Track B is complete only when `COVERAGE.md` has zero unclassified rows in all fo
 - Job linked, job changed, Lead deleted, duplicate repair.
 - Granot priority 5 as booked.
 - The overnight missed call.
+
+**Form Fill rule as confirmed by the Owner, November 20.** A Call Lead is created only when it qualifies through the RingCentral inbound queue: the elapsed-time threshold of at least 120 s, and a phone number. Its routing then depends on Form matches:
+
+- **Matching Form:** the Call gets `form_fill: true` when a non-duplicate Form Lead has the same normalized phone under the same overarching `lead_source_company`. When the canonical company is absent, the legacy `source_company` slug is used instead.
+- **No time window:** the match works in both directions. `hasFormFillForCallLead` runs at Call creation. `markMatchingCallLeadsWithFormFill` flips qualified Calls when a later Form arrives (`leads/duplicateLead.service.ts`).
+- **Tab:** a Form Fill Call routes to Duplicate Calls and is not billable.
+- **Granot updates:** the Call can still receive Granot updates throughout its lifecycle and stays on Duplicate Calls.
+
+**Owner's reference case.** Call Lead `6ae907f26f28ecf54e7aff42`, read-only trace on November 20:
+- **Qualification:** `call_log_inbound_target_elapsed_at_least_120s`, 689.246 s.
+- **Flags:** `form_fill: true`, `duplicate: false`, `created_on_unmatched: false`.
+- **Job and booking:** job 5567003, booked. It appears on Duplicate Calls, attributed to TBM Prime Inbounds.
+- **History:**
+  1. `createCallLead` on 2026-11-02 at 22:00 UTC.
+  2. Three `synchronizeLeadFromGranot` updates. They applied directly to the Call, not through the sibling mirror, and `granot_form_sibling` is empty.
+  3. `confirmGranotBooking` on November 3, which set `booked`.
+  4. `recordRingCentralFinalCallLogResult`.
+
+The pack must explain both job paths: Granot updating a Call that it matched directly, and the Form→Call sibling mirror.
 
 **Worked examples.** Include at least one per tab, traced from minting to the visible Sheet row with real field values. Use anonymized identities, never customer phone numbers or names. Required examples:
 - A Form Fill Call on Duplicate Calls that then receives its Form's job through the mirror.
