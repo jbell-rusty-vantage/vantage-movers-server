@@ -1,0 +1,130 @@
+{
+  "at": "2026-11-20T03:04:55.476Z",
+  "hidden": {
+    "booked_leads.lead_ref_1": true,
+    "lead_messages.form_lead_1": true,
+    "booking_lead_reconciliation_cases.origin_1": true,
+    "booking_lead_reconciliation_cases.reason_1": true,
+    "booking_lead_reconciliation_cases.status_1": true,
+    "call_leads.lead_source_company_1": true,
+    "call_leads.source_company_1": true,
+    "call_leads.source_company_1_normalized_phone_number_1_duplicate_1": true,
+    "form_leads.lead_source_company_1": true,
+    "form_leads.normalized_phone_number_1": true,
+    "form_leads.ref_no_1": true,
+    "form_leads.source_company_1": true,
+    "form_leads.source_granularity_id_1": true
+  },
+  "plans": [
+    {
+      "coll": "form_leads",
+      "field": "ref_no",
+      "winning": [
+        "form_lead_ref_no_duplicate"
+      ],
+      "keysExamined": 1,
+      "docsExamined": 1,
+      "returned": 1,
+      "ms": 2
+    },
+    {
+      "coll": "form_leads",
+      "field": "source_granularity_id",
+      "winning": [
+        "form_lead_source_granularity_normalized_job_no"
+      ],
+      "keysExamined": 3092,
+      "docsExamined": 3092,
+      "returned": 3092,
+      "ms": 9
+    },
+    {
+      "coll": "form_leads",
+      "field": "normalized_phone_number",
+      "winning": [
+        "form_lead_attach_normalized_phone_number"
+      ],
+      "keysExamined": 1,
+      "docsExamined": 1,
+      "returned": 1,
+      "ms": 1
+    },
+    {
+      "coll": "form_leads",
+      "field": "lead_source_company",
+      "winning": [
+        "lead_source_company_1_createdAt_-1"
+      ],
+      "keysExamined": 3092,
+      "docsExamined": 3092,
+      "returned": 3092,
+      "ms": 16
+    },
+    {
+      "coll": "form_leads",
+      "field": "source_company",
+      "winning": [
+        "source_company_1_createdAt_-1"
+      ],
+      "keysExamined": 3092,
+      "docsExamined": 3092,
+      "returned": 3092,
+      "ms": 7
+    },
+    {
+      "coll": "booked_leads",
+      "field": "lead_ref",
+      "winning": [
+        "lead_ref_1_lead_model_1"
+      ],
+      "keysExamined": 1,
+      "docsExamined": 1,
+      "returned": 1,
+      "ms": 0
+    },
+    {
+      "coll": "lead_messages",
+      "field": "form_lead",
+      "winning": [
+        "form_lead_1_createdAt_-1"
+      ],
+      "keysExamined": 1,
+      "docsExamined": 1,
+      "returned": 1,
+      "ms": 1
+    },
+    {
+      "coll": "call_leads",
+      "field": "lead_source_company",
+      "winning": [
+        "lead_source_company_1_createdAt_-1"
+      ],
+      "keysExamined": 594,
+      "docsExamined": 594,
+      "returned": 594,
+      "ms": 4
+    },
+    {
+      "coll": "call_leads",
+      "field": "source_company",
+      "winning": [
+        "source_company_1_createdAt_-1"
+      ],
+      "keysExamined": 595,
+      "docsExamined": 595,
+      "returned": 595,
+      "ms": 3
+    },
+    {
+      "coll": "call_leads",
+      "field": "source_company+normalized_phone_number+duplicate",
+      "winning": [
+        "source_company_1_normalized_phone_number_1_duplicate_1_timestamp_-1"
+      ],
+      "keysExamined": 1,
+      "docsExamined": 1,
+      "returned": 1,
+      "ms": 3
+    }
+  ]
+}

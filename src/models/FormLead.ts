@@ -33,13 +33,14 @@ const FormLeadSchema = new Schema(
   {
     granot_job_form_link: granotJobFormLinkField,
     external_sheet_review: externalSheetReviewField("FormLead"),
-    source_company: sourceCompanyField,
+    // source_company_1, lead_source_company_1 and source_granularity_id_1 are prefixes of declared
+    // compound indexes (retired 2026-11-20), so these fields declare no single-field index.
+    source_company: { ...sourceCompanyField, index: false },
     lead_source_company: {
       type: Schema.Types.ObjectId,
       ref: "LeadSourceCompany",
-      index: true,
     },
-    source_granularity_id: { type: Schema.Types.ObjectId, index: true },
+    source_granularity_id: { type: Schema.Types.ObjectId },
     source_granularity_key: { type: String, trim: true, lowercase: true, index: true },
     source_company_label_snapshot: { type: String, trim: true },
     source_granularity_label_snapshot: { type: String, trim: true },
@@ -129,10 +130,10 @@ FormLeadSchema.index({ source_company: 1, createdAt: -1 });
 FormLeadSchema.index({ lead_source_company: 1, createdAt: -1 });
 FormLeadSchema.index({ lead_source_company: 1, source_granularity_key: 1, createdAt: -1 });
 FormLeadSchema.index({ phone_number: 1 });
-FormLeadSchema.index({ ref_no: 1 });
+// ref_no_1 retired 2026-11-20: form_lead_ref_no_duplicate { ref_no, duplicate } serves ref_no reads.
 FormLeadSchema.index({ email: 1 });
 FormLeadSchema.index({ normalized_lid: 1 }, { sparse: true });
-FormLeadSchema.index({ normalized_phone_number: 1 });
+// normalized_phone_number_1 retired 2026-11-20: form_lead_attach_normalized_phone_number { normalized_phone_number, _id } serves it.
 FormLeadSchema.index({ normalized_contact_name: 1 });
 FormLeadSchema.index({ source_granularity_id: 1, timestamp: 1, _id: 1 });
 FormLeadSchema.index({

@@ -112,11 +112,11 @@ const statusEventSchema = new Schema<LeadMessageStatusEvent>(
 
 const LeadMessageSchema = new Schema<LeadMessageDocument>(
   {
+    // form_lead_1 retired 2026-11-20: { form_lead, createdAt } serves form_lead reads.
     form_lead: {
       type: Schema.Types.ObjectId,
       ref: "FormLead",
       required: false,
-      index: true,
     },
     lead_ref: {
       model: { type: String, enum: ["FormLead", "CallLead"] },
