@@ -475,18 +475,62 @@ test("historical BR queued policy retains identity for No-Sync Form Fill and dup
   }
 });
 
-test("Form Duplicate upserts Duplicates and does not delete leftover Forms", async () => {
+test("Form that became a Duplicate upserts Duplicate Forms and removes its Forms row without metadata", async () => {
   useMasterSheetIds();
-  const lead = formLeadStub({ duplicate: true });
+  const lead = formLeadStub({ duplicate: true, sheet_sync: [] });
   stubFormLead(lead);
 
   const planned = await planJobWrites(sourceLeadJob(lead._id.toString()));
 
   assert.deepEqual(writeKeys(planned[0].writes), [
     `upsert:master_duplicates:${SHEET_TAB_NAMES.duplicates}`,
+    `delete:master_forms:${SHEET_TAB_NAMES.forms}`,
     `delete:master_bad_leads:${SHEET_TAB_NAMES.badLeads}`,
     `delete:master_bad_leads:Bad Leads`,
   ]);
+});
+
+test("Form that stopped being a Duplicate upserts Forms and removes old and new Duplicate Forms titles", async () => {
+  useMasterSheetIds();
+  // Only the Forms entry survived in metadata; the Duplicate Forms row must still be found by Mongo ID.
+  const lead = formLeadStub({ duplicate: false, sheet_sync: [{ target: "master_forms", spreadsheet_id: "master-leads-test", tab_name: SHEET_TAB_NAMES.forms, row_number: 9 }] });
+  stubFormLead(lead);
+  const job = { ...sourceLeadJob(lead._id.toString()), target_hints: ["master_forms"] } as SheetSyncJobDocument;
+
+  const planned = await planJobWrites(job);
+
+  assert.deepEqual(writeKeys(planned[0].writes), [
+    `upsert:master_forms:${SHEET_TAB_NAMES.forms}`,
+    `delete:master_duplicates:${SHEET_TAB_NAMES.duplicates}`,
+    `delete:master_duplicates:Duplicates`,
+    `delete:master_bad_leads:${SHEET_TAB_NAMES.badLeads}`,
+    `delete:master_bad_leads:Bad Leads`,
+  ]);
+  assert.ok(planned[0].writes.every((write) => write.mongoId === lead._id.toString()));
+});
+
+test("re-delivered non-duplicate Form leaves exactly its Forms row across old and new Duplicate titles", async () => {
+  useMasterSheetIds();
+  const lead = formLeadStub({ duplicate: false, sheet_sync: [] });
+  stubFormLead(lead);
+  const [plan] = await planJobWrites(sourceLeadJob(lead._id.toString()));
+  const forms = plan.writes.find(write => write.target === "master_forms")!;
+  const id = lead._id.toString();
+  const stale = forms.headers.map(header => header === "Mongo ID" ? id : "stale");
+  const neighbor = forms.headers.map(header => header === "Mongo ID" ? "unrelated-id" : "preserve");
+  const workbook = statefulWorkbook({
+    [SHEET_TAB_NAMES.forms]: [[...forms.headers], neighbor, stale],
+    [SHEET_TAB_NAMES.duplicates]: [[...forms.headers], stale, neighbor],
+    Duplicates: [[...forms.headers], neighbor, stale],
+  });
+  const quota = { reserve: async () => ({ granted: true }) } as unknown as QuotaLimiter;
+
+  const outcomes = await writeBatchedTargets({ sheets: workbook.sheets, writes: plan.writes, quota, ensureHeaders: false });
+
+  assert.ok(outcomes.every(outcome => outcome.status === "synced"));
+  assert.deepEqual(workbook.rows.get(SHEET_TAB_NAMES.forms), [[...forms.headers], neighbor, forms.row]);
+  assert.deepEqual(workbook.rows.get(SHEET_TAB_NAMES.duplicates), [[...forms.headers], neighbor]);
+  assert.deepEqual(workbook.rows.get("Duplicates"), [[...forms.headers], neighbor]);
 });
 
 test("clear no_sync on an ordinary Form upserts Forms", async () => {
@@ -503,7 +547,7 @@ test("clear no_sync on an ordinary Form upserts Forms", async () => {
     (await planJobWrites(sourceLeadJob(missing._id.toString())))[0].writes,
   );
 
-  assert.deepEqual(clearedWrites, [`upsert:master_forms:${SHEET_TAB_NAMES.forms}`, `delete:master_bad_leads:${SHEET_TAB_NAMES.badLeads}`, `delete:master_bad_leads:Bad Leads`]);
+  assert.deepEqual(clearedWrites, [`upsert:master_forms:${SHEET_TAB_NAMES.forms}`, `delete:master_duplicates:${SHEET_TAB_NAMES.duplicates}`, `delete:master_duplicates:Duplicates`, `delete:master_bad_leads:${SHEET_TAB_NAMES.badLeads}`, `delete:master_bad_leads:Bad Leads`]);
   assert.deepEqual(missingWrites, clearedWrites);
 });
 

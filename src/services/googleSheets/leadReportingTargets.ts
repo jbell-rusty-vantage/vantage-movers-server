@@ -38,11 +38,18 @@ export function formLeadTargets(lead: FormReportingFlags & { source_company: Sou
   return getLeadTargets(base[0], base[1], lead.source_company, base[2], FORM_SHEET_HEADERS);
 }
 
-/** Preserve ordinary Form duplicate behavior; Bad Forms remove both primaries. */
+/**
+ * Every Form family tab except the current destination. Forms and Duplicate
+ * Forms are mutually exclusive, so a duplicate flag flip removes the opposite
+ * primary row; Bad Forms remove both primaries. The current destination's
+ * transitional title is never listed: an unmigrated workbook resolves the
+ * canonical upsert onto that old title.
+ */
 export function staleFormTargetKeys(lead: FormReportingFlags): string[] {
-  return hasFormBadProjection(lead)
-    ? ["master_forms", "source_forms", "master_duplicates", "source_duplicates"]
-    : ["master_bad_leads", "source_bad_leads"];
+  if (hasFormBadProjection(lead)) return ["master_forms", "source_forms", "master_duplicates", "source_duplicates"];
+  return lead.duplicate
+    ? ["master_forms", "source_forms", "master_bad_leads", "source_bad_leads"]
+    : ["master_duplicates", "source_duplicates", "master_bad_leads", "source_bad_leads"];
 }
 
 export function staleFormTargets(lead: FormReportingFlags & { source_company: SourceCompany | string }): SyncTarget[] {

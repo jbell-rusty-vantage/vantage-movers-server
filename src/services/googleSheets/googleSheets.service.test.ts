@@ -61,6 +61,25 @@ test("direct bad Form facade upserts only Bad Form Leads then discovers stale pr
   assert.equal(lead.duplicate, true);
 });
 
+test("direct Form facade keeps Forms and Duplicate Forms exclusive when the duplicate flag flips", async () => {
+  for (const duplicate of [true, false]) {
+    const calls: string[] = [];
+    await syncFormLeadToSheets(form({ duplicate, bad_lead: null }), {
+      syncRowToTargets: async (_doc, targets) => {
+        assert.deepEqual(targets.map(target => target.tabName), [duplicate ? "Duplicate Forms" : "Forms"]);
+        calls.push("upsert");
+        return targets.map(target => ({ target: target.target, status: "synced" } as SheetSyncEntry));
+      },
+      deleteRowsFromTargets: async (_doc, targets) => {
+        assert.deepEqual(targets.map(target => target.tabName),
+          duplicate ? ["Forms", "Bad Form Leads", "Bad Leads"] : ["Duplicate Forms", "Duplicates", "Bad Form Leads", "Bad Leads"]);
+        calls.push("delete"); return [];
+      },
+    });
+    assert.deepEqual(calls, ["upsert", "delete"]);
+  }
+});
+
 test("failed bad Form destination keeps primary rows; destination-written delete failure can replay", async () => {
   const lead = form();
   let failedDestination = true, failedDelete = false, deletes = 0, upserts = 0;

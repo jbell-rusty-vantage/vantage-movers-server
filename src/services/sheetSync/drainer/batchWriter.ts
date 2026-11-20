@@ -192,25 +192,54 @@ async function applyUpdates(
   }));
   const outcomes: PlannedWriteOutcome[] = [];
 
-  for (const chunk of chunks) {
-    const data: sheets_v4.Schema$ValueRange[] = chunk.map((entry) => ({
-      range: `${escapeSheetTitleForRange(group.tabName)}!A${entry.rowNumber}:${endColumn}${entry.rowNumber}`,
-      values: [entry.write.row],
-    }));
-
+  for (const candidates of chunks) {
+    // Updates are positional. Every attempt, including each inline 429/503
+    // retry, rereads identities right before writing, so a row shifted by an
+    // operator edit or another writer is never overwritten with this Lead's
+    // values (which would silently remove the other Lead's row).
+    const moved = new Set<UpdateEntry>();
+    let written: UpdateEntry[] = [];
     try {
-      await withSheetsRetry("values.batchUpdate.rows", () =>
-        sheets.spreadsheets.values.batchUpdate({
+      await withSheetsRetry("values.batchUpdate.rows", async () => {
+        const current = await recheckIdentities(sheets, group);
+        for (const entry of candidates) {
+          if (current.get(entry.write.mongoId) !== entry.rowNumber) moved.add(entry);
+        }
+        written = candidates.filter((entry) => !moved.has(entry));
+        if (written.length === 0) return;
+        await sheets.spreadsheets.values.batchUpdate({
           spreadsheetId: group.spreadsheetId,
-          requestBody: { valueInputOption: "USER_ENTERED", data },
-        }),
-      );
-      outcomes.push(...chunk.map(({ write, rowNumber }) => synced(write, "update", rowNumber)));
+          requestBody: {
+            valueInputOption: "USER_ENTERED",
+            data: written.map((entry) => ({
+              range: `${escapeSheetTitleForRange(group.tabName)}!A${entry.rowNumber}:${endColumn}${entry.rowNumber}`,
+              values: [entry.write.row],
+            })),
+          },
+        });
+      });
+      outcomes.push(...written.map(({ write, rowNumber }) => synced(write, "update", rowNumber)));
     } catch (error) {
-      outcomes.push(...chunk.map(({ write }) => failed(write, "update", error)));
+      outcomes.push(...candidates.filter((entry) => !moved.has(entry)).map(({ write }) => failed(write, "update", error)));
     }
+    outcomes.push(...[...moved].map(({ write }) => failed(write, "update", "sheet_update_identity_changed")));
   }
   return outcomes;
+}
+
+/** Fresh identity map for a positional update. A failed recheck is never
+ * retried by the caller's update retry (its own read already retried). */
+async function recheckIdentities(sheets: sheets_v4.Sheets, group: TabGroup): Promise<TabRowMap> {
+  let current: TabRowMap;
+  try {
+    current = await buildTabRowMap(sheets, group.spreadsheetId, group.tabName, group.headers);
+  } catch (error) {
+    if (error instanceof SheetDeliveryDeferred) throw error;
+    // Keep provider text out of the message: "quota exceeded" would make the outer update retry it again.
+    throw new Error(`sheet_update_identity_recheck_failed:${formatGoogleApiError(error).status ?? "error"}`, { cause: error });
+  }
+  if (current.managedHeadersMatch === false) throw new Error("sheet_identity_projection_layout_unsafe");
+  return current;
 }
 
 async function applyAppends(
