@@ -131,22 +131,34 @@ test("BookingJobNumberError answers 422 with a stable code and the reason as a j
 });
 
 test("enforcement decision (Owner, 2026-11-21): only a missing Job Number from a non-Granot write blocks, only in enforce", () => {
-  const modes: BookingJobNumberMode[] = ["shadow", "enforce"];
-  const reasons: BookingJobNumberRejection[] = ["missing", "no_digits", "multiple_numbers", "mixed_token", "digit_core_length"];
-  const origins: BookingJobNumberWriteOrigin[] = ["standard", "granot_lifecycle"];
-  const expected = (mode: BookingJobNumberMode, reason: BookingJobNumberRejection, origin: BookingJobNumberWriteOrigin) => {
-    if (mode === "shadow") return { blocks: false, exemption: null };
-    if (origin === "granot_lifecycle") return { blocks: false, exemption: "granot_lifecycle" };
-    if (reason !== "missing") return { blocks: false, exemption: "reason_not_enforced" };
-    return { blocks: true, exemption: null };
-  };
-  let blocking = 0;
-  for (const mode of modes) for (const reason of reasons) for (const origin of origins) {
-    const decision = jobNumberEnforcement(mode, reason, origin);
-    assert.deepEqual(decision, expected(mode, reason, origin), `${mode} × ${reason} × ${origin}`);
-    if (decision.blocks) blocking += 1;
+  const S = "standard", G = "granot_lifecycle";
+  const RECORD = { blocks: false, exemption: null };
+  const BLOCK = { blocks: true, exemption: null };
+  const BY_REASON = { blocks: false, exemption: "reason_not_enforced" };
+  const BY_ORIGIN = { blocks: false, exemption: "granot_lifecycle" };
+  const rows: [BookingJobNumberMode, BookingJobNumberWriteOrigin, BookingJobNumberRejection, object][] = [
+    ["shadow", S, "missing", RECORD],
+    ["shadow", S, "no_digits", RECORD],
+    ["shadow", S, "multiple_numbers", RECORD],
+    ["shadow", S, "mixed_token", RECORD],
+    ["shadow", S, "digit_core_length", RECORD],
+    ["shadow", G, "missing", RECORD],
+    ["shadow", G, "no_digits", RECORD],
+    ["shadow", G, "multiple_numbers", RECORD],
+    ["shadow", G, "mixed_token", RECORD],
+    ["shadow", G, "digit_core_length", RECORD],
+    ["enforce", S, "missing", BLOCK],
+    ["enforce", S, "no_digits", BY_REASON],
+    ["enforce", S, "multiple_numbers", BY_REASON],
+    ["enforce", S, "mixed_token", BY_REASON],
+    ["enforce", S, "digit_core_length", BY_REASON],
+    ["enforce", G, "missing", BY_ORIGIN],
+    ["enforce", G, "no_digits", BY_ORIGIN],
+    ["enforce", G, "multiple_numbers", BY_ORIGIN],
+    ["enforce", G, "mixed_token", BY_ORIGIN],
+    ["enforce", G, "digit_core_length", BY_ORIGIN],
+  ];
+  for (const [mode, origin, reason, expected] of rows) {
+    assert.deepEqual(jobNumberEnforcement(mode, reason, origin), expected, `${mode} × ${origin} × ${reason}`);
   }
-  assert.equal(blocking, 1, "exactly one of the 20 combinations blocks: enforce × missing × standard");
-  assert.deepEqual(jobNumberEnforcement("enforce", "missing", "standard"), { blocks: true, exemption: null });
-  assert.deepEqual(jobNumberEnforcement("enforce", "missing", "granot_lifecycle"), { blocks: false, exemption: "granot_lifecycle" });
 });

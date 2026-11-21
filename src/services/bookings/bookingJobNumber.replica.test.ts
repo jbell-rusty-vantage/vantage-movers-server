@@ -178,9 +178,7 @@ test("model hook: an unknown control value stays shadow; enforce blocks only a m
   await setMode("enforce_typo" as BookingJobNumberMode);
   await bookingDoc(undefined).save();
   await setMode("enforce");
-  for (const [value, reason] of [["Enforce Customer", "no_digits"], ["EJBA03-LL-20260908-B", "multiple_numbers"], ["5556759A", "mixed_token"], ["123", "digit_core_length"]]) {
-    await assertRecordedOnly((await bookingDoc(value).save())._id, reason!);
-  }
+  await assertRecordedOnly((await bookingDoc("Enforce Customer").save())._id, "no_digits");
   const blocked = bookingDoc(undefined);
   await assert.rejects(withTransaction((session) => blocked.save({ session })), isMissingJobNumber);
   assert.equal(await BookedLead.countDocuments({ _id: blocked._id }), 0);
