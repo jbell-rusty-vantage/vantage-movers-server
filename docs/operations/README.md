@@ -6,6 +6,8 @@ Start with [local agent setup](../../CLOUD_AGENTS.md), then the [Granot runbook]
 
 The architecture is an Express application on Vercel, with MongoDB as the durable authority. Queue messages wake workers; they do not replace Mongo job state. A useful optimization reduces work before it fans out, or removes repeated reads/writes within an invocation, while keeping transactional intent, claim fences, replay identities and recovery evidence intact. Warm-process caches cannot be correctness authorities across serverless invocations.
 
+**Queue consumers and credential changes.** Each of the five consumers under `api/queues/` has a cron drain over the same Mongo work. A failed wake-up is normally rethrown, and Vercel redelivers it every 30 seconds until the message expires. The exception is a MongoDB credential rejection (error code 18, `AuthenticationFailed`). A deployment's environment is fixed at build time, and Vercel delivers a message to the deployment that published it, so a superseded deployment can never succeed after a credential change. The consumer acknowledges the wake-up, logs `queue.consumer.mongo_credentials_rejected` with the deployment ID, and leaves the work to the current deployment's cron ([`src/queueConsumerFailure.ts`](../../src/queueConsumerFailure.ts)). On November 20, 2026, before this rule existed, the November 19 deployment `5137f06f` retried Sales Intelligence and Granot lifecycle wake-ups about 176 times an hour for six hours. Production was unaffected. If that log line comes from the *current* deployment, the production credential itself is wrong: fix `MONGO_URI` and redeploy.
+
 ## Pick the workflow
 
 | Task | Start here | Durable authority and effects | Recovery / proof seam |
