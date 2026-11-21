@@ -5,6 +5,7 @@ Start with a task and a verified target:
 - **[Optimization sequence and progress](docs/operations/SERVICE-OPTIMIZATION-ROADMAP.md)** — canonical service-by-service ledger. [Next-session prompt](docs/operations/NEXT-SESSION.md) names the current bounded work; update both at session close.
 
 - **[Operate the server](docs/operations/README.md)** — workflow map, supported commands and remaining proof.
+- **[Cloud sessions (Claude Code on the web)](docs/operations/CLOUD-SESSIONS.md)**: environments, variables, runtimes and the first-session checklist. Cloud clones do not include the workspace root, so read the **[Owner directives snapshot](docs/operations/owner-directives.md)** for the locked Owner rules.
 - **[Local/Cloud setup](CLOUD_AGENTS.md)** — clean checkout, safe local API launch and real replica tests. No private `.env` is required. Use `pnpm dev` and verify `pnpm dev:identity` before any scoped local write.
 - **[Granot operator runbook](docs/operations/granot.md)** — trace one sealed action on a verified local replica.
 - **[Sheet Sync runbook](docs/operations/sheet-sync.md)** — the first supported service CLI slice. Help works offline: `pnpm vantage -- help`. Diagnostics never authorize repair or production access.
