@@ -1,4 +1,5 @@
 import { archiveJobKey } from "../granotHistory/archiveCodec.js";
+import { leadJobNumberFilter } from "../bookings/indexedJobLookup.js";
 import { archiveCatalog, readArchiveEntry, mergeEvidence } from "../granotHistory/archiveReads.js";
 import type { Db, Document } from "mongodb";
 import type { FindCursor } from "mongodb";
@@ -233,7 +234,8 @@ export async function loadCompanyGranularityIds(
 }
 
 /** Older jobs can lack a Record Link. Use an unambiguous indexed canonical Lead match. */
-async function findUniqueJobLead(db: Db, jobFilter: Document, milestonesOnly = false) {
+async function findUniqueJobLead(db: Db, normalizedJobNo: string, milestonesOnly = false) {
+  const jobFilter = leadJobNumberFilter(normalizedJobNo);
   const options = [["form_leads", "FormLead"], ["call_leads", "CallLead"]] as const;
   const found = (await Promise.all(options.map(async ([collection, model]) => {
     const rows = await db.collection(collection).find({ ...jobFilter, ...(milestonesOnly ? {} : { "last_accepted_granot_observation.observation_id": { $exists: true } }) }).project({ _id: 1 }).limit(2).maxTimeMS(3000).toArray();
@@ -425,7 +427,7 @@ export async function loadJobNumberTimelineRows(
       && (row.target?.model === "FormLead" || row.target?.model === "CallLead"),
     )?.target
     ?? mappedCancellations.find(row => row.lead_ref_snapshot)?.lead_ref_snapshot
-    ?? await findUniqueJobLead(db, jobFilter, bounds.milestonesOnly);
+    ?? await findUniqueJobLead(db, normalizedJobNo, bounds.milestonesOnly);
 
   let leads: LeadRow[] = [];
   let entity_changes: EntityChangeRow[] = [];

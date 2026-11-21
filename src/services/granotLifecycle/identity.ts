@@ -1,4 +1,4 @@
-import { normalizedJobCandidates } from "../bookings/indexedJobLookup";
+import { leadJobNumberFilter, normalizedJobCandidates } from "../bookings/indexedJobLookup";
 import mongoose, { type ClientSession } from "mongoose";
 import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
@@ -263,7 +263,7 @@ export function createMongoLeadIdentityStore(session?: ClientSession): LeadIdent
       const rows = await getCallLeadModel()
         .find({
           source_granularity_id: toObjectId(input.source_granularity_id),
-          ...equivalentNormalizedJobFilter(input.normalized_job_no),
+          ...leadJobNumberFilter(input.normalized_job_no),
         })
         .session(session ?? null)
         .lean()
