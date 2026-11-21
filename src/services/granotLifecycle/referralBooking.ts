@@ -4,6 +4,7 @@ import mongoose, { type ClientSession } from "mongoose";
 import { getGranotLifecycleFlags, type GranotLifecycleFlags } from "../../config/domain/granotLifecycle";
 import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
+import { markGranotLifecycleBookingWrite } from "../bookings/bookingJobNumberGuard";
 import { DomainCommandExecution } from "../../models/DomainCommandExecution";
 import { getGranotLifecycleActivationModel } from "../../models/GranotLifecycleActivation";
 import { Merchant } from "../../models/Merchant";
@@ -284,6 +285,7 @@ async function applyReferralBooking(input: {
     over_4000: input.input.official_booking_details.deposit_amount > 4000,
     domain_revision: 0,
   });
+  markGranotLifecycleBookingWrite(booking);
   await booking.save({ session: input.session });
   failAfter(input.test_fail_after, "booking");
 

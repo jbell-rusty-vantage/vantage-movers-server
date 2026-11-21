@@ -7,7 +7,13 @@ import {
   bookingJobNumbersEquivalent,
   classifyBookingJobNumber,
 } from "./bookingJobNumber";
-import { BookingJobNumberError } from "./bookingJobNumberGuard";
+import {
+  BookingJobNumberError,
+  jobNumberEnforcement,
+  type BookingJobNumberMode,
+  type BookingJobNumberWriteOrigin,
+} from "./bookingJobNumberGuard";
+import type { BookingJobNumberRejection } from "./bookingJobNumber";
 
 const accepted = (raw: string, jobClass: string, core: string) => {
   const verdict = classifyBookingJobNumber(raw);
@@ -104,7 +110,7 @@ test("Booking job filter: exact keys plus one anchored digit-core regex on the n
   for (const key of ["15556759", "P55567590", "P5556761", "5556759A"]) assert.equal(regex.test(key), false, key);
 });
 
-test("plausible near-miss spellings never seen in production are rejected (Owner reviews shadow records before enforce)", () => {
+test("plausible near-miss spellings never seen in production are rejected (recorded, never blocked)", () => {
   rejected("P5556759-1", "multiple_numbers");
   rejected("P5556759 (2nd)", "multiple_numbers");
   rejected("5,556,759", "multiple_numbers");
@@ -122,4 +128,37 @@ test("BookingJobNumberError answers 422 with a stable code and the reason as a j
     issues: [{ path: "job_no", message: "no_digits" }],
   });
   assert.equal(error.toHttpBody("req-1").request_id, "req-1");
+});
+
+test("enforcement decision (Owner, 2026-11-21): only a missing Job Number from a non-Granot write blocks, only in enforce", () => {
+  const S = "standard", G = "granot_lifecycle";
+  const RECORD = { blocks: false, exemption: null };
+  const BLOCK = { blocks: true, exemption: null };
+  const BY_REASON = { blocks: false, exemption: "reason_not_enforced" };
+  const BY_ORIGIN = { blocks: false, exemption: "granot_lifecycle" };
+  const rows: [BookingJobNumberMode, BookingJobNumberWriteOrigin, BookingJobNumberRejection, object][] = [
+    ["shadow", S, "missing", RECORD],
+    ["shadow", S, "no_digits", RECORD],
+    ["shadow", S, "multiple_numbers", RECORD],
+    ["shadow", S, "mixed_token", RECORD],
+    ["shadow", S, "digit_core_length", RECORD],
+    ["shadow", G, "missing", RECORD],
+    ["shadow", G, "no_digits", RECORD],
+    ["shadow", G, "multiple_numbers", RECORD],
+    ["shadow", G, "mixed_token", RECORD],
+    ["shadow", G, "digit_core_length", RECORD],
+    ["enforce", S, "missing", BLOCK],
+    ["enforce", S, "no_digits", BY_REASON],
+    ["enforce", S, "multiple_numbers", BY_REASON],
+    ["enforce", S, "mixed_token", BY_REASON],
+    ["enforce", S, "digit_core_length", BY_REASON],
+    ["enforce", G, "missing", BY_ORIGIN],
+    ["enforce", G, "no_digits", BY_ORIGIN],
+    ["enforce", G, "multiple_numbers", BY_ORIGIN],
+    ["enforce", G, "mixed_token", BY_ORIGIN],
+    ["enforce", G, "digit_core_length", BY_ORIGIN],
+  ];
+  for (const [mode, origin, reason, expected] of rows) {
+    assert.deepEqual(jobNumberEnforcement(mode, reason, origin), expected, `${mode} × ${origin} × ${reason}`);
+  }
 });

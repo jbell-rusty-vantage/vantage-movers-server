@@ -1,7 +1,9 @@
 /**
  * Booking Job Number validation control (runtime configuration in Mongo, never an env var).
  *
- * Status (read-only): mode, rule version, the would-reject records by reason and write path, and the
+ * Status (read-only): mode, rule version, the records split into blocked (refused in `enforce`:
+ * `missing` from a non-Granot write) and recorded only (every `shadow` record, plus `enforce` writes
+ * exempt by reason or by Granot lifecycle origin), by reason, write path, mode and exemption, and the
  * normalization invariant (last hourly cron result plus a live count of Bookings whose
  * `normalized_job_no` disagrees with `normalizeJobNo(job_no)`; must be 0).
  *   node --env-file=.env --import tsx ops/booking-job-number/control.ts status
@@ -41,7 +43,11 @@ async function main() {
     const row = await control.findOne({ _id: BOOKING_JOB_NUMBER_CONTROL_ID });
     const checks = db.collection(BOOKING_JOB_NUMBER_CHECKS_COLLECTION);
     const byReason = await checks.aggregate([
-      { $group: { _id: { reason: "$reason", write_path: "$write_path", mode: "$mode" }, records: { $sum: 1 }, last_seen_at: { $max: "$last_seen_at" } } },
+      { $group: {
+        _id: { blocked: { $eq: ["$enforced", true] }, reason: "$reason", write_path: "$write_path", mode: "$mode", exemption: { $ifNull: ["$exemption", null] } },
+        records: { $sum: 1 },
+        last_seen_at: { $max: "$last_seen_at" },
+      } },
       { $sort: { records: -1 } },
     ]).toArray();
     console.log(JSON.stringify({
@@ -49,9 +55,16 @@ async function main() {
       rule_version: BOOKING_JOB_NUMBER_RULE_VERSION,
       stored_control: row ?? null,
       effective_mode: row && (row as { mode?: unknown }).mode === "enforce" ? "enforce" : "shadow",
-      would_reject_records: await checks.countDocuments({ verdict: "would_reject" }),
+      // Blocked = refused in `enforce` (`enforced: true`); everything else was recorded and written.
+      blocked_records: await checks.countDocuments({ enforced: true }),
+      recorded_only_records: await checks.countDocuments({ enforced: { $ne: true } }),
+      recorded_only_by_exemption: {
+        shadow: await checks.countDocuments({ enforced: { $ne: true }, mode: { $ne: "enforce" } }),
+        reason_not_enforced: await checks.countDocuments({ enforced: false, exemption: "reason_not_enforced" }),
+        granot_lifecycle: await checks.countDocuments({ enforced: false, exemption: "granot_lifecycle" }),
+      },
       by_reason: byReason,
-      booking_ids: (await checks.find({}, { projection: { booking_id: 1, reason: 1, write_path: 1, value_length: 1, first_seen_at: 1 } }).sort({ first_seen_at: -1 }).limit(50).toArray()),
+      booking_ids: (await checks.find({}, { projection: { booking_id: 1, reason: 1, write_path: 1, value_length: 1, first_seen_at: 1, enforced: 1, exemption: 1 } }).sort({ first_seen_at: -1 }).limit(50).toArray()),
       normalization_invariant: {
         last_cron_result: await control.findOne({ _id: BOOKING_JOB_NORMALIZATION_STATE_ID }),
         live: await findBookingJobNormalizationDrift(db).then(({ drift, scanned }) => ({ drift_count: drift.length, booking_ids: drift.slice(0, 20), scanned_candidates: scanned })),

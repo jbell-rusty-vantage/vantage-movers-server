@@ -114,7 +114,7 @@ Then:
 2. Display `source` on the booking is the lead/assignment snapshot label when present, else the company slug.
 3. **`deriveBookedLeadAgentAllocations`** from `agent`, optional `split_agent`, `binder_amount`.
 4. Linked plans delegate to **`createBookedLead`** with `lead_ref`, optional `customer_name`/`customer_phone`, `submission_id`, and `booking_origin=owner_booking` on the Owner path. Pending Owner Call Lead plans go through `createLeadlessBookingInTransaction` (sheet `owner_booking.create_pending`).
-5. Direct `createBookedLead` may omit `job_no` so a Call Lead can be booked before a Job Number exists. Public `/booked-leads` Zod still requires `job_no`.
+5. Direct `createBookedLead` may omit `job_no` so a Call Lead can be booked before a Job Number exists. Public `/booked-leads` Zod still requires `job_no`. Only a Best Relocation CallLead import reaches this without a Job Number (retired). In Job Number `enforce` mode that write is refused (`missing`).
 
 **Best Relocation import** also: `requireBestRelocationImportSource` requires `best_relocation_leads`. When true, create may resolve **inactive** catalog agents (`allow_inactive_agents`) and, if the lead has no receiver yet, stamp primary-agent receiver attribution (`receiver_agent_source: best_relocation_sheet`, value `Booked Deals:<job_no>`).
 
@@ -254,7 +254,22 @@ Helper: `src/services/domainCommands/leadChangeEmission.ts` (before/after diff o
 
 ## Job Number validation (Owner rule, 2026-11-20)
 
-Every Booking must carry a valid Job Number, and a valid Job Number is never rejected. The rule is `classifyBookingJobNumber` (`bookings/bookingJobNumber.ts`, version `booking-job-number-v1`). It runs on `normalizeJobNo` output (NFKC, punctuation and whitespace runs to one space, uppercase):
+**Owner decision, 2026-11-21: minimal enforcement.** "Don't make Granot records part of enforcement. Minimal enforcement of having a job number." The classifier below is unchanged and still names every problem. In `enforce`, though, a Booking write is refused **only** when its Job Number is missing or empty (reason `missing`). Every other reason (`no_digits`, `multiple_numbers`, `mixed_token`, `digit_core_length`) is recorded and never blocks, in any mode. Bookings written by the Granot lifecycle are never blocked, not even for `missing`; their problems are only recorded. Those are Confirm, lead and Leadless (`granotLifecycle/bookingConfirmation.ts`), and Referral creation (`granotLifecycle/referralBooking.ts`). `shadow` behaves as before. The one decision is `jobNumberEnforcement(mode, reason, origin)` in `bookings/bookingJobNumberGuard.ts`:
+
+| Mode | Write origin | `missing` | Any other reason |
+|---|---|---|---|
+| `shadow` | any | recorded | recorded |
+| `enforce` | standard (every non-Granot path) | **blocked (422)** | recorded, `exemption: reason_not_enforced` |
+| `enforce` | `granot_lifecycle` | recorded, `exemption: granot_lifecycle` | recorded, `exemption: granot_lifecycle` |
+
+The origin is carried explicitly, never inferred from field values. Each Granot lifecycle site calls `markGranotLifecycleBookingWrite(booking)` (a `$locals.jobNumberOrigin` marker) before `save`, and the model hook passes the origin to `checkBookingJobNumber`. Query writes are always the standard origin, because no Granot lifecycle path writes `job_no` by query. `bookingJobNumberWriters.test.ts` fails if a Granot lifecycle Booking create is unmarked, or if a Granot lifecycle file adds a Mongoose query write to `booked_leads`. The rule version stays `booking-job-number-v1`: the classifier did not change, and enforce records are told apart by their `enforced` and `exemption` fields.
+
+One non-Granot path can create a Booking without a Job Number: `createBookedLeadFromSource` for a Best Relocation CallLead import. `call_job_no` is optional only there (step 5 above). That ingestion is retired; in `enforce` such a write would be refused. Employee Booking preparation refuses a missing Job Number itself (`ValidationError`) before the rule runs. Production, read-only on 2026-11-21:
+
+- last 60 days: 319 Bookings created (246 lead, 55 Leadless, 18 Referral), 0 with a missing or empty `job_no` and 0 with any rejection reason;
+- all time: 0 jobless Bookings among 1,080.
+
+The classifier (`classifyBookingJobNumber`) defines a valid Job Number. The rule is `classifyBookingJobNumber` (`bookings/bookingJobNumber.ts`, version `booking-job-number-v1`). It runs on `normalizeJobNo` output (NFKC, punctuation and whitespace runs to one space, uppercase):
 
 - exactly one token contains a number: an optional ASCII letter prefix and **4–9 ASCII digits** (the digit core);
 - a bare digit token may follow one letters-only token (a separated prefix, `P-5556759` → `P 5556759`);
@@ -277,10 +292,11 @@ All digit cores observed are 7 digits; no leading-zero or letter-suffix Job exis
 
 **Modes (runtime configuration in Mongo, never an env var).** `booking_job_number_control` `{ _id: "validation", mode }`. Missing or any value other than `enforce` reads as `shadow`:
 
-- `shadow` (default): the write proceeds; one `booking_job_number_checks` document per Booking, reason and value length (`_id` `<booking_id|unknown>:<reason>:<length>`) records `reason`, `write_path`, `value_length`, `rule_version` and timestamps. The value is never stored, hashed or logged: a rejected value is often a customer's name, and an unsalted hash of a name can be reversed by guessing. It is written in the caller's transaction, so an aborted write leaves no record. Expected volume: under 10 documents a year (2 bad values in 1,077 Bookings over five months); no TTL.
-- `enforce`: the write throws `BookingJobNumberError` (`AppError`, HTTP **422**, code `booking.job_number_invalid`, message naming the reason). Both `/api/v1` and the Granot lifecycle admin routes answer `BookingJobNumberError.toHttpBody()`: `{ ok: false, code: "booking.job_number_invalid", error, issues: [{ path: "job_no", message: <reason> }] }`, plus `request_id` on the lifecycle routes. Nothing is written.
+- `shadow` (default): the write proceeds; one `booking_job_number_checks` document per Booking, reason and value length (`_id` `<booking_id|unknown>:<reason>:<length>`) records `verdict: "would_reject"`, `reason`, `write_path`, `value_length`, `rule_version` and timestamps. The value is never stored, hashed or logged: a rejected value is often a customer's name, and an unsalted hash of a name can be reversed by guessing. It is written in the caller's transaction, so an aborted write leaves no record. Expected volume: under 10 documents a year (2 bad values in 1,077 Bookings over five months); no TTL.
+- `enforce`, recorded only (every exempt write in the table above): the write proceeds. Its `would_reject` record also carries `enforced: false` and `exemption` (`reason_not_enforced` or `granot_lifecycle`). A later `shadow` write to the same record removes both fields.
+- `enforce`, blocked (`missing` from a standard write): the write throws `BookingJobNumberError` (`AppError`, HTTP **422**, code `booking.job_number_invalid`, message naming the reason). Both `/api/v1` and the Granot lifecycle admin routes answer `BookingJobNumberError.toHttpBody()`: `{ ok: false, code: "booking.job_number_invalid", error, issues: [{ path: "job_no", message: <reason> }] }`, plus `request_id` on the lifecycle routes. The Booking is not written. A `verdict: "rejected"`, `enforced: true` record is written outside the caller's transaction, best effort, so the refusal is counted although the transaction aborts. Its `_id` ends in `:rejected`, so it never shares a key with an in-transaction record.
 
-Operator: `node --env-file=.env --import tsx ops/booking-job-number/control.ts status` (read-only: mode and would-reject counts by reason and path); `… set --mode=enforce --reason="…" --actor="…" --apply` (the Owner decides; `--mode=shadow` or deleting the document is the rollback).
+Operator: `node --env-file=.env --import tsx ops/booking-job-number/control.ts status` (read-only: mode, `blocked_records` and `recorded_only_records`, recorded-only counts by exemption, and records grouped by blocked, reason, path, mode and exemption); `… set --mode=enforce --reason="…" --actor="…" --apply` (the Owner decides; `--mode=shadow` or deleting the document is the rollback).
 
 **Equivalence (Pool admission and Booking validation only).** `bookingJobNumbersEquivalent` and `bookingJobNumberKey` compare digit cores by structure (the same token grammar, without the 4–9 digit write-time bound, so no equivalence that held before the rule is lost). For Pool admission's Booking hold and for this rule, `P5556759 NEW`, `P 5556759`, `RF5556759` and `5556759` are one Job. `bookingJobNumberFilter` reads `booked_leads` by exact keys plus one anchored digit-core regex, both with `$type: "string"` so the partial `normalized_job_no` index is usable.
 

@@ -127,3 +127,38 @@ await BookedLead.collection.insertOne(row);`;
   assert.ok(new RegExp(WRITE.source).test(`mongoose.connection.collection(BookedLead.collection.collectionName).insertOne({})`));
   assert.ok(new RegExp(WRITE.source).test(`db.collection<Row>("booked_leads").bulkWrite([])`));
 });
+
+/**
+ * Owner, 2026-11-21: Granot lifecycle Bookings are never blocked by the Job Number rule. The
+ * exemption is carried by `markGranotLifecycleBookingWrite` on the document, so every Granot
+ * lifecycle `new BookedLead(...)` must be marked, and no Granot lifecycle file may write Bookings
+ * through a Mongoose query (query writes are always the `standard` origin and could be blocked).
+ */
+test("every Granot lifecycle Booking create is marked as the granot_lifecycle origin", () => {
+  const files = globSync("src/services/granotLifecycle/**/*.ts")
+    .map((file) => file.replaceAll("\\", "/"))
+    .filter((file) => !/\.test\.ts$/.test(file));
+  const creates: Record<string, number> = {};
+  for (const file of files) {
+    const source = readFileSync(file, "utf8");
+    const created = [...source.matchAll(/new BookedLead\(/g)].length;
+    const marked = [...source.matchAll(/markGranotLifecycleBookingWrite\(\s*booking\s*\)/g)].length;
+    assert.equal(marked, created, `${file}: ${created} Booking create(s), ${marked} marked`);
+    if (created) creates[file] = created;
+    for (const match of source.matchAll(/new BookedLead\(/g)) {
+      const rest = source.slice(match.index);
+      const save = rest.search(/\bbooking\.save\(/);
+      const mark = rest.search(/markGranotLifecycleBookingWrite\(\s*booking\s*\)/);
+      assert.ok(mark >= 0 && save >= 0 && mark < save, `${file}: mark the Booking before it is saved`);
+    }
+    assert.doesNotMatch(
+      source,
+      /\bBookedLead\.(?:create|insertMany|bulkWrite|updateOne|updateMany|findOneAndUpdate|findByIdAndUpdate|replaceOne|findOneAndReplace)\s*\(/,
+      `${file}: a Granot lifecycle Mongoose query write would be checked as the standard origin`,
+    );
+  }
+  assert.deepEqual(creates, {
+    "src/services/granotLifecycle/bookingConfirmation.ts": 2,
+    "src/services/granotLifecycle/referralBooking.ts": 1,
+  });
+});

@@ -23,8 +23,8 @@ import { SheetSyncJob } from "../../models/SheetSyncJob";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
 import {
   BOOKING_JOB_NUMBER_CONTROL_COLLECTION,
+  BOOKING_JOB_NUMBER_CHECKS_COLLECTION,
   BOOKING_JOB_NUMBER_CONTROL_ID,
-  BookingJobNumberError,
 } from "../bookings/bookingJobNumberGuard";
 import { confirmBooking } from "./bookingConfirmation";
 import { noAction, updateExistingBooking } from "./bookingOwnerCommands";
@@ -624,30 +624,33 @@ test("Confirm lost claim fails closed and does not fall through to Leadless", as
   assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.state, "open");
 });
 
-test("Confirm in Job Number enforce mode answers 422 for a value that cannot be a Job Number and writes no Booking", async (t) => {
+test("Confirm in Job Number enforce mode is never blocked (Owner, 2026-11-21): it books and only records the invalid value", async (t) => {
   if (!(await replicaReady(t))) return;
   const fixture = await seed();
   // The fixture Job (`U24-<base36>-<hex>`) is not a Job Number under the Booking rule (a 2-digit core, or several numbers).
   const control = mongoose.connection.collection<{ _id: string }>(BOOKING_JOB_NUMBER_CONTROL_COLLECTION);
   await control.updateOne({ _id: BOOKING_JOB_NUMBER_CONTROL_ID }, { $set: { mode: "enforce" } }, { upsert: true });
   t.after(() => control.deleteOne({ _id: BOOKING_JOB_NUMBER_CONTROL_ID }));
-  await assert.rejects(
-    confirmBooking({
-      case_id: String(fixture.caseId),
-      expected_case_revision: 1,
-      selected_lead: { lead_model: "FormLead" as const, lead_id: String(fixture.leadId) },
-      official_booking_details: {
-        book_date: "2026-08-20",
-        primary_agent_id: String(fixture.agentId),
-        total_binder_amount: 10,
-        deposit_amount: 20,
-        merchant_id: String(fixture.merchantId),
-      },
-      idempotency_key: `jobno-enforce-${fixture.caseId}`,
-      owner: confirmOwner(fixture.caseId, "jobno-enforce"),
-    }, { flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true } }),
-    (error: unknown) => error instanceof BookingJobNumberError && error.statusCode === 422,
-  );
-  assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 0);
-  assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.state, "open");
+  const result = await confirmBooking({
+    case_id: String(fixture.caseId),
+    expected_case_revision: 1,
+    selected_lead: { lead_model: "FormLead" as const, lead_id: String(fixture.leadId) },
+    official_booking_details: {
+      book_date: "2026-08-20",
+      primary_agent_id: String(fixture.agentId),
+      total_binder_amount: 10,
+      deposit_amount: 20,
+      merchant_id: String(fixture.merchantId),
+    },
+    idempotency_key: `jobno-enforce-${fixture.caseId}`,
+    owner: confirmOwner(fixture.caseId, "jobno-enforce"),
+  }, { flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, booking_commands_enabled: true } });
+  assert.equal(result.outcome, "booking_created");
+  assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 1);
+  const records = await mongoose.connection.collection(BOOKING_JOB_NUMBER_CHECKS_COLLECTION)
+    .find({ booking_id: result.booking_ref!.id }).toArray();
+  assert.equal(records.length, 1);
+  assert.deepEqual([records[0]?.verdict, records[0]?.mode, records[0]?.enforced, records[0]?.exemption, records[0]?.write_path],
+    ["would_reject", "enforce", false, "granot_lifecycle", "create_lead_booking"]);
+  assert.equal(JSON.stringify(records).includes(jobPrefix), false, "raw value is never stored");
 });
