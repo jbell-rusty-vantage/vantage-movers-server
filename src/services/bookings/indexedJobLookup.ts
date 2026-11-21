@@ -67,14 +67,3 @@ export function normalizedJobCandidates(
 export function leadJobNumberFilter(normalizedJobNo: string): Record<string, unknown> {
   return normalizedJobCandidates([normalizedJobNo]);
 }
-
-/** All raw/normalized disagreements and every raw value needing normalization are still
- * inspected by the canonical JavaScript normalizer. Equal ASCII alphanumerics are already
- * covered by the normalized job query, including leading-zero identities. */
-export const legacyBookingJobFilter = {
-  job_no: { $type: "string" as const },
-  $or: [
-    { $expr: { $ne: ["$job_no", { $ifNull: ["$normalized_job_no", null] }] } },
-    { job_no: { $regex: "[^A-Z0-9]" } },
-  ],
-};

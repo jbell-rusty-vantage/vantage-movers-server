@@ -1,7 +1,7 @@
 /** Production services against synthetic data on the fixed csi01 loopback replica. No .env/provider traffic. */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import mongoose from "mongoose";
 import express from "express";
 import type { AddressInfo } from "node:net";
@@ -212,9 +212,15 @@ async function main() {
     { name: "missing_lead_model_objectid_pointer", values: { lead_ref: lead, job_no: "OTHER902" }, blocked: true },
     { name: "mismatched_lead_model_string_pointer", values: { lead_model: "CallLead", lead_ref: String(lead), job_no: "OTHER903" }, blocked: true },
     { name: "uppercase_string_pointer_without_model_or_job", values: { lead_ref: String(lead).toUpperCase() }, blocked: true },
-    { name: "raw_numeric_job_alias_without_pointer", values: { job_no: "100" }, blocked: true },
-    { name: "raw_prefixed_job_alias_partial_dangling_pointer", values: { lead_ref: oid(), job_no: "p100" }, blocked: true },
-    { name: "raw_NFKC_job_alias_outranks_conflicting_normalized_key", values: { job_no: " Ｐ１００ ", normalized_job_no: "OTHER904" }, blocked: true },
+    // Job anchors are read through the normalized index. Every Booking writer stores `normalized_job_no =
+    // normalizeJobNo(job_no)` (model hooks; raw driver writers never set job_no, see bookingJobNumberWriters.test.ts),
+    // and production had no missing or disagreeing key on 2026-11-20, so the former raw-Job scan was retired.
+    { name: "numeric_job_alias_without_pointer", values: { job_no: "100", normalized_job_no: "100" }, blocked: true },
+    { name: "prefixed_job_alias_partial_dangling_pointer", values: { lead_ref: oid(), job_no: "p100", normalized_job_no: "P100" }, blocked: true },
+    { name: "NFKC_job_alias", values: { job_no: " Ｐ１００ ", normalized_job_no: "P100" }, blocked: true },
+    { name: "separated_prefix_job_alias", values: { job_no: "P-100", normalized_job_no: "P 100" }, blocked: true },
+    { name: "granot_annotated_job_alias", values: { job_no: "P100 vip", normalized_job_no: "P100 VIP" }, blocked: true },
+    { name: "driver_only_job_without_normalized_key_is_not_read", values: { job_no: "100" }, blocked: false },
     { name: "unrelated_booking_ignored", values: { lead_model: "CallLead", lead_ref: oid(), job_no: "OTHER999", normalized_job_no: "OTHER999" }, blocked: false },
   ];
   const leadBeforeBookingReads = await getFormLeadModel().collection.findOne({ _id: lead });
@@ -353,6 +359,7 @@ async function main() {
     passed: ["strict_models_and_unique_indexes", "concurrent_distinct_calls_one_duty", "distinct_caller_credit_preserved", "assigned_receiver_preserved", "same_event_three_worker_replay", "retry_after_commit_no_completion_rewrite", "late_earlier_winner_correction", "provider_revocation_recounts_original_date", "same_event_timestamp_correction", "Owner_off_caller_denied_and_snapshot_preserved", "answered_inbound_zero_outbound_credit", "Pool_excluded_eligible_new_quoted", "unassigned_Pool_call_does_not_assign", "ordinary_same_date_coverage_transfer_preserves_original_event", "first_subject_same_date_pre_activation_transfer", "disable_closes_episodes", "disabled_historical_correction_remains_active", "disabled_no_new_duties", "same_date_reenable_rejects_delayed_gap_call", "next_date_fresh_no_catchup", "same_date_reentry_retains_completion", "19_30_cutoff", "Sunday", "Owner_closed_day", "NY_DST_fallback", "no_retroactive_debt", "closed_subject_refused", "actual_router_shared_and_private_scopes", "actual_router_owner_manager_rep_admin_unsigned_inactive_matrix", "actual_router_detail_revocation_and_assigned_retention", "actual_Mongo_SSE_shared_hint_two_readers", "SSE_connect_resnapshot", "completion_before_evaluator_filters_fresh_state", "NY_rollover_before_evaluator_filters_fresh_state", "search_does_not_inflate_projection_pending", "601_record_actual_queue_batched_read_benchmark"],
     limits: ["Synthetic provider source rows; no external RingCentral delivery", "Browser cache eviction requires separate acceptance", "Provider capture merge/dedupe remains covered by retained capture tests"] };
   Object.assign(summary, { total_passed_scenarios: summary.passed.length + summary.legacy_booking_anchor_cases.length });
+  mkdirSync("docs/rep-desk-and-pool/evidence/release", { recursive: true });
   writeFileSync("docs/rep-desk-and-pool/evidence/release/shared-duty-replica.json", JSON.stringify(summary, null, 2));
   console.log(JSON.stringify(summary, null, 2));
   await db.dropDatabase();

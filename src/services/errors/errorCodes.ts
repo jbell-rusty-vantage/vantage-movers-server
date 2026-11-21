@@ -31,6 +31,8 @@ export const ERROR_CODES = {
   INTEGRATION: "app.integration",
   /** A required dependency (e.g. the database) is temporarily unreachable (503). */
   SERVICE_UNAVAILABLE: "app.service_unavailable",
+  /** A Booking write carried a value that cannot be a Job Number (422). */
+  BOOKING_JOB_NUMBER_INVALID: "booking.job_number_invalid",
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

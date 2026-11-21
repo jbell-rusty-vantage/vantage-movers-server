@@ -18,6 +18,11 @@ import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import { Merchant } from "../../models/Merchant";
 import { SheetSyncJob } from "../../models/SheetSyncJob";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
+import {
+  BOOKING_JOB_NUMBER_CONTROL_COLLECTION,
+  BOOKING_JOB_NUMBER_CONTROL_ID,
+  BookingJobNumberError,
+} from "../bookings/bookingJobNumberGuard";
 import { planJobWrites } from "../sheetSync/drainer/jobPlanner";
 import { createReferralBooking } from "./referralBooking";
 import { noAction } from "./bookingOwnerCommands";
@@ -363,4 +368,18 @@ test("[AC-28][AC-32] Referral creation rolls back after every persisted boundary
     assert.equal(await DomainCommandExecution.countDocuments({ "provenance.case_id": String(fixture.caseId) }), 0);
     assert.equal((await getGranotBookingReconciliationCaseModel().findById(fixture.caseId).lean().exec())?.state, "open");
   }
+});
+
+test("Referral creation in Job Number enforce mode answers 422 for a value that cannot be a Job Number and writes no Booking", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seed();
+  // The fixture Job (`U28-<base36>-<hex>`) is not a Job Number under the Booking rule.
+  const control = mongoose.connection.collection<{ _id: string }>(BOOKING_JOB_NUMBER_CONTROL_COLLECTION);
+  await control.updateOne({ _id: BOOKING_JOB_NUMBER_CONTROL_ID }, { $set: { mode: "enforce" } }, { upsert: true });
+  t.after(() => control.deleteOne({ _id: BOOKING_JOB_NUMBER_CONTROL_ID }));
+  await assert.rejects(
+    createReferralBooking(command(fixture, "jobno-enforce"), { flags }),
+    (error: unknown) => error instanceof BookingJobNumberError && error.statusCode === 422,
+  );
+  assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 0);
 });

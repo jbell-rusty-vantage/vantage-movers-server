@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { ZodError } from "zod";
 import { connectMongo } from "../db";
+import { isBookingJobNumberError } from "../services/bookings/bookingJobNumberGuard";
 import type { VantageAuthContext } from "../middleware/requireApiSecret";
 import {
   isRegistryError,
@@ -674,6 +675,9 @@ function sendError(res: Response, error: unknown, requestIdValue?: string) {
   void observeGranotOwnerCommandConflict(error);
   if (isGranotLifecycleError(error)) {
     return res.status(error.statusCode).json(error.toHttpBody());
+  }
+  if (isBookingJobNumberError(error)) {
+    return res.status(error.statusCode).json(error.toHttpBody(requestIdValue ?? null));
   }
   if (isRegistryError(error)) {
     const ownerRequired =

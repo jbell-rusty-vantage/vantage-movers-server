@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import type { Logger } from "pino";
 import { ZodError, type ZodType } from "zod";
 import { connectMongo } from "../db";
+import { isBookingJobNumberError } from "../services/bookings/bookingJobNumberGuard";
 import { withRuntimeDomainOverrides } from "../config/domain";
 import { logger as rootLogger } from "../logger";
 import { requireApiSecret } from "../middleware/requireApiSecret";
@@ -2592,6 +2593,9 @@ async function sendError(req: Request, res: Response, error: unknown) {
       );
     }
     if (isRegistryError(error)) {
+      return res.status(error.statusCode).json(error.toHttpBody());
+    }
+    if (isBookingJobNumberError(error)) {
       return res.status(error.statusCode).json(error.toHttpBody());
     }
     return res.status(error.statusCode).json({
