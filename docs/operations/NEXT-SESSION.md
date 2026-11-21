@@ -75,8 +75,16 @@ Evidence is in the main checkout's untracked `.tmp/bad-form-cleanup-2026-11-20/`
    - 40 production job groups have Record Links that name more than one Lead.
    - Header migration before any new managed Sheet column: the proposal is on #247.
    - The seven-day all-member `$indexStats` series has not started. Atlas slow-query access from this workstation is blocked by the service account's API access list.
-   - The #252 drift check and the #251 tool's `countDocuments` have no `maxTimeMS`.
+   - ~~The #252 drift check and the #251 tool's `countDocuments` have no `maxTimeMS`.~~ Fixed in [PR #255](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/255). A timed-out drift scan now records `last_attempt_at` and stays throttled hourly.
 7. **Earlier clocks.** See "Clocks still open" in the record below: November 21 17:33, November 22 16:27, November 23 21:06, November 26 00:00 UTC, November 27 20:04 and December 19.
+
+8. **Late November 20 stability pass (21:40 New York).**
+   - **PR #255** is reviewed and green, waiting for the Owner's merge. On a MongoDB credential rejection (code 18), the five queue consumers now acknowledge the wake-up, and the current deployment's cron drains the work. Before this, the superseded November 19 deployment `5137f06f` retried Sales Intelligence and Granot lifecycle wake-ups about 176 times an hour from 10:00 to 16:30 UTC. Live production was unaffected. [Rule](README.md)
+   - **Repository cleanup.**
+     - Six merged worktrees were removed: `booking-jobno`, `pr245-review`, `-lifecycle`, `-ops`, `-ops2` and `-tracka`. Their `.tmp` evidence was copied, verified identical, to the main checkout's `.tmp/bad-form-cleanup-2026-11-20/from-worktree-*`.
+     - Every merged branch was deleted, locally and on GitHub. Only `main` and the open PRs #222, #249, #253, #254 and #255 remain.
+     - The main checkout is on `main`.
+     - The root's ignored scratch files (`.owner-*.log`, `.cleanup-*`, `.storage-*`) moved to `.tmp/root-scratch-archive-2026-11-20/`.
 
 ### Working rules learned on November 20
 
