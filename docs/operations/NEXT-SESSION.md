@@ -14,7 +14,7 @@ The November 20 tracks are complete; their record is below.
 
 **Kickoff prompt.** Paste this to start:
 
-> Run the next program from `docs/operations/NEXT-PROGRAM-2026-11-20.md`, workstreams in order, with separate agents and one worktree per agent. Start with workstream 5's Sheet Sync profile and CLI runner and workstream 1's GCS module design, in parallel. First close the carry-overs listed under "Start here" in `NEXT-SESSION.md`. Every merge to `main` deploys production. Open PRs, have each independently reviewed, and merge only with my approval, just after a top-of-hour slot.
+> In the `vantage-dev` cloud environment ([CLOUD-SESSIONS.md](docs/operations/CLOUD-SESSIONS.md); run its first-session checklist first), run the next program from `docs/operations/NEXT-PROGRAM-2026-11-20.md`, workstreams in order, with separate agents and one worktree per agent. Start with workstream 5's Sheet Sync profile and CLI runner and workstream 1's GCS module design, in parallel. First close the carry-overs listed under "Start here" in `NEXT-SESSION.md`. Every merge to `main` deploys production. Open PRs, have each independently reviewed, and merge only with my approval, just after a top-of-hour slot.
 
 ### State at close (November 20, 20:15 New York)
 
