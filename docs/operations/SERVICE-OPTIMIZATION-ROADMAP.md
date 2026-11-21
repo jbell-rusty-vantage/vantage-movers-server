@@ -2,6 +2,16 @@
 
 **Next program (Owner, November 20).** After the open handoff items close, round out the upgrade in five workstreams: a Google Cloud Storage service, further reviews, a clean-code cleanup, git-triggered quality checkpoints, and agent profiles with CLI runners per stack and service. [Program](NEXT-PROGRAM-2026-11-20.md)
 
+**November 20 close.** Production now serves `main` `9c0cc421`. It added these releases, each independently reviewed and observed in production:
+
+- #246: the routine purge after a retry.
+- #247: Sheet protection editors, plus stale-lease reclaim capped at 3.
+- #250: Lead job-number point lookups and hardened retention holds.
+- #251: two Form Lead contact-email indexes.
+- #252: Booking job-number validation in shadow mode, a drift check, and removal of the Pool scan.
+
+The next session starts the [next program](NEXT-PROGRAM-2026-11-20.md) after the carry-overs in [NEXT-SESSION](NEXT-SESSION.md#start-here--next-session-owner-november-20).
+
 **November 20 releases and Sheet cleanup.**
 
 - **Releases:** PR #243 restored the Granot scheduled sibling catch-up, Record Links, bounded post-commit steps and dispute persistence. It caps follow-ups at 50 per plan and backs off for 6 hours. PR #245 made Forms and Duplicate Forms exclusive on re-delivery and rechecks row identity before every positional Sheet update. PR #244 added the [Lead lifecycle pack](../knowledge/lead-lifecycle/README.md). Each PR passed an independent review. `main` `194e486d` serves production. The 15:00 ALL and Pool slot observation is in progress.
