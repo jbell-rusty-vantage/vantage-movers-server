@@ -223,6 +223,35 @@ These measurements cover the four slow shapes in the [review](SERVICE-REVIEW-202
 
 **Order:** 2, then 1, then 4A, then 3. Items 2 and 4A are code-only. Item 1 adds about 0.5 MB of index and needs Owner approval.
 
+## November 20 index-phase release (Owner-approved items 1–3)
+
+The Owner approved items 1–3 at 15:20 New York; item 4 is still undecided. Production served `9ba6d531` from 19:17 New York, the server's recorded commit. It contains #250 (`da7fdcdd`, items 1 and 3) and #251 (`9ba6d531`, item 2).
+
+**Item 2: Form Lead contact-email indexes built.**
+
+- **Build:** `ops/capacity/form-lead-email-indexes-2026-11-20.cjs` ran at 00:17 UTC on November 21 in three steps:
+  1. preflight: no problems; replica set healthy, member 02 primary;
+  2. `--create`: the whole command, including preflight reads, plan checks and the build, took 4.4 s of wall time;
+  3. a separate `--verify`.
+- **Sizes:** identical on all three members.
+
+  | Index | Size | Forms holding the value |
+  |---|---:|---:|
+  | `form_lead_ingested_contact_email` | 241,664 bytes | 7,705 |
+  | `form_lead_granot_contact_email` | 110,592 bytes | 3,080 |
+
+  Together that is 344 KB per member. The estimate was about 0.5 MB.
+- **Contact-match plan, largest Lead Source scope (3,097 Forms):** before, 3,093 keys and 3,034 documents examined for 0 returned, 149–182 ms, through `form_lead_source_granularity_normalized_phone_duplicate`. After, an index union over all six branches: 1 key, 0 documents, 2–7 ms.
+- **Live traffic:** the primary's `$queryStats` for that shape examined about 1.3 keys per run over the 407 runs after the build. Before, it averaged about 1,771.
+- **Evidence:** [create before](evidence/form-lead-email-indexes-before-2026-11-21T00-17-44-167Z.json), [create after](evidence/form-lead-email-indexes-after-2026-11-21T00-17-44-167Z.json), [verify](evidence/form-lead-email-indexes-after-2026-11-21T00-17-59-901Z.json).
+- **Rollback:** `--hide`, then `--drop`.
+
+**Item 1: Lead job-number reads.** The new `leadJobNumberFilter` shape on `call_leads`, from the Call ladder, first appeared on the primary at 01:00:58 UTC. Over 54 runs it averaged 5.9 keys, with a maximum of 10. Before the change, the regex form examined about 1,342 keys. No `form_leads` run of the new shape had occurred by 01:08 UTC.
+
+**Item 3: retention holds.** At 01:10 UTC, a read-only comparison of the old and new hold reads covered all 6,416 hot Observations in 34 batches. Holds were identical: 5,821 references, 0 missing, 0 extra. Of the 34 batches, 29 still use the Form six-path scan, as designed. Hot Observations, webhook receipts, Decisions and archived receipts were unchanged between 00:19 and 01:10 UTC, so no evidence was released.
+
+**20:00 New York slot on `9ba6d531`:** all 132 runs (ALL and Pool) completed. Planning found 7,059 already-current rows and 0 updates. There were no errors, no follow-up promotions, no Sheet jobs, no new Record Links and no disputes.
+
 ## Recommended scope for the index and read phase
 
 1. Collect a seven-day `$indexStats` series on all three members, at matched hours. Add a profiler or slow-query sample for the hottest collections.
