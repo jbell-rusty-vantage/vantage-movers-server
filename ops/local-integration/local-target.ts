@@ -19,7 +19,4 @@ export function useLocalReplica(database: string): void {
   process.env.TEST_MONGO_DATABASE_NAME = database;
   process.env.MONGO_URI = LOCAL_REPLICA_URI;
   process.env.SHEET_SYNC_MODE = "disabled";
-  // `src/services/crm/crmConfig.ts` imports `dotenv/config`; point it at a file that does not exist so the
-  // checkout's `.env` cannot bring provider credentials back.
-  process.env.DOTENV_CONFIG_PATH = "ops/local-integration/.no-dotenv.env";
 }
