@@ -1,6 +1,7 @@
 import { QueueClient } from "@vercel/queue";
 import { connectMongo } from "../../src/db";
 import { logger } from "../../src/logger";
+import { acknowledgeWhenCredentialsRejected } from "../../src/queueConsumerFailure";
 import {
   dispatchCsiWakeup,
   type DispatchDependencies,
@@ -38,6 +39,7 @@ export default queue.handleNodeCallback(async (message) => {
   try {
     await handleSalesIntelligenceQueueMessage(message);
   } catch (error) {
+    if (acknowledgeWhenCredentialsRejected("sales_intelligence", error)) return;
     logger.error({
       msg: "sales_intelligence.consumer.failed",
       errorName: error instanceof Error ? error.name : "Error",

@@ -15,6 +15,8 @@ import { BOOKING_JOB_NUMBER_CONTROL_COLLECTION } from "./bookingJobNumberGuard";
 export const BOOKING_JOB_NORMALIZATION_STATE_ID = "normalization_invariant";
 const MIN_INTERVAL_MS = 55 * 60 * 1000;
 const SAMPLE_IDS = 20;
+/** The scan reads every Booking; bound it so a slow member fails the check instead of holding the cron. */
+const DRIFT_SCAN_MAX_TIME_MS = 15_000;
 
 export type BookingJobNormalizationState = {
   _id: typeof BOOKING_JOB_NORMALIZATION_STATE_ID;
@@ -34,7 +36,7 @@ export async function findBookingJobNormalizationDrift(db: Db): Promise<{ drift:
     { job_no: { $type: "string" }, normalized_job_no: { $not: { $type: "string" } } },
     { job_no: { $not: { $type: "string" } }, normalized_job_no: { $exists: true, $ne: null } },
     { job_no: { $type: "string" }, $expr: { $ne: ["$job_no", "$normalized_job_no"] } },
-  ] }, { projection: { job_no: 1, normalized_job_no: 1 } }).toArray();
+  ] }, { projection: { job_no: 1, normalized_job_no: 1 }, maxTimeMS: DRIFT_SCAN_MAX_TIME_MS }).toArray();
   const drift = candidates.filter((row) => {
     const expected = typeof row.job_no === "string" ? normalizeJobNo(row.job_no) ?? null : null;
     const stored = row.normalized_job_no ?? null;
