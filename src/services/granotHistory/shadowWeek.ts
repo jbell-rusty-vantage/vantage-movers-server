@@ -4,6 +4,10 @@ export type ShadowDay = {
   _id: string;
   qualified?: number;
   read_comparisons?: number;
+  /** Pool samples whose accepted chain has already left MongoDB, so no comparison was possible. */
+  read_comparisons_skipped_retired_chain?: number;
+  /** The last 20 skipped samples, for review: a proof pointing at an Observation that never existed is also skipped. */
+  read_comparisons_skipped_samples?: { model: string; id: string; observation_id: string | null }[];
   mismatches?: number;
   failures?: number;
   ttl_stamped?: number;

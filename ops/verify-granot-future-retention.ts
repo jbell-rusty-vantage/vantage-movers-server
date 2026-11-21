@@ -9,10 +9,10 @@ import { archivedChains } from "../src/services/granotHistory/archiveReads";
 import { readClosedRun } from "../src/services/granotHistory/closedAutomationRun";
 
 async function main() {
-  const client = new MongoClient(
-    "mongodb://127.0.0.1:27961/?replicaSet=storageRs",
-    { serverSelectionTimeoutMS: 3000 },
-  );
+  const uri = process.env.RETENTION_VERIFY_MONGO_URI ?? "mongodb://127.0.0.1:27961/?replicaSet=storageRs";
+  // Never point this harness at a shared database: it seeds its own throwaway test database.
+  assert.match(uri, /^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//, "RETENTION_VERIFY_MONGO_URI must be a loopback replica");
+  const client = new MongoClient(uri, { serverSelectionTimeoutMS: 3000 });
   try {
     const db = client.db(
         "testvantagemovers_ret" + new ObjectId().toHexString(),
@@ -40,6 +40,7 @@ async function main() {
     );
     await installRetention(db, new Date(+now - 15 * day));
     const receipts: ObjectId[] = [];
+    let poolObservation: ObjectId | undefined;
     for (const [i, age] of [10, 9, 35, 11].entries()) {
       const at = new Date(+now - age * day),
         r = new ObjectId(),
@@ -83,6 +84,7 @@ async function main() {
         effects: [],
         decided_at: at,
       });
+      if (i === 1) poolObservation = o;
       if (i === 1)
         await db
           .collection("sales_outreach_pool_work")
@@ -96,7 +98,7 @@ async function main() {
     await db.collection("form_leads").insertOne({
       _id: lead,
       last_accepted_granot_observation: {
-        observation_id: new ObjectId(),
+        observation_id: poolObservation,
         captured_at: now,
         evidence: { version: 2 },
       },
@@ -122,6 +124,27 @@ async function main() {
       1,
     );
     assert.equal(shadow.archived, 2);
+    // A sampled Lead whose accepted chain has already left MongoDB is skipped, not compared:
+    // the history read can only refuse it, which failed every run on the same sample on 2026-11-21.
+    const retiredLead = new ObjectId();
+    await db.collection("form_leads").insertOne({
+      _id: retiredLead,
+      last_accepted_granot_observation: { observation_id: new ObjectId(), captured_at: now, evidence: { version: 2 } },
+    });
+    await db.collection("sales_outreach_pool_work").insertOne({ active: true, lead_model: "FormLead", lead_id: retiredLead, episodes: [] });
+    await db.collection(collections[0]).updateMany({ _id: { $in: receipts } }, { $set: { "processing.retention_review_at": now } });
+    const skipped = await runFutureRetention(db, now, async (_bound, ref) => ref.id !== String(retiredLead));
+    assert.equal(skipped.status, "shadow");
+    assert.equal(skipped.stamped, 0);
+    const afterSkip = await db
+      .collection<{ _id: string; read_comparisons: number; read_comparisons_skipped_retired_chain: number; failures?: number; last_pool_cursor: ObjectId }>("granot_retention_days")
+      .findOne({ _id: now.toISOString().slice(0, 10) });
+    assert.equal(afterSkip?.read_comparisons, 1);
+    assert.equal(afterSkip?.read_comparisons_skipped_retired_chain, 1);
+    assert.deepEqual((afterSkip as { read_comparisons_skipped_samples?: { id: string }[] } | null)?.read_comparisons_skipped_samples?.map((x) => x.id), [String(retiredLead)]);
+    assert.equal(afterSkip?.failures, undefined);
+    const retiredWork = await db.collection("sales_outreach_pool_work").findOne({ lead_id: retiredLead });
+    assert.equal(String(afterSkip?.last_pool_cursor), String(retiredWork?._id), "the cursor moves past the retired sample");
     assert.equal(shadow.stamped, 0);
     for (const name of collections)
       assert.equal(

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { logger } from "../../logger";
 import { evidenceForReceipt, readEvidencePage, type EvidenceLocator } from "./evidencePage";
 import type { DeskLeadRef } from "../salesOutreach/subjects/leadFacts";
 import { canPromoteFuture, type ShadowDay } from "./shadowWeek";
@@ -232,7 +233,9 @@ export async function runFutureRetention(
         let stamped = 0,
           retired = 0,
           qualified = 0,
-          comparisons = 0;
+          comparisons = 0,
+          retiredChainSkips = 0;
+        let skippedSample: { model: string; id: string; observation_id: string | null } | undefined;
         const fresh = await readChains(db, ids, archived, storage.read, session);
         const eligible = fresh.filter((c) =>
           isDeepStrictEqual(verified.get(String(c.observation._id)), c),
@@ -320,9 +323,27 @@ export async function runFutureRetention(
                   _id: sample.lead_id,
                   "last_accepted_granot_observation.evidence.version": 2,
                 },
-                { session, projection: { _id: 1 } },
+                { session, projection: { "last_accepted_granot_observation.observation_id": 1 } },
               );
-            if (lead) {
+            // The comparison reads the accepted Observation's full chain from MongoDB. Once a
+            // retention path has moved that chain out (the Lead keeps its v2 proof), the history
+            // read can only refuse, so the sample is counted as skipped and the cursor still
+            // advances. Comparing it anyway failed every run on the same sample (2026-11-21).
+            const storedObservationId = (lead?.last_accepted_granot_observation as { observation_id?: unknown } | undefined)?.observation_id;
+            // Mongoose casts a string id on read; match that here so a stored string is not mistaken for a retired chain.
+            const acceptedObservationId = typeof storedObservationId === "string" && mongoose.isValidObjectId(storedObservationId)
+              ? new mongoose.Types.ObjectId(storedObservationId)
+              : storedObservationId;
+            const chainInMongo = lead && acceptedObservationId
+              ? await db.collection("granot_observations").findOne({ _id: acceptedObservationId }, { session, projection: { _id: 1 } })
+              : null;
+            if (lead && !chainInMongo) {
+              // Not compared, so a proof pointing at an Observation that never existed would also land here.
+              // The Lead is recorded and logged so skipped samples stay reviewable.
+              retiredChainSkips++;
+              skippedSample = { model: sample.lead_model, id: String(sample.lead_id), observation_id: acceptedObservationId ? String(acceptedObservationId) : null };
+              logger.warn({ msg: "granot_retention.shadow_comparison_skipped", reason: "accepted_chain_not_in_mongo", lead: skippedSample });
+            } else if (lead) {
               if (
                 !(await compare(
                   db,
@@ -350,6 +371,7 @@ export async function runFutureRetention(
               reviewed: ids.length,
               qualified,
               read_comparisons: comparisons,
+              read_comparisons_skipped_retired_chain: retiredChainSkips,
               archived_reviews: verified.size,
               ttl_stamped: stamped,
               archived_retired: retired,
@@ -359,6 +381,9 @@ export async function runFutureRetention(
               mode: policy.mode,
               ...(poolCursor ? { last_pool_cursor: poolCursor } : {}),
             },
+            ...(skippedSample
+              ? { $push: { read_comparisons_skipped_samples: { $each: [skippedSample], $slice: -20 } } }
+              : {}),
           },
           { session, upsert: true },
         );
