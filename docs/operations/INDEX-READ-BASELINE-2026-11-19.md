@@ -142,6 +142,116 @@ The reusable space left inside files is now 323–331 MB per member. The `compac
 
 Large deletions inflate the oplog file again. Atlas keeps at least about 24 hours of oplog even beyond its configured size, so each removed document adds an entry to it. Spread future cleanups over time, and recheck the oplog file afterwards. [Space report](../../scripts/output/storage-reclaim-report-2026-11-20.json) is local and untracked.
 
+## November 20 index-phase measurements (read-only)
+
+These measurements cover the four slow shapes in the [review](SERVICE-REVIEW-2026-11-20.md#index-phase-targets-found-during-the-review). No index, TTL or data was changed.
+
+**How they were measured.**
+- **Plans:** `explain("executionStats")` on a secondary, with realistic production inputs, at about 14:40 New York on November 20.
+- **Sizes and use:** `$collStats` and `$indexStats` on member 01, a secondary. Its counters have only run since 03:29 UTC.
+- **Not covered:** the seven-day, all-member `$indexStats` series has not started. The Atlas slow-query log could not be read through the Admin API, because the service account's API access list does not include this workstation's address. Each shape below is therefore attributed by reproducing its code path, not from the log.
+
+| Collection | Documents | Data | Indexes |
+|---|---:|---:|---:|
+| `booked_leads` | 1,075 | 0.9 MB | 0.7 MB |
+| `call_leads` | 2,119 | 4.6 MB | 2.3 MB |
+| `form_leads` | 9,045 | 24.0 MB | 7.3 MB |
+
+### 1. `form_leads` contact match: about 3,000 keys for 0 returned
+
+- **Owner:** the Granot identity ladder, `createMongoLeadIdentityStore().findFormLeadsByScopedContact` in `granotLifecycle/identity.ts`. It runs on webhooks and on every scheduled Estimates plan for a Form row without a link or reference match.
+- **Cause:** the `$or` has six branches. Four are indexed: `normalized_phone_number`, `ingested_contact_snapshot.normalized_phone_number`, `granot_contact_snapshot.normalized_phone_number` and `email`. Two are not: `ingested_contact_snapshot.email` and `granot_contact_snapshot.email`. With any unindexed branch, the planner cannot use an index union. It scans the whole source scope through `form_lead_source_granularity_normalized_phone_duplicate`.
+- **Before:** 3,092 keys and 3,033 documents examined, 0 returned, 187 ms. The scope holds 3,096 Forms.
+- **After, measured on the same query without the two unindexed branches:** an index union examined 1 key and 0 documents in 3–7 ms.
+- **Proposal:** add two indexes: `{ "ingested_contact_snapshot.email": 1 }` (7,701 Forms hold it) and `{ "granot_contact_snapshot.email": 1 }` (3,077 Forms).
+  - **Size:** about 0.35 MB and 0.15 MB, estimated from `email_1` at 0.40 MB for about 9,000 entries.
+  - **Write cost:** one extra key at Form creation, because the ingested snapshot never changes. One more key update when a Granot contact snapshot changes email.
+  - **Rollback:** hide, then drop.
+
+### 2. `call_leads` (and `form_leads`) by `normalized_job_no`: about 1,335 keys for few returned
+
+- **Owner:** `equivalentNormalizedJobFilter` in `bookings/bookingIdentity.ts`. Its `{ $regex: "^[A-Z]+<core>$" }` branch walks every letter-prefixed key in the index. Callers:
+  - `callLeadFormSibling.ts` `loadFormSiblingCandidates`, which runs twice per sibling update;
+  - `identity.ts`, at three call sites;
+  - `jobNumberTimeline/mongo-evidence-loader.ts`, at two;
+  - `bookingIdentity` itself, through `remapNormalizedJobFilter`.
+- **Before:**
+  - `call_leads`: 1,342 keys for 0 returned. Its job numbers are 869 `P`-prefixed, 468 digits only, and 5 with other prefixes.
+  - `form_leads`: 6,636 keys for 1 returned.
+- **After, measured with the existing indexed equivalent `normalizedJobCandidates([job])`:** 10 and 5 keys. That function matches the same set: the exact job, its digit core, every single-letter prefix, longer prefixes through disjoint ranges, and the trailing-newline spellings that PCRE `$` also accepts.
+- **Proposal:** a code change only, with no index. Use `normalizedJobCandidates` in these callers.
+- **Exception:** keep `identity.ts` `findActiveRecordLink`'s `findOne` fallback as it is, unless an explicit sort is added. Its result depends on plan order when two equivalent links name different Leads. Production holds 40 such job groups.
+- **Rollback:** revert the PR.
+
+### 3. `booked_leads` COLLSCAN: 508 entries in the log
+
+- **Owner:** Pool admission (`salesOutreach/pool/admission.ts`). The batch read `$or`s three branches: `lead_ref`, `normalizedJobCandidates(jobs, "scan")` and `legacyBookingJobFilter`. The `$expr` in `legacyBookingJobFilter` makes the whole `$or` a collection scan.
+- **Measured with a 50-job batch:**
+
+  | Query | Plan | Documents examined | Returned | Time |
+  |---|---|---:|---:|---:|
+  | Full read | COLLSCAN | 1,075 | 2 | 12 ms |
+  | Without the legacy branch | COLLSCAN | 1,075 | 0 | 3 ms |
+  | Legacy branch alone | `job_no_1` | 1,075 | 2 | 16 ms |
+
+  The collection is small, so each scan is cheap. The 604 ms maximum in the log probably came from contention inside the transaction, not from data volume.
+- **Proposal:** none for indexes, because no index serves `$expr`. Two options:
+  - Leave it. It costs about 1,075 documents per Pool batch.
+  - Repair the two Bookings whose raw `job_no` disagrees with `normalized_job_no` through the canonical Booking command. That needs Owner approval. Then serve the legacy branch from a small cached list, or remove it.
+- **Watch:** the cost grows linearly with `booked_leads`.
+
+### 4. `form_leads` COLLSCAN on `last_accepted_granot_observation.observation_id`: 77 entries
+
+- **Owner:** Granot retention reference holds, `granotHistory/retentionReferences.ts` `referencedChains`, called from `futureRetention.ts` and `retireLeadEvidence.ts`. It `$or`s six Lead provenance paths, and none is indexed.
+- **Before:** 9,045 documents examined to return 106, 63 ms. Even the winner path alone scans the collection (12 ms).
+- **How often each path is set:**
+
+  | Path | Forms |
+  |---|---:|
+  | `last_accepted_granot_observation` | 6,858 |
+  | `granot_contact_snapshot` | 3,077 |
+  | `current_contact_provenance` | 2,084 |
+  | `current_move_provenance` | 3,103 |
+  | `last_granot_contact_change` | 13 |
+  | `ringcentral_convergence` | 0 |
+
+- **Proposal A, preferred:** a code change. The retention job already knows each Observation's Decision target. Probe the target Lead by `_id` and compare the six paths in memory. This needs no index and makes no extra write on Lead updates.
+- **Proposal B:** sparse indexes on the four populated paths, on both `form_leads` and `call_leads`.
+  - **Size:** about 0.6–0.8 MB.
+  - **Write cost:** one to four extra index updates on every accepted Granot change.
+  - **Rollback:** hide, then drop.
+
+**Order:** 2, then 1, then 4A, then 3. Items 2 and 4A are code-only. Item 1 adds about 0.5 MB of index and needs Owner approval.
+
+## November 20 index-phase release (Owner-approved items 1–3)
+
+The Owner approved items 1–3 at 15:20 New York; item 4 is still undecided. Production served `9ba6d531` from 19:17 New York, the server's recorded commit. It contains #250 (`da7fdcdd`, items 1 and 3) and #251 (`9ba6d531`, item 2).
+
+**Item 2: Form Lead contact-email indexes built.**
+
+- **Build:** `ops/capacity/form-lead-email-indexes-2026-11-20.cjs` ran at 00:17 UTC on November 21 in three steps:
+  1. preflight: no problems; replica set healthy, member 02 primary;
+  2. `--create`: the whole command, including preflight reads, plan checks and the build, took 4.4 s of wall time;
+  3. a separate `--verify`.
+- **Sizes:** identical on all three members.
+
+  | Index | Size | Forms holding the value |
+  |---|---:|---:|
+  | `form_lead_ingested_contact_email` | 241,664 bytes | 7,705 |
+  | `form_lead_granot_contact_email` | 110,592 bytes | 3,080 |
+
+  Together that is 344 KB per member. The estimate was about 0.5 MB.
+- **Contact-match plan, largest Lead Source scope (3,097 Forms):** before, 3,093 keys and 3,034 documents examined for 0 returned, 149–182 ms, through `form_lead_source_granularity_normalized_phone_duplicate`. After, an index union over all six branches: 1 key, 0 documents, 2–7 ms.
+- **Live traffic:** the primary's `$queryStats` for that shape examined about 1.3 keys per run over the 407 runs after the build. Before, it averaged about 1,771.
+- **Evidence:** [create before](evidence/form-lead-email-indexes-before-2026-11-21T00-17-44-167Z.json), [create after](evidence/form-lead-email-indexes-after-2026-11-21T00-17-44-167Z.json), [verify](evidence/form-lead-email-indexes-after-2026-11-21T00-17-59-901Z.json).
+- **Rollback:** `--hide`, then `--drop`.
+
+**Item 1: Lead job-number reads.** The new `leadJobNumberFilter` shape on `call_leads`, from the Call ladder, first appeared on the primary at 01:00:58 UTC. Over 54 runs it averaged 5.9 keys, with a maximum of 10. Before the change, the regex form examined about 1,342 keys. No `form_leads` run of the new shape had occurred by 01:08 UTC.
+
+**Item 3: retention holds.** At 01:10 UTC, a read-only comparison of the old and new hold reads covered all 6,416 hot Observations in 34 batches. Holds were identical: 5,821 references, 0 missing, 0 extra. Of the 34 batches, 29 still use the Form six-path scan, as designed. Hot Observations, webhook receipts, Decisions and archived receipts were unchanged between 00:19 and 01:10 UTC, so no evidence was released.
+
+**20:00 New York slot on `9ba6d531`:** all 132 runs (ALL and Pool) completed. Planning found 7,059 already-current rows and 0 updates. There were no errors, no follow-up promotions, no Sheet jobs, no new Record Links and no disputes.
+
 ## Recommended scope for the index and read phase
 
 1. Collect a seven-day `$indexStats` series on all three members, at matched hours. Add a profiler or slow-query sample for the hottest collections.
