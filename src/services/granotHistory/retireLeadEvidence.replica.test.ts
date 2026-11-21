@@ -5,7 +5,7 @@ import { readEvidenceIds } from "./evidencePage";
 import { closedRuns, packClosedRun } from "./closedAutomationRun";
 import { fakeGranotArchive, historyReplica } from "./archiveTestSupport";
 import { retireLeadEvidence } from "./retireLeadEvidence";
-import { retireReceipt } from "./retireOnUse";
+import { installRetiredOperationIndex, retireReceipt } from "./retireOnUse";
 import { readGranotChain, readRetiredReceipt } from "./retiredRecords";
 import { loadClosedOperations } from "./prepareClosedRun";
 
@@ -21,6 +21,7 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
       { observation_channel: 1, channel_operation_id: 1 },
       { name: "granot_observation_receipt_channel_operation_id_unique" },
     );
+    await installRetiredOperationIndex(db);
     const run = String(new ObjectId()),
       at = new Date(Date.now() - 2 * 86400000);
     async function seed(orphan = false, priority = "1", winner = false) {

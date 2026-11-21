@@ -85,12 +85,48 @@ export async function readGranotDecision(db: Db, id: ObjectId, options: ReadBack
     ?? (await readEvidenceIds(db, [id], "decision", options.session, options.read))[0] ?? null;
 }
 
-/** The retired operation, by its unique channel key, for duplicate delivery and changed-input detection. */
+/** The locator's unique operation key: duplicate delivery and changed input keep working after retirement. */
+export const RETIRED_OPERATION_INDEX = {
+  key: { observation_channel: 1, channel_operation_id: 1 },
+  options: { name: "granot_archived_receipt_operation_unique", unique: true, partialFilterExpression: { channel_operation_id: { $type: "string" } } },
+} as const;
+
+const indexSeen = new Map<string, { ready: boolean; at: number }>();
+/**
+ * Whether `granot_archived_receipt_operation_unique` exists. Retirement of a channel operation
+ * refuses until it does, so without it no retired operation can exist and lookups are skipped
+ * (no locator scan on the capture path). A seen index is cached for the process; an absent one is
+ * rechecked at most once a minute. `fresh` bypasses the cache (the online pass, backlog --apply).
+ */
+export async function retiredOperationIndexReady(db: Db, fresh = false) {
+  const key = db.databaseName, cached = indexSeen.get(key);
+  if (!fresh && cached && (cached.ready || Date.now() - cached.at < 60_000)) return cached.ready;
+  const indexes = await archivedReceipts(db).listIndexes().toArray().catch(() => []);
+  const ready = indexes.some((index) => index.name === RETIRED_OPERATION_INDEX.options.name && index.unique === true);
+  indexSeen.set(key, { ready, at: Date.now() });
+  return ready;
+}
+
+/**
+ * The retired operation, by its unique channel key, for duplicate delivery and changed-input
+ * detection. `null` without a query while the operation index is absent.
+ */
 export async function readRetiredOperation(db: Db, channel: string, operation: string, session?: ClientSession) {
+  if (!(await retiredOperationIndexReady(db))) return null;
   return archivedReceipts(db).findOne(
     { observation_channel: channel, channel_operation_id: operation },
     { session, projection: { _id: 1, payload_sha256: 1, channel_operation_kind: 1 } },
   );
+}
+
+/**
+ * Receipts that retire on use may ever leave MongoDB: inbound Lead webhooks and Lead-snapshot
+ * channel operations. Only these get a review date, so the review queue holds nothing else.
+ */
+export function isRetirementCandidate(r: { observation_channel?: string; route_event_class?: string; channel_operation_kind?: string }) {
+  return r.observation_channel === "granot_webhook"
+    ? WEBHOOK_ROUTES.includes(String(r.route_event_class))
+    : (RETIRED_CHANNELS as readonly string[]).includes(String(r.observation_channel)) && r.channel_operation_kind === "lead_snapshot_apply";
 }
 
 /** Receipt, Observation and Decisions of one original receipt ID, hot or retired (operator diagnostics). */

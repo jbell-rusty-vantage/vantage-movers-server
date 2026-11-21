@@ -4,11 +4,13 @@
  *   node --env-file=.env --import tsx ops/granot-retire-used-receipts.ts <new private JSON file>
  *       Dry run (default). Read-only MongoDB and no GCS request of any kind: a check that needs a
  *       verified archive read is reported as `pending_gcs_verification`.
- *   node --env-file=.env --import tsx ops/granot-retire-used-receipts.ts --apply [--limit N] <new private JSON file>
+ *   node --env-file=.env --import tsx ops/granot-retire-used-receipts.ts --apply --limit N <new private JSON file>
  *   (--database testvantagemovers_<x> targets a disposable test database instead of production.)
  *       Retires every used receipt through `retireReceipt` (the online pass's path), one receipt per
  *       transaction, publishing a closed-run replay where a legacy run can close. Idempotent and
- *       resumable: rerun with a new output file. Never run without Owner approval.
+ *       resumable: rerun with a new output file. Refused until `ops/granot-retention-install.ts --install`
+ *       has created the locator operation index, and without an explicit --limit. Never run without
+ *       Owner approval.
  *
  * Counts and bytes only: the report holds no customer data. Runbook:
  * docs/knowledge/granot-lifecycle/storage-retention-operations.md#backlog-command.
@@ -20,6 +22,7 @@ import type { ArchivedChain } from "../src/services/granotHistory/archiveCodec";
 import { readArchiveObject, storeArchiveObject } from "../src/services/granotHistory/archiveObjects";
 import { referencedChains } from "../src/services/granotHistory/retentionReferences";
 import { locatorBytes, retireReceipt, type RetireContext, type RetireResult } from "../src/services/granotHistory/retireOnUse";
+import { retiredOperationIndexReady } from "../src/services/granotHistory/retiredRecords";
 import { supersededObservations } from "../src/services/granotHistory/supersededObservations";
 
 class GcsNotRead extends Error {}
@@ -77,13 +80,17 @@ async function main() {
   const database = databaseAt >= 0 ? args[databaseAt + 1] : "vantagemovers";
   const output = args.filter((a, i) => !a.startsWith("--") && !["--limit", "--database"].includes(args[i - 1])).at(-1);
   if (!/^(vantagemovers|testvantagemovers(?:_[a-z0-9]+)?)$/.test(database)) throw new Error("Unexpected database");
-  if (!output || !(limit > 0)) throw new Error("Expected [--apply] [--limit N] <new private JSON file>");
+  if (!output || !(limit > 0)) throw new Error("Expected [--apply --limit N] <new private JSON file>");
+  if (apply && !Number.isSafeInteger(limit)) throw new Error("--apply requires an explicit --limit N (start with 200)");
   if (process.env.MONGO_DNS_SERVERS) dns.setServers(process.env.MONGO_DNS_SERVERS.split(",").map((s) => s.trim()));
   const client = new MongoClient(process.env.MONGO_URI!, { appName: "granot-retire-used-receipts", maxPoolSize: 8 });
   const db = client.db(database);
   const startedAt = new Date();
   const report: Document = { mode: apply ? "apply" : "dry_run", database: db.databaseName, started_at: startedAt };
   try {
+    if (apply && !(await retiredOperationIndexReady(db, true))) {
+      throw new Error("Run ops/granot-retention-install.ts --install first: the locator operation index is missing");
+    }
     report.before = await collectionBytes(db, ["granot_webhook_receipts", "granot_archived_receipts", "granot_observations", "synchronization_decisions"]);
     const selector = { "processing.state": "completed", observation_channel: { $in: CHANNELS }, captured_at: { $lt: startedAt } };
     const ids = (await db.collection("granot_webhook_receipts").find(selector, { projection: { _id: 1 } }).sort({ _id: 1 }).toArray()).map((r) => r._id);

@@ -21,7 +21,7 @@ import {
 } from "./receiptEvidence";
 import { incrementGranotLifecycleReceiptsTotal } from "./metrics";
 import { incrementWebhookDay } from "../dailyOperations/webhookDay";
-import { readRetiredOperation } from "../granotHistory/retiredRecords";
+import { readRetiredOperation, retiredOperationIndexReady } from "../granotHistory/retiredRecords";
 
 export const GRANOT_WEBHOOK_STORED_HEADER_ALLOWLIST = [
   "content-type",
@@ -322,20 +322,30 @@ export async function captureChannelOperationReceipt(
 }
 
 /**
- * A retired operation keeps its unique key in its archive locator, not in the hot unique index. The
- * insert therefore runs in a transaction that first checks the locator: a retirement committing
- * concurrently either conflicts with this insert (the transaction retries and sees the locator) or
- * leaves the hot key in place (duplicate key). Either way the caller replays the original receipt.
+ * A retired operation keeps its unique key in its archive locator, not in the hot unique index.
+ * Once that locator index exists, the insert runs in a transaction that first checks the locator:
+ * a retirement committing concurrently either conflicts with this insert (the transaction retries
+ * and sees the locator) or leaves the hot key in place (duplicate key). Either way the caller
+ * replays the original receipt. Without the index no operation can have been retired, and the
+ * insert is the plain create it always was (no transaction, no locator read).
+ * `afterRetiredCheck` is a test seam that runs between the check and the insert.
  */
-async function persistGranotChannelReceipt(
+export async function persistGranotChannelReceipt(
   document: GranotChannelReceiptInsert,
+  hooks: { afterRetiredCheck?: () => Promise<void> } = {},
 ): Promise<{ receipt_id: string }> {
   await connectMongo();
   const model = getGranotObservationReceiptModel();
+  const db = model.db.db!;
+  if (!(await retiredOperationIndexReady(db))) {
+    const receipt = await model.create(document);
+    return { receipt_id: receipt._id.toString() };
+  }
   return withTransaction(async (session) => {
-    if (await readRetiredOperation(model.db.db!, document.observation_channel, document.channel_operation_id, session)) {
+    if (await readRetiredOperation(db, document.observation_channel, document.channel_operation_id, session)) {
       throw Object.assign(new Error("Channel operation already retired"), { code: 11000 });
     }
+    await hooks.afterRetiredCheck?.();
     const [receipt] = await model.create([document], { session });
     return { receipt_id: receipt!._id.toString() };
   });

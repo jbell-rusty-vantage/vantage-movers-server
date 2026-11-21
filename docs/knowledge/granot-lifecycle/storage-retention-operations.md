@@ -37,13 +37,14 @@ Owner direction, November 21: once a receipt, Observation or Decision has done i
 
 ### What "used" means per channel
 
-The drainer stamps `processing.retention_review_at` at completion. The pass reviews due receipts, oldest first, and claims each one for 30 minutes before any network I/O. A receipt that is not yet used gets another review a day later, and `processing.retention_reason` records why. A permanent reason, such as a booking route, removes the receipt from the queue. Code: `usedReason` in [`retireOnUse.ts`](../../../src/services/granotHistory/retireOnUse.ts).
+At completion, the drainer stamps `processing.retention_review_at` only on a candidate: an inbound `lead_created` or `priority_updated` webhook, or a `lead_snapshot_apply` channel operation (`isRetirementCandidate`). The pass reads the index range from `enabled_from` to now, so the older backlog is never scanned, and it reviews due receipts oldest first. It claims each one for 30 minutes before any network I/O. A receipt that is not yet used gets another review a day later, and `processing.retention_reason` records why. A permanent reason, such as a booking route, removes the receipt from the queue. Code: `usedReason` in [`retireOnUse.ts`](../../../src/services/granotHistory/retireOnUse.ts).
 
 | Channel | Used when | Kept in MongoDB |
 | --- | --- | --- |
 | Inbound webhook, `lead_created` / `priority_updated` | All of these hold:<br>• it is completed;<br>• it is counted in its Daily Operations day (`webhook_day_counted`, and the day carries `webhook_counts_version: 1`, so a rebuild never recounts receipts);<br>• its Observation and one live Decision exist.<br>The outcome must also be one of:<br>• a committed Lead effect: `applied` with `lead_updated`, or `created` with `lead_created` on a Form Lead whose origin is `granot_lead_created`, and the Lead exists;<br>• a terminal no-change: `already_current` (`desired_state_already_current`), `linked` (`record_link_established`) or `stale` (`older_than_temporal_winner`);<br>• creation-policy-final: `policy_blocked` or `unmatched` with `creation_policy_observation_only` or `match_window_expired`, checked against the source's policy version. | Pending matches, retries, dead letters, conflicts, ambiguous and deferred outcomes, and any day without transactional counts. |
 | Inbound webhook, `booking_status_changed` | Never. Owner decision pending (see the PR). | All of them. Booking and Release cases pin their own copies. |
 | Browser extension | All of these hold:<br>• it is completed;<br>• its latest Decision is live and found by ID, hot or archived;<br>• the Observation belongs to this receipt;<br>• the saved replay agrees with the Decision.<br>The outcome must be a committed Lead effect or terminal no-change (as above), or policy-final: `unmatched`, `policy_blocked`, `invalid`, `unsupported` or `insufficient_creation_data`. | Pending matches, conflicts, ambiguous and deferred outcomes, a missing Lead or a replay that differs. |
+| Browser extension or HTTP `booking_action_apply` (any other kind) | Never (Owner decision pending), like the Lead evidence pass. | All of them. |
 | HTTP automation (legacy, pre-cutover) | As for the extension. Its exact row must also be in the run's verified closed-run replay: operation, receipt, payload hash, kind, Decision, Observation and outcome. The pass publishes a missing closed run when `prepareClosedRun` allows it: the run is gone and every action completed more than seven days ago. | Every receipt of a run that cannot close yet. |
 
 Downstream handoffs are durable before completion:
@@ -54,7 +55,7 @@ Downstream handoffs are durable before completion:
 ### How a receipt leaves
 
 `retireReceipt` works in two steps:
-1. It gzips the receipt's exact BSON and writes it as a create-only, content-addressed object through the [Cloud Storage module](../services/cloud-storage.md). It reads the object back from the pinned generation, checks the SHA-256, then restores the BSON and compares it byte for byte.
+1. It gzips the receipt's exact BSON, minus the review bookkeeping (`retention_review_at`, `retention_reason`, `webhook_archive_review_at`), so a retry after a claim uploads the same content-addressed object, and writes it as a create-only, content-addressed object through the [Cloud Storage module](../services/cloud-storage.md). It reads the object back from the pinned generation, checks the SHA-256, then restores the BSON and compares it byte for byte.
 2. One snapshot transaction rereads the receipt and the "used" proof, inserts the locator and deletes the receipt.
 
 If the work is interrupted before the transaction, the receipt stays hot. A retry finds the same content-addressed generation, so nothing is duplicated. If the receipt changed in between, the call returns `changed` and the receipt stays hot. The locator formats and the duplicate-delivery rule are in [capture](./capture.md#retirement-of-completed-receipts-retire-on-use).
@@ -71,7 +72,7 @@ Observations and Decisions leave through the [Lead evidence pass](./capture.md#r
 | Decision repointing (`receiptDecisionPointer.ts`) | Receipt pointer and certified Lead | Hot, else the locator. Both formats carry the pointer. |
 | Channel capture (`capture.ts`) and `resumeCapturedAutomationAction` | Operation identity | The hot unique key, else `readRetiredOperation` on the locator's unique key. |
 | `applyAutomationPlanAction` | Operation result | The closed-run replay (unchanged). |
-| Pool admission (`admission.ts`) | Whether the accepted Observation's receipt completed | Hot receipt, else any locator. Every locator is written only for a completed receipt. Reference holds keep the accepted Observation and Decision hot, because they are current winners. |
+| Pool admission (`admission.ts`) | Whether the accepted Observation's receipt completed | Hot receipt, else a `completed-webhook-bson-v1` or `channel-receipt-bson-v1` locator (before this change: the webhook format only; the channel format is new, so existing data reads the same). Reference holds keep the accepted Observation and Decision hot, because they are current winners. |
 | Job timeline (`mongo-evidence-loader.ts`) | Receipt capture facts | Hot, else the locator projection (both formats). |
 | Lead evidence pass (`retireLeadEvidence.ts`) | Retired receipt body | `readRetiredReceipt`. |
 | Closed-run preparation (`prepareClosedRun.ts`) | Every receipt of the run | Hot only. An HTTP receipt leaves only after its run has closed. |
@@ -82,8 +83,9 @@ Observations and Decisions leave through the [Lead evidence pass](./capture.md#r
 
 ### Enabling, rollback and recovery
 
-- **Install.** Idempotent; adds `granot_archived_receipt_operation_unique`: `node --env-file=.env --import tsx ops/granot-retention-install.ts --install`. Until that index exists, the pass retires webhooks only and holds channel operations as `locator_operation_index_missing`.
-- **Enable (Owner).** `ops/granot-retention-install.ts --enable <ISO instant>` writes `granot_retention_control` `{ _id: "receipts-on-use-v1", enabled_from }`. Only receipts captured at or after `enabled_from` are reviewed online. Deploying alone changes nothing.
+- **Merge alone is inert.** Until `--install` creates `granot_archived_receipt_operation_unique`, no channel operation can retire (`locator_operation_index_missing`, also enforced inside `retireReceipt`), so channel capture keeps its plain insert with no transaction and no locator read. Until `--enable`, the online pass returns `not_configured`. The live webhook and evidence passes run as before.
+- **Install.** Idempotent; adds `granot_archived_receipt_operation_unique`: `node --env-file=.env --import tsx ops/granot-retention-install.ts --install`. From then on, channel capture checks the retired operation key in a transaction.
+- **Enable (Owner).** `ops/granot-retention-install.ts --enable <ISO instant>` writes `granot_retention_control` `{ _id: "receipts-on-use-v1", enabled_from }`. Only receipts completed (stamped) at or after `enabled_from` are reviewed online. Deploying alone changes nothing.
 - **Rollback.** `--disable` deletes the control document, and the pass returns `not_configured`. Retired records stay readable by ID, and duplicates keep replaying from their locators. To return one receipt to MongoDB:
   1. Restore it with the diagnostics command below.
   2. In a reviewed transaction, insert it unchanged and delete its locator.
@@ -99,7 +101,7 @@ Observations and Decisions leave through the [Lead evidence pass](./capture.md#r
   - the bytes that leave MongoDB, and the locator bytes;
   - each hold reason, with its count;
   - the hot Observations and Decisions that would follow through the evidence pass.
-- **Apply** (needs Owner approval): add `--apply`, and optionally `--limit N`. It runs one receipt per transaction, eight at a time, and publishes the closed runs that can close. To resume, rerun with a new output file. A held receipt is left untouched.
+- **Apply** (needs Owner approval): add `--apply --limit N`; the limit is required (start with 200). It refuses until `--install` has created the operation index. It runs one receipt per transaction, eight at a time, and publishes the closed runs that can close. To resume, rerun with a new output file. A held receipt is left untouched.
 
 ## Scheduled run closure and recovery
 
@@ -151,7 +153,7 @@ Query shapes:
 
 - **Drainer claim.** Due `pending` or `retry_scheduled` work and expired claims, by `processing.state`, `processing.next_attempt_at` and `processing.leased_until` ([`drainer.ts`](../../../src/services/granotLifecycle/drainer.ts)).
 - **Per-item `_id` reads.** Drainer receipt load, requeue, case statements and every retention pass.
-- **Retire-on-use review.** `processing.retention_review_at <= now`, `captured_at >= enabled_from`. Hint `granot_retention_review_v1`, sorted by review date, limit 32. The drainer sets the review date to the completion time for every completed receipt.
+- **Retire-on-use review.** `processing.retention_review_at` between `enabled_from` and now. Hint `granot_retention_review_v1`, sorted by review date, limit 32. The drainer sets the review date to the completion time for retirement candidates only.
 - **Completed webhook scan.** Per route: `route_event_class`, `observation_channel: "granot_webhook"`, `webhook_day_counted: true`, `processing.state: "completed"` and a due or absent `processing.webhook_archive_review_at`. Hint `granot_observation_receipt_route_event_captured`, newest first, limit 8. Only the route class and capture time bound the index scan. The other predicates are filtered per document.
 - **Closed-run replay.** `observation_channel: "granot_http_automation"`, `channel_operation_id: {$type: "string", $gte: "<run>:", $lt: "<run>;"}`. Hint on the unique operation index, limit 5,001 ([`prepareClosedRun.ts`](../../../src/services/granotHistory/prepareClosedRun.ts)).
 - **Replay by channel and operation ID.** `{observation_channel, channel_operation_id}` equality with no `$type` predicate and no hint. Two callers remain. The duplicate-key reload in `captureChannelOperationReceipt` ([`capture.ts`](../../../src/services/granotLifecycle/capture.ts)) serves extension and pre-cutover automation capture. `resumeCapturedAutomationAction` ([`automationApply.ts`](../../../src/services/granotLifecycle/automationApply.ts)) serves actions of runs below schema version 3 that have no saved receipt ID. New scheduled actions no longer reach this lookup.

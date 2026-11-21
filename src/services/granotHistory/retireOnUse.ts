@@ -13,6 +13,8 @@ import {
   readGranotObservation,
   restoreRetiredReceipt,
   RETIRED_CHANNELS,
+  RETIRED_OPERATION_INDEX,
+  retiredOperationIndexReady,
   webhookReceiptFormat,
 } from "./retiredRecords";
 
@@ -33,7 +35,9 @@ const WEBHOOK_ROUTES = ["lead_created", "priority_updated"];
 /** Outcomes that finish a channel operation without changing a Lead. Nothing retries them. */
 const POLICY_FINAL = new Set(["unmatched", "policy_blocked", "invalid", "unsupported", "insufficient_creation_data"]);
 /** Hold reasons that cannot change with time. Their receipts leave the review queue. */
-export const PERMANENT_HOLDS = new Set(["route_not_retired", "channel_not_retired"]);
+export const PERMANENT_HOLDS = new Set(["route_not_retired", "channel_not_retired", "kind_not_retired"]);
+/** Review bookkeeping is written while a receipt waits; it is excluded from the archived bytes, so every retry is content-identical. */
+const REVIEW_FIELDS = ["retention_review_at", "retention_reason", "webhook_archive_review_at"];
 
 export type RetireStorage = { store?: ArchiveStore; read?: ArchiveRead };
 export type RetireContext = {
@@ -41,7 +45,7 @@ export type RetireContext = {
   /** Publish a missing closed-run replay (online pass and backlog `--apply`). Dry runs only inspect. */
   closeRuns?: boolean;
   now?: Date;
-  runs?: Map<string, string>;
+  runs?: Map<string, Promise<string>>;
   rows?: Map<string, ClosedOperation[]>;
 };
 export type RetireResult =
@@ -112,22 +116,21 @@ async function usedWebhook(db: Db, r: Document, session?: ClientSession) {
  */
 async function closedRunState(db: Db, run: string, ctx: RetireContext) {
   const runs = (ctx.runs ??= new Map());
-  if (!runs.has(run)) {
-    let state = (await closedRuns(db).findOne({ _id: run }, { projection: { _id: 1 } })) ? "present" : "no_closed_run";
-    if (state !== "present") {
-      // Legacy runs close only after their original seven-day action expiry (prepareClosedRun).
-      const cutoff = new Date(+(ctx.now ?? new Date()) - 7 * 86_400_000);
-      if (ctx.closeRuns) {
-        const result = await publishClosedRun(db, run, cutoff, ctx.storage);
-        state = result === "closed" || result === "previously_closed" ? "present" : `closed_run:${result}`;
-      } else {
-        const prepared = await prepareClosedRun(db, run, cutoff);
-        state = prepared.reason === "ready" ? "closed_run:publishable" : `closed_run:${prepared.reason}`;
-      }
+  // One promise per run, so concurrent receipts of one run never publish its closure twice.
+  if (!runs.has(run)) runs.set(run, (async () => {
+    if (await closedRuns(db).findOne({ _id: run }, { projection: { _id: 1 } })) return "present";
+    // Legacy runs close only after their original seven-day action expiry (prepareClosedRun).
+    const cutoff = new Date(+(ctx.now ?? new Date()) - 7 * 86_400_000);
+    if (ctx.closeRuns) {
+      const result = await publishClosedRun(db, run, cutoff, ctx.storage);
+      return result === "closed" || result === "previously_closed" ? "present" : `closed_run:${result}`;
     }
-    runs.set(run, state);
-  }
-  return runs.get(run)!;
+    const prepared = await prepareClosedRun(db, run, cutoff);
+    return prepared.reason === "ready" ? "closed_run:publishable" : `closed_run:${prepared.reason}`;
+  })());
+  const state = runs.get(run)!;
+  state.catch(() => runs.delete(run));
+  return state;
 }
 
 /**
@@ -138,7 +141,9 @@ async function closedRunState(db: Db, run: string, ctx: RetireContext) {
  * ambiguous and deferred outcomes stay hot.
  */
 async function usedChannelOperation(db: Db, r: Document, ctx: RetireContext, session?: ClientSession) {
-  if (typeof r.channel_operation_id !== "string" || !r.channel_operation_kind || !/^[a-f0-9]{64}$/.test(r.payload_sha256 ?? "")) return "operation_identity_incomplete";
+  // Booking actions and every other kind stay hot (Owner decision pending), as in the Lead evidence pass.
+  if (r.channel_operation_kind !== "lead_snapshot_apply") return "kind_not_retired";
+  if (typeof r.channel_operation_id !== "string" || !/^[a-f0-9]{64}$/.test(r.payload_sha256 ?? "")) return "operation_identity_incomplete";
   const p = r.processing;
   if (p?.state !== "completed" || !(p.completed_at instanceof Date) || !(p.latest_decision_id instanceof ObjectId)) return "not_completed";
   // MongoDB-only proofs first, so a read-only review can name every reason that needs no GCS read.
@@ -209,6 +214,13 @@ function locatorFor(r: Document, object: { hash: string; generation: string }) {
   };
 }
 
+/** The receipt's exact BSON without review bookkeeping. Types and field order are preserved (no value promotion). */
+export function archivedBytes(raw: Buffer) {
+  const doc = BSON.deserialize(raw, { promoteValues: false });
+  for (const field of REVIEW_FIELDS) if (doc.processing) delete doc.processing[field];
+  return Buffer.from(BSON.serialize(doc));
+}
+
 /** The size the receipt's locator will have (placeholder hash and generation of the real lengths). */
 export const locatorBytes = (r: Document) => BSON.calculateObjectSize(locatorFor(r, { hash: "0".repeat(64), generation: "1".repeat(16) }));
 
@@ -225,12 +237,16 @@ export async function retireReceipt(db: Db, id: ObjectId, storage: RetireStorage
   const r = BSON.deserialize(original);
   const channel = String(r.observation_channel);
   if (options.channels && !options.channels.includes(channel)) return { status: "held", channel, reason: "channel_not_retired" };
+  // Capture skips the locator lookup while this index is absent, so no channel operation may retire without it
+  // (a dry run reports what --apply would do after --install).
+  if (!options.dryRun && channel !== "granot_webhook" && !(await retiredOperationIndexReady(db))) return { status: "held", channel, reason: "locator_operation_index_missing" };
   const reason = await usedReason(db, r, ctx);
   if (reason) return { status: "held", channel, reason };
   if (options.dryRun) return { status: "retirable", channel, bytes: original.length, locator_bytes: locatorBytes(r) };
   const format = channel === "granot_webhook" ? webhookReceiptFormat : channelReceiptFormat;
-  const object = await ctx.storage.store(db.databaseName, gzipSync(original));
-  if (!object.generation || !restoreRetiredReceipt(object.persisted, object.hash, id, format).raw.equals(original)) {
+  const bytes = archivedBytes(original);
+  const object = await ctx.storage.store(db.databaseName, gzipSync(bytes));
+  if (!object.generation || !restoreRetiredReceipt(object.persisted, object.hash, id, format).raw.equals(bytes)) {
     throw new Error("Retired receipt restore mismatch");
   }
   const locator = locatorFor(r, object);
@@ -238,7 +254,7 @@ export async function retireReceipt(db: Db, id: ObjectId, storage: RetireStorage
   try {
     return await session.withTransaction(async () => {
       const fresh = await receiptsOf(db).findOne({ _id: id }, { raw: true, session });
-      if (!Buffer.isBuffer(fresh) || !fresh.equals(original) || (await usedReason(db, r, ctx, session))) return { status: "changed", channel };
+      if (!Buffer.isBuffer(fresh) || !archivedBytes(fresh).equals(bytes) || (await usedReason(db, r, ctx, session))) return { status: "changed", channel };
       await archivedReceipts(db).insertOne(locator, { session });
       const removed = await receiptsOf(db).deleteOne({ _id: id }, { session });
       if (removed.deletedCount !== 1) throw new Error("Receipt retirement lost its source");
@@ -249,32 +265,25 @@ export async function retireReceipt(db: Db, id: ObjectId, storage: RetireStorage
   }
 }
 
-/** The locator's unique operation key: duplicate delivery and changed input keep working after retirement. */
-export const RETIRED_OPERATION_INDEX = {
-  key: { observation_channel: 1, channel_operation_id: 1 },
-  options: { name: "granot_archived_receipt_operation_unique", unique: true, partialFilterExpression: { channel_operation_id: { $type: "string" } } },
-} as const;
 export const installRetiredOperationIndex = (db: Db) =>
   archivedReceipts(db).createIndex(RETIRED_OPERATION_INDEX.key, RETIRED_OPERATION_INDEX.options);
-async function operationIndexReady(db: Db) {
-  const indexes = await archivedReceipts(db).listIndexes().toArray().catch(() => []);
-  return indexes.some((index) => index.name === RETIRED_OPERATION_INDEX.options.name && index.unique === true);
-}
 
 /**
  * The online pass, every two minutes from the storage cron. Drives the review queue the drainer
  * stamps at completion (`processing.retention_review_at`). Off until the Owner writes
- * `granot_retention_control` `{ _id: "receipts-on-use-v1", enabled_from }`; only receipts captured
- * at or after `enabled_from` are reviewed here. The older backlog goes through
+ * `granot_retention_control` `{ _id: "receipts-on-use-v1", enabled_from }`; only receipts completed
+ * (stamped for review) at or after `enabled_from` are reviewed here. The older backlog goes through
  * `ops/granot-retire-used-receipts.ts`, which uses the same `retireReceipt`.
  */
 export async function retireUsedReceipts(db: Db, now = new Date(), storage: RetireStorage = {}, limit = 32) {
   const config = await control(db).findOne({ _id: RETIRE_ON_USE_CONTROL });
   if (!(config?.enabled_from instanceof Date)) return { status: "not_configured" as const };
   const counts = { status: "processed" as const, examined: 0, retired: 0, held: 0, failures: 0, bytes_removed: 0, locator_bytes: 0, holds: {} as Record<string, number> };
-  const channels = (await operationIndexReady(db)) ? undefined : ["granot_webhook"];
+  await retiredOperationIndexReady(db, true); // refresh the cached index check once per pass
   const due = await receiptsOf(db).find(
-    { "processing.retention_review_at": { $lte: now }, captured_at: { $gte: config.enabled_from } },
+    // The index range starts at `enabled_from`: receipts completed earlier (the backlog) are never read
+    // by this pass, and everything inside the range is a candidate, so each pass stays bounded.
+    { "processing.retention_review_at": { $gte: config.enabled_from, $lte: now } },
     { projection: { _id: 1, "processing.retention_review_at": 1 }, maxTimeMS: 3000 },
   ).hint("granot_retention_review_v1").sort({ "processing.retention_review_at": 1 }).limit(limit).toArray();
   const ctx = context(storage, { closeRuns: true, now });
@@ -288,7 +297,7 @@ export async function retireUsedReceipts(db: Db, now = new Date(), storage: Reti
     counts.examined++;
     let result: RetireResult;
     try {
-      result = await retireReceipt(db, row._id, storage, { ctx, channels });
+      result = await retireReceipt(db, row._id, storage, { ctx });
     } catch {
       counts.failures++;
       continue;
@@ -299,7 +308,7 @@ export async function retireUsedReceipts(db: Db, now = new Date(), storage: Reti
       counts.locator_bytes += result.locator_bytes;
     } else if (result.status === "held") {
       counts.held++;
-      const reason = channels && result.reason === "channel_not_retired" ? "locator_operation_index_missing" : result.reason;
+      const reason = result.reason;
       counts.holds[reason] = (counts.holds[reason] ?? 0) + 1;
       await receiptsOf(db).updateOne({ _id: row._id }, PERMANENT_HOLDS.has(reason)
         ? { $unset: { "processing.retention_review_at": "", "processing.retention_reason": "" } }

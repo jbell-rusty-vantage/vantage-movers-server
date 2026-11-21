@@ -20,7 +20,7 @@ router.all(
       if (runs.status === "rejected") throw runs.reason;
       if (webhooks.status === "rejected") throw webhooks.reason;
       if (evidence.status === "rejected") throw evidence.reason;
-      res.status(runs.value.failures || webhooks.value.failures || ("failures" in receipts.value && receipts.value.failures) ? 503 : 200).json({ retire_on_use: receipts.value, scheduled_runs: runs.value, completed_webhooks: webhooks.value, lead_evidence:evidence.value });
+      res.status(runs.value.failures || webhooks.value.failures || ("failures" in receipts.value && receipts.value.failures) ? 503 : 200).json({ ...receipts.value, scheduled_runs: runs.value, completed_webhooks: webhooks.value, lead_evidence:evidence.value });
     } catch (e) {
       next(e);
     }

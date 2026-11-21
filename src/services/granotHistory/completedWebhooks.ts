@@ -10,9 +10,9 @@ export async function retireWebhookReceipt(db: Db, id: ObjectId, storage: Retire
 }
 
 /**
- * Backstop scan for inbound Lead webhooks, newest first per route, for receipts that have no
- * retire-on-use review date (completed before the drainer stamped one, or before the pass was
- * enabled). A held receipt is reviewed again after a day.
+ * The live inbound Lead webhook pass, newest first per route: completed, day-counted receipts whose
+ * `processing.webhook_archive_review_at` is absent or due. A held receipt gets that date a day later.
+ * It runs whether or not retire on use is enabled, as it did before.
  */
 export async function retireCompletedWebhooks(db: Db, now = new Date()) {
   const counts = { examined: 0, retired: 0, held: 0, failures: 0 };

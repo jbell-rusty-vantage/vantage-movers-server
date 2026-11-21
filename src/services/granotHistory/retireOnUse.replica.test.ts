@@ -20,19 +20,21 @@ import { applyAutomationPlanAction } from "../granotLifecycle/automationApply";
 import { claimAndProcessOrPoll } from "../granotLifecycle/drainer";
 import { OperationIdempotencyConflictError } from "../granotLifecycle/errors";
 import { applyExtensionGranotItem } from "../granotLifecycle/extensionApply";
+import { captureChannelOperationReceipt, persistGranotChannelReceipt } from "../granotLifecycle/capture";
 import { hashCredentialRedactedPayload } from "../granotLifecycle/receiptEvidence";
 import { useGranotArchiveStoreForTests } from "./archiveObjects";
 import { archiveObjectReferenced } from "./archiveReferences";
-import { fakeGranotArchive } from "./archiveTestSupport";
+import { fakeGranotArchive, historyReplica } from "./archiveTestSupport";
 import { closedRuns, packClosedRun } from "./closedAutomationRun";
 import { retireLeadEvidence } from "./retireLeadEvidence";
 import { installRetiredOperationIndex, retireReceipt, retireUsedReceipts, RETIRE_ON_USE_CONTROL } from "./retireOnUse";
-import { archivedReceipts, readGranotDecision, readGranotObservation, readGranotReceipt } from "./retiredRecords";
+import { archivedReceipts, readGranotDecision, readGranotObservation, readGranotReceipt, readRetiredOperation } from "./retiredRecords";
 
 const clock = { at: Date.now() };
 const archive = fakeGranotArchive(() => new Date(clock.at));
 const { storage } = archive;
 let db: Db;
+let defaultDb: Db;
 let ready = false;
 const flags = { ...getGranotLifecycleFlags(), processing_enabled: true };
 const initiator: DurableActor = {
@@ -43,7 +45,7 @@ const initiator: DurableActor = {
 before(async () => {
   if (process.env.GRANOT_LIFECYCLE_REPLICA_TESTS !== "true" || !/^testvantagemovers(?:_[a-z0-9]+)?$/i.test(getMongoDatabaseName())) return;
   await connectMongo();
-  db = mongoose.connection.db!;
+  db = defaultDb = mongoose.connection.db!;
   assert.match(db.databaseName, /^testvantagemovers(?:_[a-z0-9]+)?$/i);
   assert.ok((await db.admin().command({ hello: 1 })).setName, "replica set required");
   await getGranotObservationReceiptModel().syncIndexes();
@@ -62,15 +64,16 @@ const skip = (t: { skip: (reason: string) => void }) => {
 };
 
 type Channel = "granot_webhook" | "browser_extension" | "granot_http_automation";
-type Seed = { channel: Channel; outcome?: string; reason?: string; route?: string; at?: Date; state?: string; lead?: boolean };
+type Seed = { channel: Channel; outcome?: string; reason?: string; route?: string; at?: Date; state?: string; lead?: boolean; kind?: string; into?: Db };
 const DAY_AT = new Date(Date.now() - 2 * 86_400_000);
 
 /** One receipt with its Observation, live Decision and Lead, shaped as the drainer leaves a completed one. */
-async function seed({ channel, outcome = "applied", reason = "lead_state_changed", route = "priority_updated", at = DAY_AT, state = "completed", lead = true }: Seed) {
+async function seed({ channel, outcome = "applied", reason = "lead_state_changed", route = "priority_updated", at = DAY_AT, state = "completed", lead = true, kind = "lead_snapshot_apply", into }: Seed) {
+  const db = into ?? defaultDb;
   const receipt = new ObjectId(), observation = new ObjectId(), decision = new ObjectId(), leadId = new ObjectId();
   const run = String(new ObjectId());
   const operation = channel === "granot_http_automation" ? `${run}:a` : randomUUID();
-  const item = { operation_id: operation, operation_kind: "lead_snapshot_apply" as const, granot_statement: { priority: "2" } };
+  const item = { operation_id: operation, operation_kind: kind as "lead_snapshot_apply", granot_statement: { priority: "2" } };
   const target = { model: "FormLead" as const, id: String(leadId) };
   const effects = outcome === "applied" ? [{ kind: "lead_updated", ref: target, changed_paths: ["granot_priority"] }] : [];
   const result = { decision_id: String(decision), observation_id: String(observation), outcome, effects, target };
@@ -116,6 +119,7 @@ test("retire on use refuses an unused record in every channel, and the online pa
     ["extension conflict", { channel: "browser_extension", outcome: "conflict", reason: "identity_conflict" }, "unresolved_outcome:conflict"],
     ["extension still processing", { channel: "browser_extension", state: "claimed" }, "not_completed"],
     ["extension whose Lead is gone", { channel: "browser_extension", lead: false }, "lead_missing"],
+    ["extension booking action, policy-final (stays hot by policy)", { channel: "browser_extension", kind: "booking_action_apply", outcome: "policy_blocked", reason: "booking_policy" }, "kind_not_retired"],
   ];
   const rows = [];
   for (const [label, input, reason] of cases) {
@@ -133,12 +137,33 @@ test("retire on use refuses an unused record in every channel, and the online pa
     const pass = await retireUsedReceipts(db, new Date(), storage, 500);
     assert.equal(pass.status, "processed");
     const receipts = await db.collection("granot_webhook_receipts").find({ _id: { $in: rows.map((r) => r.receipt) } }).toArray();
-    const booking = receipts.find((r) => r.route_event_class === "booking_status_changed")!;
-    assert.equal(booking.processing.retention_review_at, undefined, "a permanent hold leaves the queue");
-    for (const r of receipts.filter((x) => x !== booking)) assert.ok(+r.processing.retention_review_at > Date.now(), "others are reviewed again");
+    const permanent = (r: Document) => r.route_event_class === "booking_status_changed" || r.channel_operation_kind === "booking_action_apply";
+    for (const r of receipts) {
+      if (permanent(r)) assert.equal(r.processing.retention_review_at, undefined, "a permanent hold leaves the queue");
+      else assert.ok(+r.processing.retention_review_at > Date.now(), "others are reviewed again");
+    }
     assert.equal(receipts.length, cases.length, "nothing unused left MongoDB");
   } finally {
     await control.deleteOne({ _id: RETIRE_ON_USE_CONTROL });
+  }
+
+  // Merged but not installed: without the operation index nothing in a channel retires, and the
+  // capture-path lookup returns without reading locators (a planted locator is not even seen).
+  const replica = await historyReplica(t, "noindex");
+  assert.ok(replica);
+  try {
+    const bare = replica.db;
+    await bare.collection("granot_webhook_receipts").createIndex({ "processing.retention_review_at": 1 }, { sparse: true, name: "granot_retention_review_v1" });
+    await bare.collection("granot_retention_control").insertOne({ _id: RETIRE_ON_USE_CONTROL as never, enabled_from: new Date("2000-01-01T00:00:00Z") });
+    const used = await seed({ channel: "browser_extension", into: bare });
+    const pass = await retireUsedReceipts(bare, new Date(), storage);
+    assert.deepEqual(pass.status === "processed" && [pass.retired, pass.holds], [0, { locator_operation_index_missing: 1 }]);
+    assert.equal(await bare.collection("granot_webhook_receipts").countDocuments({ _id: used.receipt }), 1);
+    await archivedReceipts(bare).insertOne({ _id: new ObjectId(), observation_channel: "browser_extension", channel_operation_id: used.operation });
+    assert.equal(await readRetiredOperation(bare, "browser_extension", used.operation), null);
+  } finally {
+    await replica.db.dropDatabase();
+    await replica.client.close();
   }
 });
 
@@ -158,7 +183,9 @@ test("a used receipt leaves MongoDB per channel, reads back by ID, and keeps dup
     assert.equal(result.status, "retired");
     assert.ok(result.status === "retired" && result.locator_bytes < result.bytes, "the locator is smaller than the receipt");
     assert.equal(await hot(row.receipt), 0);
-    assert.deepEqual(BSON.serialize((await readGranotReceipt(db, row.receipt))!), BSON.serialize(originals.get(String(row.receipt))!), "read back by original ID");
+    const expected = originals.get(String(row.receipt))!;
+    delete expected.processing.retention_review_at; // review bookkeeping is not archived
+    assert.deepEqual(BSON.serialize((await readGranotReceipt(db, row.receipt))!), BSON.serialize(expected), "read back by original ID");
   }
   assert.deepEqual(await day(), countsBefore, "Daily Operations counts are untouched");
 
@@ -184,11 +211,15 @@ test("a used receipt leaves MongoDB per channel, reads back by ID, and keeps dup
 test("an interrupted or racing retirement resumes safely and never duplicates an operation", async (t) => {
   if (skip(t)) return;
   const crashed = await seed({ channel: "browser_extension" });
+  let uploaded = "";
   await assert.rejects(retireReceipt(db, crashed.receipt, {
-    ...storage, store: async (name, bytes) => { await storage.store(name, bytes); throw new Error("connection lost after upload"); },
+    ...storage, store: async (name, bytes) => { uploaded = (await storage.store(name, bytes)).generation; throw new Error("connection lost after upload"); },
   }));
   assert.equal(await hot(crashed.receipt), 1);
   assert.equal(await archivedReceipts(db).countDocuments({ _id: crashed.receipt }), 0);
+  // A review claim between attempts must not change the archived bytes (no orphaned second object).
+  await db.collection("granot_webhook_receipts").updateOne({ _id: crashed.receipt },
+    { $set: { "processing.retention_review_at": new Date(), "processing.retention_reason": "retry" } });
   const changed = await seed({ channel: "browser_extension" });
   assert.equal((await retireReceipt(db, changed.receipt, {
     ...storage, store: async (name, bytes) => {
@@ -197,14 +228,20 @@ test("an interrupted or racing retirement resumes safely and never duplicates an
     },
   })).status, "changed");
   assert.equal(await hot(changed.receipt), 1);
-  // Resume while duplicates of the same operation arrive: one receipt ID, one locator, no second capture.
-  const results = await Promise.allSettled([retireReceipt(db, crashed.receipt, storage), retireReceipt(db, crashed.receipt, storage), extension(crashed), extension(crashed)]);
-  const [first, second, ...captures] = results;
-  assert.deepEqual([first, second].filter((r) => r.status === "fulfilled" && r.value.status === "retired").length, 1);
-  for (const capture of captures) assert.equal(capture.status === "fulfilled" && capture.value.receipt_id, String(crashed.receipt));
-  const total = await hot(crashed.receipt) + await archivedReceipts(db).countDocuments({ _id: crashed.receipt });
-  assert.equal(total, 1);
-  assert.equal(await db.collection("granot_webhook_receipts").countDocuments({ channel_operation_id: crashed.operation, _id: { $ne: crashed.receipt } }), 0);
+
+  // Deterministic race: the retirement commits after a duplicate capture has checked the locator
+  // and before it inserts. The capture still replays the original receipt ID.
+  let raced: ReturnType<typeof retireReceipt> | undefined;
+  const capture = await captureChannelOperationReceipt({
+    observation_channel: "browser_extension", authentication_method: "extension_session", channel_operation_kind: "lead_snapshot_apply",
+    channel_operation_id: crashed.operation, captured_at: new Date(), headers: {}, payload: crashed.item, initiator,
+  }, (document) => persistGranotChannelReceipt(document, { afterRetiredCheck: async () => { await (raced ??= retireReceipt(db, crashed.receipt, storage)); } }));
+  assert.equal((await raced!).status, "retired");
+  assert.deepEqual([capture.status, capture.receipt_id], ["replayed", String(crashed.receipt)]);
+  assert.equal((await archivedReceipts(db).findOne({ _id: crashed.receipt }))?.generation, uploaded, "the retry reused the first upload");
+  const [again, replayed] = await Promise.all([retireReceipt(db, crashed.receipt, storage), extension(crashed)]);
+  assert.deepEqual([again.status, replayed.receipt_id], ["absent", String(crashed.receipt)]);
+  assert.equal(await db.collection("granot_webhook_receipts").countDocuments({ channel_operation_id: crashed.operation }), 0, "no second receipt");
 });
 
 test("a retired receipt's object is never deleted or expired while held or referenced", async (t) => {

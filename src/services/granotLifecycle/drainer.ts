@@ -1,5 +1,5 @@
 import { readCaseDecision } from "./caseEvidence";
-import { readRetiredReceipt } from "../granotHistory/retiredRecords";
+import { isRetirementCandidate, readRetiredReceipt } from "../granotHistory/retiredRecords";
 import { withTransaction } from "../../db";
 import { currentReceiptReplay, storeReceiptReplay, type StoredReceiptReplay } from "./receiptReplay";
 import { acceptsLead, certifyWinningLead } from "./acceptedLeadEvidence";
@@ -62,6 +62,9 @@ export type ClaimedReceiptSnapshot = {
   observation_channel: string;
   payload_sha256: string;
   channel_operation_id?: string;
+  /** Read only to decide whether a completed receipt enters the retire-on-use review queue. */
+  channel_operation_kind?: string;
+  route_event_class?: string;
   initiator?: DurableActor;
   processing: {
     state: ReceiptWorkState;
@@ -464,8 +467,8 @@ async function runFencedProcessor(
           "processing.completed_at": now,
           "processing.latest_decision_id": toObjectId(result.decision_id),
           ...(claimed.claimed.channel_operation_id ? { "processing.replay_result": storeReceiptReplay(claimed.claimed.observation_channel, result) } : {}),
-          // Retire on use: the storage pass reviews every completed receipt at once (granotHistory/retireOnUse.ts).
-          "processing.retention_review_at": now,
+          // Retire on use: a candidate is due for review at completion (granotHistory/retireOnUse.ts).
+          ...(isRetirementCandidate(claimed.claimed) ? { "processing.retention_review_at": now } : {}),
           "processing.technical_attempts": 0,
         },
         $unset: {
@@ -516,7 +519,7 @@ async function finalizePendingMatch(input: {
           "processing.state": "completed",
           "processing.completed_at": now,
           "processing.latest_decision_id": toObjectId(input.result.decision_id),
-          "processing.retention_review_at": now,
+          ...(isRetirementCandidate(input.claimed.claimed) ? { "processing.retention_review_at": now } : {}),
           "processing.technical_attempts": 0,
         },
         $inc: { "processing.match_attempt": 1 },
@@ -814,6 +817,8 @@ function toSnapshot(row: {
   observation_channel: string;
   payload_sha256: string;
   channel_operation_id?: string;
+  channel_operation_kind?: string;
+  route_event_class?: string;
   initiator?: DurableActor;
   processing: ClaimedReceiptSnapshot["processing"];
 }): ClaimedReceiptSnapshot {
@@ -823,6 +828,8 @@ function toSnapshot(row: {
     observation_channel: row.observation_channel,
     payload_sha256: row.payload_sha256,
     channel_operation_id: row.channel_operation_id,
+    channel_operation_kind: row.channel_operation_kind,
+    route_event_class: row.route_event_class,
     initiator: row.initiator,
     processing: {
       ...row.processing,
