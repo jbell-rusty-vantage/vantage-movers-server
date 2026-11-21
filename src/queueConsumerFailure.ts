@@ -8,11 +8,15 @@ import { logger } from "./logger";
  *
  * That retry is right for a transient outage and wrong when MongoDB rejects this deployment's
  * credentials. A deployment's environment is frozen at build time, and Vercel keeps delivering
- * a message to the deployment that published it. After a credential change, an older
+ * a message to the deployment that published it. After a credential change, a superseded
  * deployment can never succeed: on November 20, 2026 the November 19 deployment retried
  * Sales Intelligence and Granot lifecycle wake-ups about 176 times an hour for six hours.
  * Acknowledging the wake-up loses nothing, because the cron on the current deployment claims
  * the same Mongo work.
+ *
+ * The check cannot tell a superseded deployment from the current one. If the current
+ * deployment briefly sees a rejection (for example while Atlas propagates a rotated password),
+ * its work waits for the next cron (at most 5 minutes) instead of a 30-second redelivery.
  */
 export function acknowledgeWhenCredentialsRejected(consumer: string, error: unknown): boolean {
   if (!isMongoCredentialRejection(error)) return false;

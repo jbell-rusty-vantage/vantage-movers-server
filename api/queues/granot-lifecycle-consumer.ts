@@ -43,8 +43,8 @@ export default queue.handleNodeCallback(async (message) => {
   try {
     await handleGranotLifecycleQueueMessage(message);
   } catch (error) {
-    if (acknowledgeWhenCredentialsRejected("granot_lifecycle", error)) return;
-    logger.error({ err: error, msg: "granot_lifecycle.consumer.failed" });
+    const acknowledged = acknowledgeWhenCredentialsRejected("granot_lifecycle", error);
+    if (!acknowledged) logger.error({ err: error, msg: "granot_lifecycle.consumer.failed" });
     await emitDrainRunEvent(
       {
         trigger: "queue",
@@ -59,6 +59,7 @@ export default queue.handleNodeCallback(async (message) => {
       },
       true,
     );
+    if (acknowledged) return;
     throw error;
   }
 });

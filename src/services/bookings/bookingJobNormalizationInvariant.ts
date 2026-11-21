@@ -20,10 +20,15 @@ const DRIFT_SCAN_MAX_TIME_MS = 15_000;
 
 export type BookingJobNormalizationState = {
   _id: typeof BOOKING_JOB_NORMALIZATION_STATE_ID;
-  checked_at: Date;
-  drift_count: number;
-  booking_ids: string[];
-  scanned_candidates: number;
+  /** Last completed scan; absent until one completes. `drift_count`, `booking_ids` and `scanned_candidates` belong to it. */
+  checked_at?: Date;
+  drift_count?: number;
+  booking_ids?: string[];
+  scanned_candidates?: number;
+  /** Last attempt, completed or failed. The hourly throttle reads this, so a scan that times out is not retried every 5 minutes. */
+  last_attempt_at?: Date;
+  /** Error message of the last attempt, or null when it completed. */
+  last_failure?: string | null;
 };
 
 type BookingKeys = { _id: unknown; job_no?: unknown; normalized_job_no?: unknown };
@@ -51,11 +56,31 @@ export async function runBookingJobNormalizationInvariant(db: Db, now = new Date
 > {
   const state = db.collection<BookingJobNormalizationState>(BOOKING_JOB_NUMBER_CONTROL_COLLECTION);
   const last = await state.findOne({ _id: BOOKING_JOB_NORMALIZATION_STATE_ID });
-  if (last && now.getTime() - last.checked_at.getTime() < MIN_INTERVAL_MS) return { skipped: true };
-  const { drift, scanned } = await findBookingJobNormalizationDrift(db);
+  const lastAttempt = last?.last_attempt_at ?? last?.checked_at;
+  if (lastAttempt && now.getTime() - lastAttempt.getTime() < MIN_INTERVAL_MS) return { skipped: true };
+  let result: { drift: string[]; scanned: number };
+  try {
+    result = await findBookingJobNormalizationDrift(db);
+  } catch (error) {
+    // Keep the last completed result for `status`; record the attempt so the throttle still holds.
+    await state.updateOne(
+      { _id: BOOKING_JOB_NORMALIZATION_STATE_ID },
+      { $set: { last_attempt_at: now, last_failure: error instanceof Error ? error.message : String(error) } },
+      { upsert: true },
+    );
+    throw error;
+  }
+  const { drift, scanned } = result;
   await state.updateOne(
     { _id: BOOKING_JOB_NORMALIZATION_STATE_ID },
-    { $set: { checked_at: now, drift_count: drift.length, booking_ids: drift.slice(0, SAMPLE_IDS), scanned_candidates: scanned } },
+    { $set: {
+      checked_at: now,
+      last_attempt_at: now,
+      last_failure: null,
+      drift_count: drift.length,
+      booking_ids: drift.slice(0, SAMPLE_IDS),
+      scanned_candidates: scanned,
+    } },
     { upsert: true },
   );
   if (drift.length > 0) {
