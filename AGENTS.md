@@ -34,6 +34,12 @@ and never invoke finish-work or start another quality worker.
 
 ## Code Review Rules
 
+- **Lean, purposeful tests (Owner directive, 2026-11-21).**
+  - A test earns its place only by protecting an Owner rule or invariant, a fixed bug, a safety guard or a public contract.
+  - Write one table-driven test per behavior. Extend existing files before adding suites, and delete tests a change makes redundant.
+  - Every PR states its test delta, with a one-line reason per new test. Flag ballooning as a should-fix.
+  - Full rule: [owner directives](docs/operations/owner-directives.md).
+
 - Report concrete regressions with a triggering scenario and affected path. Review the changed
   behavior and necessary callers, not unrelated formatting or speculative improvements.
 - Preserve trusted owner gates, Zod contracts, Mongo/TEST_MODE boundaries, idempotency,
