@@ -1,0 +1,3431 @@
+{
+ "status": "completed",
+ "command": "sheet-sync reconcile",
+ "target": "production",
+ "database": "vantagemovers",
+ "observed_at": "2026-11-21T22:03:16.888Z",
+ "records_read": 12291,
+ "totals": {
+  "missing": 59,
+  "wrong_tab": 1,
+  "duplicate": 0,
+  "orphan": 0,
+  "excluded": 209
+ },
+ "tabs": [
+  {
+   "tab": "Forms",
+   "workbook": "Master Leads",
+   "policy": "repairable",
+   "owner_managed": false,
+   "label": null,
+   "status": "read",
+   "managed_headers_match": true,
+   "rows_with_id": 7846,
+   "blank_id_rows": 0,
+   "distinct_ids": 7846,
+   "expected_records": 7846,
+   "placed": 7846,
+   "categories": {
+    "missing": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) ({ resource: \"source_lead\", leadModel: \"FormLead\" }). The drainer appends the row from Mongo."
+    },
+    "wrong_tab": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) for the Form Lead. The drainer upserts its expected tab, then removes this row after that succeeds."
+    },
+    "duplicate": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) for the Form Lead whose destination this is. Duplicate-row repair removes the extra rows after the upsert."
+    },
+    "orphan": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "No record holds this Mongo ID, so no Sheet Sync path removes the row. An exact-row delete with an identity check needs Owner approval."
+    },
+    "excluded": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) for the No-Sync Form Lead. Its plan deletes its rows from every Form tab."
+    }
+   }
+  },
+  {
+   "tab": "Duplicate Forms",
+   "workbook": "Master Leads",
+   "policy": "repairable",
+   "owner_managed": false,
+   "label": null,
+   "status": "read",
+   "managed_headers_match": true,
+   "rows_with_id": 193,
+   "blank_id_rows": 0,
+   "distinct_ids": 193,
+   "expected_records": 193,
+   "placed": 193,
+   "categories": {
+    "missing": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) ({ resource: \"source_lead\", leadModel: \"FormLead\" }). The drainer appends the row from Mongo."
+    },
+    "wrong_tab": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) for the Form Lead. The drainer upserts its expected tab, then removes this row after that succeeds."
+    },
+    "duplicate": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) for the Form Lead whose destination this is. Duplicate-row repair removes the extra rows after the upsert."
+    },
+    "orphan": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "No record holds this Mongo ID, so no Sheet Sync path removes the row. An exact-row delete with an identity check needs Owner approval."
+    },
+    "excluded": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) for the No-Sync Form Lead. Its plan deletes its rows from every Form tab."
+    }
+   }
+  },
+  {
+   "tab": "Bad Form Leads",
+   "workbook": "Master Leads",
+   "policy": "repairable",
+   "owner_managed": false,
+   "label": null,
+   "status": "read",
+   "managed_headers_match": true,
+   "rows_with_id": 1035,
+   "blank_id_rows": 0,
+   "distinct_ids": 1035,
+   "expected_records": 1035,
+   "placed": 1035,
+   "categories": {
+    "missing": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) ({ resource: \"source_lead\", leadModel: \"FormLead\" }). The drainer appends the row from Mongo."
+    },
+    "wrong_tab": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) for the Form Lead. The drainer upserts its expected tab, then removes this row after that succeeds."
+    },
+    "duplicate": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) for the Form Lead whose destination this is. Duplicate-row repair removes the extra rows after the upsert."
+    },
+    "orphan": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "No record holds this Mongo ID, so no Sheet Sync path removes the row. An exact-row delete with an identity check needs Owner approval."
+    },
+    "excluded": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) for the No-Sync Form Lead. Its plan deletes its rows from every Form tab."
+    }
+   }
+  },
+  {
+   "tab": "Calls",
+   "workbook": "Master Leads",
+   "policy": "owner_managed",
+   "owner_managed": true,
+   "label": "Owner-managed tab (Owner directive, November 20): report only. No backfill, repair job or major change.",
+   "status": "read",
+   "managed_headers_match": true,
+   "rows_with_id": 1611,
+   "blank_id_rows": 0,
+   "distinct_ids": 1611,
+   "expected_records": 1462,
+   "placed": 1407,
+   "categories": {
+    "missing": {
+     "count": 55,
+     "breakdown": {
+      "CallLead:legacy_unknown": 31,
+      "CallLead:ringcentral": 24
+     },
+     "samples": [
+      {
+       "id": "6a2fe96d0ff6106ec0252355",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-06-15T12:00:45.000Z"
+      },
+      {
+       "id": "6a354b87710a08aa27b57068",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-06-19T14:00:39.000Z"
+      },
+      {
+       "id": "6a494a6d490fafc38f2c54c7",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-04T18:01:17.000Z"
+      },
+      {
+       "id": "6a5230a99560e30bc599c6fd",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-11T12:01:45.000Z"
+      },
+      {
+       "id": "6a52d965a47c9a3bf974c174",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-12T00:01:41.000Z"
+      },
+      {
+       "id": "6a52f582e017d3d70a51426a",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-12T02:01:38.000Z"
+      },
+      {
+       "id": "6a52f582e017d3d70a51426c",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-12T02:01:38.000Z"
+      },
+      {
+       "id": "6a5679365a549563024b2700",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-14T18:00:22.000Z"
+      },
+      {
+       "id": "6a5b8718f25594f43e3a098d",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-18T14:00:56.000Z"
+      },
+      {
+       "id": "6a5cf4bf1981b4bb5152dd07",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-19T16:01:03.000Z"
+      },
+      {
+       "id": "6a5d653e11f7f0fccf170a60",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-20T00:01:02.000Z"
+      },
+      {
+       "id": "6a6175a64b1a2510d78fd992",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-23T02:00:06.000Z"
+      },
+      {
+       "id": "6a623abbd8bcb10ec4867fdc",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-23T16:00:59.000Z"
+      },
+      {
+       "id": "6a656a72b3fa49635f4fb019",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-26T02:01:22.000Z"
+      },
+      {
+       "id": "6a6780d4dcb046dc0558c3bc",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-27T16:01:24.000Z"
+      },
+      {
+       "id": "6a67f11d7b6dbc52eb47cbec",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-28T00:00:29.000Z"
+      },
+      {
+       "id": "6a69b347d764910ad9339eef",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-29T08:01:11.000Z"
+      },
+      {
+       "id": "6a6a3fb4a37aed3fa35f621c",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-29T18:00:20.000Z"
+      },
+      {
+       "id": "6a6a944e5cca6f23fb30d45e",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-30T00:01:18.000Z"
+      },
+      {
+       "id": "6a6dfc0797b749c6cf8a390d",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-08-01T14:00:39.000Z"
+      },
+      {
+       "id": "6a6f157a506a03096856032e",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-08-02T10:01:30.000Z"
+      },
+      {
+       "id": "6a6f4dbfc98b813c4cb85194",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-08-02T14:01:35.000Z"
+      },
+      {
+       "id": "6a6f69a88805461caf48e3aa",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-08-02T16:00:40.000Z"
+      },
+      {
+       "id": "6a7147fae4893bd18833e38e",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-08-04T02:01:30.000Z"
+      },
+      {
+       "id": "6a74940c48a77a477a84d72e",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-08-06T14:02:52.000Z"
+      },
+      {
+       "id": "6a74e81616e309c63d5fbb88",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-08-06T20:01:26.000Z"
+      },
+      {
+       "id": "6a7887fed183ff830b8da478",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-08-09T14:00:30.000Z"
+      },
+      {
+       "id": "6a7a8238946b306b2b578711",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-08-11T02:00:24.000Z"
+      },
+      {
+       "id": "6a7b4752b4072b152745e552",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-08-11T16:01:22.000Z"
+      },
+      {
+       "id": "6a8135d5a7ffa82799d1ded2",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-08-16T04:00:21.000Z"
+      },
+      {
+       "id": "6a826b35cc92697160b502e7",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-08-17T02:00:21.000Z"
+      },
+      {
+       "id": "6a8a5b538c01b04082189644",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-08-23T02:30:43.000Z"
+      },
+      {
+       "id": "6a8a7773f27e90e5fa0cf235",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-08-23T04:30:43.000Z"
+      },
+      {
+       "id": "6a8a8584be9fe58659d73e29",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-08-23T05:30:44.000Z"
+      },
+      {
+       "id": "6a8af6038373cebc47ad5fb5",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-08-23T13:30:43.000Z"
+      },
+      {
+       "id": "6a8b0b1b067f9b07f2577130",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-08-23T15:00:43.000Z"
+      },
+      {
+       "id": "6a8e1e7518d1354248483f62",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-08-25T23:00:05.000Z"
+      },
+      {
+       "id": "6ab1be35b4988841a2510691",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-09-21T23:31:01.000Z"
+      },
+      {
+       "id": "6abba8522aa44fe80a969795",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-09-29T12:00:18.000Z"
+      },
+      {
+       "id": "6ac80b6bb672b9c769f978c2",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-08T21:30:19.000Z"
+      },
+      {
+       "id": "6ac91da1cc9bc3e503e0df6c",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-09T17:00:17.000Z"
+      },
+      {
+       "id": "6ac987190db3a9efc9f3ccfa",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-10T00:30:17.000Z"
+      },
+      {
+       "id": "6acb96711eac2364f779fb8f",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-11T14:00:17.000Z"
+      },
+      {
+       "id": "6ad1b669e5a89962cb34c2bc",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-16T05:30:17.000Z"
+      },
+      {
+       "id": "6ad29061d960823817ff30f2",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-16T21:00:17.000Z"
+      },
+      {
+       "id": "6ad3e1e2c9a6cdfc920dddbd",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-17T21:00:18.000Z"
+      },
+      {
+       "id": "6ad42f399cbf43782ae06fca",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-18T02:30:17.000Z"
+      },
+      {
+       "id": "6ad5568936f2664606d27329",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-18T23:30:17.000Z"
+      },
+      {
+       "id": "6ad676d28a5dfa7314dd7f3a",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-19T20:00:18.000Z"
+      },
+      {
+       "id": "6ada5d42949ab3a5447e0f48",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-22T19:00:18.000Z"
+      },
+      {
+       "id": "6adb37390d3e4ce5bbcac6de",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-23T10:30:17.000Z"
+      },
+      {
+       "id": "6add62b15b4d7a0461cf04c8",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-25T02:00:17.000Z"
+      },
+      {
+       "id": "6add85d97897a94f33c76262",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-25T04:30:17.000Z"
+      },
+      {
+       "id": "6add93e94fdedaa6b6431bec",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-25T05:30:17.000Z"
+      },
+      {
+       "id": "6adefa82518be8b0d360b181",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-10-26T07:00:18.000Z"
+      }
+     ],
+     "more": false,
+     "repair": null
+    },
+    "wrong_tab": {
+     "count": 1,
+     "breakdown": {
+      "CallLead->Duplicate Calls": 1
+     },
+     "samples": [
+      {
+       "id": "6a2c8190fdb72a898af9152c",
+       "rows": [
+        317
+       ],
+       "created_at": "2026-06-12T22:00:48.000Z",
+       "model": "CallLead",
+       "expected": [
+        "Duplicate Calls"
+       ],
+       "origin": "legacy_unknown"
+      }
+     ],
+     "more": false,
+     "repair": null
+    },
+    "duplicate": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": null
+    },
+    "orphan": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": null
+    },
+    "excluded": {
+     "count": 203,
+     "breakdown": {
+      "CallLead:missing_call_reporting_admission": 203
+     },
+     "samples": [
+      {
+       "id": "6a2867c5bd62854c99d23c98",
+       "rows": [
+        234
+       ],
+       "created_at": "2026-06-09T19:21:41.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2867c5bd62854c99d23c99",
+       "rows": [
+        235
+       ],
+       "created_at": "2026-06-09T19:21:41.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2867c6bd62854c99d23c9b",
+       "rows": [
+        246
+       ],
+       "created_at": "2026-06-09T19:21:42.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2867c6bd62854c99d23c9c",
+       "rows": [
+        247
+       ],
+       "created_at": "2026-06-09T19:21:42.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26617baefa9b6ea8321d",
+       "rows": [
+        2
+       ],
+       "created_at": "2026-06-12T15:31:45.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26617baefa9b6ea8321e",
+       "rows": [
+        3
+       ],
+       "created_at": "2026-06-12T15:31:45.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26627baefa9b6ea8321f",
+       "rows": [
+        4
+       ],
+       "created_at": "2026-06-12T15:31:46.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26627baefa9b6ea83220",
+       "rows": [
+        5
+       ],
+       "created_at": "2026-06-12T15:31:46.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26627baefa9b6ea83221",
+       "rows": [
+        6
+       ],
+       "created_at": "2026-06-12T15:31:46.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26637baefa9b6ea83222",
+       "rows": [
+        8
+       ],
+       "created_at": "2026-06-12T15:31:47.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26637baefa9b6ea83223",
+       "rows": [
+        9
+       ],
+       "created_at": "2026-06-12T15:31:47.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26637baefa9b6ea83224",
+       "rows": [
+        10
+       ],
+       "created_at": "2026-06-12T15:31:47.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26647baefa9b6ea83225",
+       "rows": [
+        11
+       ],
+       "created_at": "2026-06-12T15:31:48.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26647baefa9b6ea83226",
+       "rows": [
+        12
+       ],
+       "created_at": "2026-06-12T15:31:48.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26657baefa9b6ea83227",
+       "rows": [
+        13
+       ],
+       "created_at": "2026-06-12T15:31:49.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26657baefa9b6ea83228",
+       "rows": [
+        14
+       ],
+       "created_at": "2026-06-12T15:31:49.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26657baefa9b6ea83229",
+       "rows": [
+        15
+       ],
+       "created_at": "2026-06-12T15:31:49.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26667baefa9b6ea8322a",
+       "rows": [
+        17
+       ],
+       "created_at": "2026-06-12T15:31:50.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26667baefa9b6ea8322b",
+       "rows": [
+        18
+       ],
+       "created_at": "2026-06-12T15:31:50.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26667baefa9b6ea8322c",
+       "rows": [
+        19
+       ],
+       "created_at": "2026-06-12T15:31:50.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26677baefa9b6ea8322d",
+       "rows": [
+        20
+       ],
+       "created_at": "2026-06-12T15:31:51.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26677baefa9b6ea8322e",
+       "rows": [
+        21
+       ],
+       "created_at": "2026-06-12T15:31:51.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26677baefa9b6ea8322f",
+       "rows": [
+        22
+       ],
+       "created_at": "2026-06-12T15:31:51.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26687baefa9b6ea83230",
+       "rows": [
+        23
+       ],
+       "created_at": "2026-06-12T15:31:52.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26687baefa9b6ea83231",
+       "rows": [
+        24
+       ],
+       "created_at": "2026-06-12T15:31:52.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26687baefa9b6ea83232",
+       "rows": [
+        25
+       ],
+       "created_at": "2026-06-12T15:31:52.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26697baefa9b6ea83233",
+       "rows": [
+        26
+       ],
+       "created_at": "2026-06-12T15:31:53.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26697baefa9b6ea83234",
+       "rows": [
+        27
+       ],
+       "created_at": "2026-06-12T15:31:53.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266a7baefa9b6ea83235",
+       "rows": [
+        28
+       ],
+       "created_at": "2026-06-12T15:31:54.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266a7baefa9b6ea83236",
+       "rows": [
+        29
+       ],
+       "created_at": "2026-06-12T15:31:54.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266a7baefa9b6ea83237",
+       "rows": [
+        30
+       ],
+       "created_at": "2026-06-12T15:31:54.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266b7baefa9b6ea83238",
+       "rows": [
+        31
+       ],
+       "created_at": "2026-06-12T15:31:55.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266b7baefa9b6ea83239",
+       "rows": [
+        32
+       ],
+       "created_at": "2026-06-12T15:31:55.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266b7baefa9b6ea8323a",
+       "rows": [
+        33
+       ],
+       "created_at": "2026-06-12T15:31:55.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266c7baefa9b6ea8323b",
+       "rows": [
+        34
+       ],
+       "created_at": "2026-06-12T15:31:56.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266c7baefa9b6ea8323c",
+       "rows": [
+        35
+       ],
+       "created_at": "2026-06-12T15:31:56.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266d7baefa9b6ea8323d",
+       "rows": [
+        36
+       ],
+       "created_at": "2026-06-12T15:31:57.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266d7baefa9b6ea8323e",
+       "rows": [
+        37
+       ],
+       "created_at": "2026-06-12T15:31:57.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266d7baefa9b6ea8323f",
+       "rows": [
+        38
+       ],
+       "created_at": "2026-06-12T15:31:57.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266e7baefa9b6ea83240",
+       "rows": [
+        40
+       ],
+       "created_at": "2026-06-12T15:31:58.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266e7baefa9b6ea83241",
+       "rows": [
+        41
+       ],
+       "created_at": "2026-06-12T15:31:58.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266f7baefa9b6ea83242",
+       "rows": [
+        42
+       ],
+       "created_at": "2026-06-12T15:31:59.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266f7baefa9b6ea83243",
+       "rows": [
+        43
+       ],
+       "created_at": "2026-06-12T15:31:59.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c266f7baefa9b6ea83244",
+       "rows": [
+        44
+       ],
+       "created_at": "2026-06-12T15:31:59.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26707baefa9b6ea83245",
+       "rows": [
+        45
+       ],
+       "created_at": "2026-06-12T15:32:00.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26707baefa9b6ea83246",
+       "rows": [
+        46
+       ],
+       "created_at": "2026-06-12T15:32:00.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26707baefa9b6ea83247",
+       "rows": [
+        47
+       ],
+       "created_at": "2026-06-12T15:32:00.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26717baefa9b6ea83248",
+       "rows": [
+        48
+       ],
+       "created_at": "2026-06-12T15:32:01.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26717baefa9b6ea83249",
+       "rows": [
+        49
+       ],
+       "created_at": "2026-06-12T15:32:01.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26717baefa9b6ea8324a",
+       "rows": [
+        50
+       ],
+       "created_at": "2026-06-12T15:32:01.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26727baefa9b6ea8324b",
+       "rows": [
+        51
+       ],
+       "created_at": "2026-06-12T15:32:02.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26727baefa9b6ea8324c",
+       "rows": [
+        52
+       ],
+       "created_at": "2026-06-12T15:32:02.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26737baefa9b6ea8324d",
+       "rows": [
+        53
+       ],
+       "created_at": "2026-06-12T15:32:03.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26737baefa9b6ea8324e",
+       "rows": [
+        54
+       ],
+       "created_at": "2026-06-12T15:32:03.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26737baefa9b6ea8324f",
+       "rows": [
+        56
+       ],
+       "created_at": "2026-06-12T15:32:03.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26747baefa9b6ea83250",
+       "rows": [
+        57
+       ],
+       "created_at": "2026-06-12T15:32:04.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26747baefa9b6ea83251",
+       "rows": [
+        58
+       ],
+       "created_at": "2026-06-12T15:32:04.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26747baefa9b6ea83252",
+       "rows": [
+        59
+       ],
+       "created_at": "2026-06-12T15:32:04.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26757baefa9b6ea83253",
+       "rows": [
+        60
+       ],
+       "created_at": "2026-06-12T15:32:05.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26757baefa9b6ea83254",
+       "rows": [
+        62
+       ],
+       "created_at": "2026-06-12T15:32:05.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26757baefa9b6ea83255",
+       "rows": [
+        63
+       ],
+       "created_at": "2026-06-12T15:32:05.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26767baefa9b6ea83256",
+       "rows": [
+        64
+       ],
+       "created_at": "2026-06-12T15:32:06.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26767baefa9b6ea83257",
+       "rows": [
+        65
+       ],
+       "created_at": "2026-06-12T15:32:06.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26777baefa9b6ea83258",
+       "rows": [
+        66
+       ],
+       "created_at": "2026-06-12T15:32:07.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26777baefa9b6ea83259",
+       "rows": [
+        67
+       ],
+       "created_at": "2026-06-12T15:32:07.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26777baefa9b6ea8325a",
+       "rows": [
+        68
+       ],
+       "created_at": "2026-06-12T15:32:07.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26787baefa9b6ea8325b",
+       "rows": [
+        70
+       ],
+       "created_at": "2026-06-12T15:32:08.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26787baefa9b6ea8325c",
+       "rows": [
+        72
+       ],
+       "created_at": "2026-06-12T15:32:08.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26787baefa9b6ea8325d",
+       "rows": [
+        73
+       ],
+       "created_at": "2026-06-12T15:32:08.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26797baefa9b6ea8325e",
+       "rows": [
+        74
+       ],
+       "created_at": "2026-06-12T15:32:09.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26797baefa9b6ea8325f",
+       "rows": [
+        77
+       ],
+       "created_at": "2026-06-12T15:32:09.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267a7baefa9b6ea83260",
+       "rows": [
+        78
+       ],
+       "created_at": "2026-06-12T15:32:10.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267a7baefa9b6ea83261",
+       "rows": [
+        80
+       ],
+       "created_at": "2026-06-12T15:32:10.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267a7baefa9b6ea83262",
+       "rows": [
+        81
+       ],
+       "created_at": "2026-06-12T15:32:10.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267b7baefa9b6ea83263",
+       "rows": [
+        82
+       ],
+       "created_at": "2026-06-12T15:32:11.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267b7baefa9b6ea83264",
+       "rows": [
+        84
+       ],
+       "created_at": "2026-06-12T15:32:11.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267c7baefa9b6ea83265",
+       "rows": [
+        85
+       ],
+       "created_at": "2026-06-12T15:32:12.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267c7baefa9b6ea83266",
+       "rows": [
+        86
+       ],
+       "created_at": "2026-06-12T15:32:12.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267c7baefa9b6ea83267",
+       "rows": [
+        87
+       ],
+       "created_at": "2026-06-12T15:32:12.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267d7baefa9b6ea83268",
+       "rows": [
+        88
+       ],
+       "created_at": "2026-06-12T15:32:13.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267d7baefa9b6ea83269",
+       "rows": [
+        89
+       ],
+       "created_at": "2026-06-12T15:32:13.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267d7baefa9b6ea8326a",
+       "rows": [
+        91
+       ],
+       "created_at": "2026-06-12T15:32:13.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267e7baefa9b6ea8326b",
+       "rows": [
+        92
+       ],
+       "created_at": "2026-06-12T15:32:14.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267e7baefa9b6ea8326c",
+       "rows": [
+        93
+       ],
+       "created_at": "2026-06-12T15:32:14.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267e7baefa9b6ea8326d",
+       "rows": [
+        94
+       ],
+       "created_at": "2026-06-12T15:32:14.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267f7baefa9b6ea8326e",
+       "rows": [
+        95
+       ],
+       "created_at": "2026-06-12T15:32:15.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c267f7baefa9b6ea8326f",
+       "rows": [
+        96
+       ],
+       "created_at": "2026-06-12T15:32:15.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26807baefa9b6ea83270",
+       "rows": [
+        97
+       ],
+       "created_at": "2026-06-12T15:32:16.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26807baefa9b6ea83271",
+       "rows": [
+        98
+       ],
+       "created_at": "2026-06-12T15:32:16.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26807baefa9b6ea83272",
+       "rows": [
+        99
+       ],
+       "created_at": "2026-06-12T15:32:16.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26817baefa9b6ea83273",
+       "rows": [
+        100
+       ],
+       "created_at": "2026-06-12T15:32:17.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26817baefa9b6ea83274",
+       "rows": [
+        101
+       ],
+       "created_at": "2026-06-12T15:32:17.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26817baefa9b6ea83275",
+       "rows": [
+        102
+       ],
+       "created_at": "2026-06-12T15:32:17.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26827baefa9b6ea83276",
+       "rows": [
+        103
+       ],
+       "created_at": "2026-06-12T15:32:18.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26827baefa9b6ea83277",
+       "rows": [
+        104
+       ],
+       "created_at": "2026-06-12T15:32:18.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26827baefa9b6ea83278",
+       "rows": [
+        105
+       ],
+       "created_at": "2026-06-12T15:32:18.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26837baefa9b6ea83279",
+       "rows": [
+        106
+       ],
+       "created_at": "2026-06-12T15:32:19.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26837baefa9b6ea8327a",
+       "rows": [
+        107
+       ],
+       "created_at": "2026-06-12T15:32:19.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26847baefa9b6ea8327b",
+       "rows": [
+        108
+       ],
+       "created_at": "2026-06-12T15:32:20.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26847baefa9b6ea8327c",
+       "rows": [
+        109
+       ],
+       "created_at": "2026-06-12T15:32:20.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26847baefa9b6ea8327d",
+       "rows": [
+        110
+       ],
+       "created_at": "2026-06-12T15:32:20.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26857baefa9b6ea8327e",
+       "rows": [
+        111
+       ],
+       "created_at": "2026-06-12T15:32:21.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26857baefa9b6ea8327f",
+       "rows": [
+        112
+       ],
+       "created_at": "2026-06-12T15:32:21.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26857baefa9b6ea83280",
+       "rows": [
+        113
+       ],
+       "created_at": "2026-06-12T15:32:21.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26867baefa9b6ea83281",
+       "rows": [
+        114
+       ],
+       "created_at": "2026-06-12T15:32:22.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26867baefa9b6ea83283",
+       "rows": [
+        115
+       ],
+       "created_at": "2026-06-12T15:32:22.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26877baefa9b6ea83284",
+       "rows": [
+        116
+       ],
+       "created_at": "2026-06-12T15:32:23.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26877baefa9b6ea83285",
+       "rows": [
+        117
+       ],
+       "created_at": "2026-06-12T15:32:23.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26887baefa9b6ea83286",
+       "rows": [
+        118
+       ],
+       "created_at": "2026-06-12T15:32:24.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26887baefa9b6ea83287",
+       "rows": [
+        120
+       ],
+       "created_at": "2026-06-12T15:32:24.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26887baefa9b6ea83288",
+       "rows": [
+        122
+       ],
+       "created_at": "2026-06-12T15:32:24.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26897baefa9b6ea83289",
+       "rows": [
+        124
+       ],
+       "created_at": "2026-06-12T15:32:25.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26897baefa9b6ea8328a",
+       "rows": [
+        127
+       ],
+       "created_at": "2026-06-12T15:32:25.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26897baefa9b6ea8328b",
+       "rows": [
+        128
+       ],
+       "created_at": "2026-06-12T15:32:25.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268a7baefa9b6ea8328c",
+       "rows": [
+        130
+       ],
+       "created_at": "2026-06-12T15:32:26.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268a7baefa9b6ea8328d",
+       "rows": [
+        131
+       ],
+       "created_at": "2026-06-12T15:32:26.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268a7baefa9b6ea8328e",
+       "rows": [
+        132
+       ],
+       "created_at": "2026-06-12T15:32:26.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268b7baefa9b6ea8328f",
+       "rows": [
+        133
+       ],
+       "created_at": "2026-06-12T15:32:27.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268b7baefa9b6ea83290",
+       "rows": [
+        134
+       ],
+       "created_at": "2026-06-12T15:32:27.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268b7baefa9b6ea83291",
+       "rows": [
+        135
+       ],
+       "created_at": "2026-06-12T15:32:27.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268c7baefa9b6ea83292",
+       "rows": [
+        136
+       ],
+       "created_at": "2026-06-12T15:32:28.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268c7baefa9b6ea83293",
+       "rows": [
+        137
+       ],
+       "created_at": "2026-06-12T15:32:28.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268d7baefa9b6ea83294",
+       "rows": [
+        138
+       ],
+       "created_at": "2026-06-12T15:32:29.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268d7baefa9b6ea83295",
+       "rows": [
+        139
+       ],
+       "created_at": "2026-06-12T15:32:29.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268d7baefa9b6ea83296",
+       "rows": [
+        140
+       ],
+       "created_at": "2026-06-12T15:32:29.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268e7baefa9b6ea83297",
+       "rows": [
+        141
+       ],
+       "created_at": "2026-06-12T15:32:30.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268e7baefa9b6ea83298",
+       "rows": [
+        142
+       ],
+       "created_at": "2026-06-12T15:32:30.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268e7baefa9b6ea83299",
+       "rows": [
+        143
+       ],
+       "created_at": "2026-06-12T15:32:30.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268f7baefa9b6ea8329a",
+       "rows": [
+        144
+       ],
+       "created_at": "2026-06-12T15:32:31.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268f7baefa9b6ea8329b",
+       "rows": [
+        146
+       ],
+       "created_at": "2026-06-12T15:32:31.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c268f7baefa9b6ea8329c",
+       "rows": [
+        147
+       ],
+       "created_at": "2026-06-12T15:32:31.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26907baefa9b6ea8329d",
+       "rows": [
+        148
+       ],
+       "created_at": "2026-06-12T15:32:32.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26907baefa9b6ea8329e",
+       "rows": [
+        149
+       ],
+       "created_at": "2026-06-12T15:32:32.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26907baefa9b6ea8329f",
+       "rows": [
+        150
+       ],
+       "created_at": "2026-06-12T15:32:32.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26917baefa9b6ea832a0",
+       "rows": [
+        151
+       ],
+       "created_at": "2026-06-12T15:32:33.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26917baefa9b6ea832a1",
+       "rows": [
+        152
+       ],
+       "created_at": "2026-06-12T15:32:33.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26927baefa9b6ea832a2",
+       "rows": [
+        153
+       ],
+       "created_at": "2026-06-12T15:32:34.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26927baefa9b6ea832a3",
+       "rows": [
+        154
+       ],
+       "created_at": "2026-06-12T15:32:34.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26927baefa9b6ea832a4",
+       "rows": [
+        155
+       ],
+       "created_at": "2026-06-12T15:32:34.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26937baefa9b6ea832a6",
+       "rows": [
+        157
+       ],
+       "created_at": "2026-06-12T15:32:35.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26937baefa9b6ea832a7",
+       "rows": [
+        158
+       ],
+       "created_at": "2026-06-12T15:32:35.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26947baefa9b6ea832a8",
+       "rows": [
+        159
+       ],
+       "created_at": "2026-06-12T15:32:36.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c33dfa6c3ac4e1b8ae70c",
+       "rows": [
+        55
+       ],
+       "created_at": "2026-06-12T16:29:19.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f012f780631d6e2fc3",
+       "rows": [
+        156
+       ],
+       "created_at": "2026-06-16T19:54:24.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f112f780631d6e2fc9",
+       "rows": [
+        161
+       ],
+       "created_at": "2026-06-16T19:54:25.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f212f780631d6e2fcb",
+       "rows": [
+        164
+       ],
+       "created_at": "2026-06-16T19:54:26.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f212f780631d6e2fcd",
+       "rows": [
+        166
+       ],
+       "created_at": "2026-06-16T19:54:26.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f212f780631d6e2fcf",
+       "rows": [
+        167
+       ],
+       "created_at": "2026-06-16T19:54:26.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f212f780631d6e2fd1",
+       "rows": [
+        168
+       ],
+       "created_at": "2026-06-16T19:54:26.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f312f780631d6e2fd3",
+       "rows": [
+        169
+       ],
+       "created_at": "2026-06-16T19:54:27.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f312f780631d6e2fd5",
+       "rows": [
+        170
+       ],
+       "created_at": "2026-06-16T19:54:27.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f412f780631d6e2fd7",
+       "rows": [
+        171
+       ],
+       "created_at": "2026-06-16T19:54:28.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f412f780631d6e2fd9",
+       "rows": [
+        172
+       ],
+       "created_at": "2026-06-16T19:54:28.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f412f780631d6e2fdb",
+       "rows": [
+        173
+       ],
+       "created_at": "2026-06-16T19:54:28.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f412f780631d6e2fdd",
+       "rows": [
+        174
+       ],
+       "created_at": "2026-06-16T19:54:28.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f512f780631d6e2fdf",
+       "rows": [
+        175
+       ],
+       "created_at": "2026-06-16T19:54:29.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f512f780631d6e2fe1",
+       "rows": [
+        176
+       ],
+       "created_at": "2026-06-16T19:54:29.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f512f780631d6e2fe3",
+       "rows": [
+        177
+       ],
+       "created_at": "2026-06-16T19:54:29.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f512f780631d6e2fe5",
+       "rows": [
+        178
+       ],
+       "created_at": "2026-06-16T19:54:29.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f612f780631d6e2fe7",
+       "rows": [
+        179
+       ],
+       "created_at": "2026-06-16T19:54:30.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f612f780631d6e2fe9",
+       "rows": [
+        180
+       ],
+       "created_at": "2026-06-16T19:54:30.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f712f780631d6e2feb",
+       "rows": [
+        181
+       ],
+       "created_at": "2026-06-16T19:54:31.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f712f780631d6e2fed",
+       "rows": [
+        183
+       ],
+       "created_at": "2026-06-16T19:54:31.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f712f780631d6e2fef",
+       "rows": [
+        184
+       ],
+       "created_at": "2026-06-16T19:54:31.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f812f780631d6e2ff1",
+       "rows": [
+        185
+       ],
+       "created_at": "2026-06-16T19:54:32.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f812f780631d6e2ff3",
+       "rows": [
+        186
+       ],
+       "created_at": "2026-06-16T19:54:32.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f812f780631d6e2ff5",
+       "rows": [
+        187
+       ],
+       "created_at": "2026-06-16T19:54:32.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f812f780631d6e2ff7",
+       "rows": [
+        188
+       ],
+       "created_at": "2026-06-16T19:54:32.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f912f780631d6e2ff9",
+       "rows": [
+        189
+       ],
+       "created_at": "2026-06-16T19:54:33.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f912f780631d6e2ffb",
+       "rows": [
+        191
+       ],
+       "created_at": "2026-06-16T19:54:33.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f912f780631d6e2ffd",
+       "rows": [
+        192
+       ],
+       "created_at": "2026-06-16T19:54:33.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fa12f780631d6e2fff",
+       "rows": [
+        193
+       ],
+       "created_at": "2026-06-16T19:54:34.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fa12f780631d6e3001",
+       "rows": [
+        194
+       ],
+       "created_at": "2026-06-16T19:54:34.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fa12f780631d6e3003",
+       "rows": [
+        195
+       ],
+       "created_at": "2026-06-16T19:54:34.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fa12f780631d6e3005",
+       "rows": [
+        196
+       ],
+       "created_at": "2026-06-16T19:54:34.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fb12f780631d6e3007",
+       "rows": [
+        197
+       ],
+       "created_at": "2026-06-16T19:54:35.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fb12f780631d6e3009",
+       "rows": [
+        198
+       ],
+       "created_at": "2026-06-16T19:54:35.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fb12f780631d6e300b",
+       "rows": [
+        199
+       ],
+       "created_at": "2026-06-16T19:54:35.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fb12f780631d6e300d",
+       "rows": [
+        201
+       ],
+       "created_at": "2026-06-16T19:54:35.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fc12f780631d6e300f",
+       "rows": [
+        202
+       ],
+       "created_at": "2026-06-16T19:54:36.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fc12f780631d6e3011",
+       "rows": [
+        203
+       ],
+       "created_at": "2026-06-16T19:54:36.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fd12f780631d6e3015",
+       "rows": [
+        220
+       ],
+       "created_at": "2026-06-16T19:54:37.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fd12f780631d6e3017",
+       "rows": [
+        222
+       ],
+       "created_at": "2026-06-16T19:54:37.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fd12f780631d6e3019",
+       "rows": [
+        229
+       ],
+       "created_at": "2026-06-16T19:54:37.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fe12f780631d6e301b",
+       "rows": [
+        241
+       ],
+       "created_at": "2026-06-16T19:54:38.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fe12f780631d6e301d",
+       "rows": [
+        243
+       ],
+       "created_at": "2026-06-16T19:54:38.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fe12f780631d6e301f",
+       "rows": [
+        244
+       ],
+       "created_at": "2026-06-16T19:54:38.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31aa0012f780631d6e3027",
+       "rows": [
+        264
+       ],
+       "created_at": "2026-06-16T19:54:40.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31aa0012f780631d6e3029",
+       "rows": [
+        265
+       ],
+       "created_at": "2026-06-16T19:54:40.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31aa0212f780631d6e302f",
+       "rows": [
+        275
+       ],
+       "created_at": "2026-06-16T19:54:42.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31aa0212f780631d6e3031",
+       "rows": [
+        278
+       ],
+       "created_at": "2026-06-16T19:54:42.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31aa0212f780631d6e3033",
+       "rows": [
+        282
+       ],
+       "created_at": "2026-06-16T19:54:42.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31aa0312f780631d6e3037",
+       "rows": [
+        284
+       ],
+       "created_at": "2026-06-16T19:54:43.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31aa0312f780631d6e3039",
+       "rows": [
+        295
+       ],
+       "created_at": "2026-06-16T19:54:43.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31aa0412f780631d6e303b",
+       "rows": [
+        299
+       ],
+       "created_at": "2026-06-16T19:54:44.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31aa0512f780631d6e303f",
+       "rows": [
+        305
+       ],
+       "created_at": "2026-06-16T19:54:45.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31aa0512f780631d6e3041",
+       "rows": [
+        306
+       ],
+       "created_at": "2026-06-16T19:54:45.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a32bf9721ba48fd84949af2",
+       "rows": [
+        79
+       ],
+       "created_at": "2026-06-17T15:39:03.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a32e26166a58b2c7830dc7e",
+       "rows": [
+        182
+       ],
+       "created_at": "2026-06-17T18:07:29.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a32e26266a58b2c7830dc80",
+       "rows": [
+        190
+       ],
+       "created_at": "2026-06-17T18:07:30.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a97370e1d6cccc01c209a31",
+       "rows": [
+        1095
+       ],
+       "created_at": "2026-09-01T20:35:26.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "vantage_admin"
+      },
+      {
+       "id": "6a98595c2a8ffbdff70a31b9",
+       "rows": [
+        1149
+       ],
+       "created_at": "2026-09-02T17:14:04.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "vantage_admin"
+      },
+      {
+       "id": "6a9882ca9910678452fd5e04",
+       "rows": [
+        1167
+       ],
+       "created_at": "2026-09-02T20:10:50.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "granot_lead_created"
+      }
+     ],
+     "more": false,
+     "repair": null
+    }
+   }
+  },
+  {
+   "tab": "Duplicate Calls",
+   "workbook": "Master Leads",
+   "policy": "owner_managed",
+   "owner_managed": true,
+   "label": "Owner-managed tab (Owner directive, November 20): report only. No backfill, repair job or major change.",
+   "status": "read",
+   "managed_headers_match": true,
+   "rows_with_id": 432,
+   "blank_id_rows": 0,
+   "distinct_ids": 432,
+   "expected_records": 430,
+   "placed": 426,
+   "categories": {
+    "missing": {
+     "count": 4,
+     "breakdown": {
+      "CallLead:legacy_unknown": 2,
+      "CallLead:ringcentral": 2
+     },
+     "samples": [
+      {
+       "id": "6a2c8190fdb72a898af9152c",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-06-12T22:00:48.000Z"
+      },
+      {
+       "id": "6a5f5f66ca08d5a65361f6af",
+       "model": "CallLead",
+       "origin": "legacy_unknown",
+       "created_at": "2026-07-21T12:00:38.000Z"
+      },
+      {
+       "id": "6a9c1262c961fb7e1b468f01",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-09-05T13:00:18.000Z"
+      },
+      {
+       "id": "6aae8e693b7798cb5d53f687",
+       "model": "CallLead",
+       "origin": "ringcentral",
+       "created_at": "2026-09-19T13:30:17.000Z"
+      }
+     ],
+     "more": false,
+     "repair": null
+    },
+    "wrong_tab": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": null
+    },
+    "duplicate": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": null
+    },
+    "orphan": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": null
+    },
+    "excluded": {
+     "count": 6,
+     "breakdown": {
+      "CallLead:missing_call_reporting_admission": 6
+     },
+     "samples": [
+      {
+       "id": "6a2867c6bd62854c99d23c9a",
+       "rows": [
+        23
+       ],
+       "created_at": "2026-06-09T19:21:42.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26867baefa9b6ea83282",
+       "rows": [
+        26
+       ],
+       "created_at": "2026-06-12T15:32:22.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a2c26937baefa9b6ea832a5",
+       "rows": [
+        21
+       ],
+       "created_at": "2026-06-12T15:32:35.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f112f780631d6e2fc5",
+       "rows": [
+        24
+       ],
+       "created_at": "2026-06-16T19:54:25.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9f112f780631d6e2fc7",
+       "rows": [
+        31
+       ],
+       "created_at": "2026-06-16T19:54:25.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      },
+      {
+       "id": "6a31a9fd12f780631d6e3013",
+       "rows": [
+        17
+       ],
+       "created_at": "2026-06-16T19:54:37.000Z",
+       "model": "CallLead",
+       "reasons": [
+        "missing_call_reporting_admission"
+       ],
+       "origin": "legacy_unknown"
+      }
+     ],
+     "more": false,
+     "repair": null
+    }
+   }
+  },
+  {
+   "tab": "Bad Call Leads",
+   "workbook": "Master Leads",
+   "policy": "owner_decision",
+   "owner_managed": false,
+   "label": "Report to the Owner. A Call Lead re-delivery also removes Calls and Duplicate Calls rows, so it falls under the Owner's Calls-tab rule.",
+   "status": "read",
+   "managed_headers_match": true,
+   "rows_with_id": 19,
+   "blank_id_rows": 0,
+   "distinct_ids": 19,
+   "expected_records": 19,
+   "placed": 19,
+   "categories": {
+    "missing": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "Report to the Owner. A Call Lead re-delivery also removes Calls and Duplicate Calls rows, so it falls under the Owner's Calls-tab rule."
+    },
+    "wrong_tab": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "Report to the Owner. A Call Lead re-delivery also removes Calls and Duplicate Calls rows, so it falls under the Owner's Calls-tab rule."
+    },
+    "duplicate": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "Report to the Owner. A Call Lead re-delivery also removes Calls and Duplicate Calls rows, so it falls under the Owner's Calls-tab rule."
+    },
+    "orphan": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "Report to the Owner. A Call Lead re-delivery also removes Calls and Duplicate Calls rows, so it falls under the Owner's Calls-tab rule."
+    },
+    "excluded": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "Report to the Owner. A Call Lead re-delivery also removes Calls and Duplicate Calls rows, so it falls under the Owner's Calls-tab rule."
+    }
+   }
+  },
+  {
+   "tab": "Booked Deals",
+   "workbook": "Master Booked",
+   "policy": "repairable",
+   "owner_managed": false,
+   "label": null,
+   "status": "read",
+   "managed_headers_match": true,
+   "rows_with_id": 1080,
+   "blank_id_rows": 0,
+   "distinct_ids": 1080,
+   "expected_records": 1080,
+   "placed": 1080,
+   "categories": {
+    "missing": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) ({ resource: \"booked_lead\", bookingId }). It rewrites the Booked Deals row only."
+    },
+    "wrong_tab": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "A Booking belongs only on Booked Deals. Report the row to the Owner; no Sheet Sync path moves it."
+    },
+    "duplicate": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) ({ resource: \"booked_lead\", bookingId }). Duplicate-row repair removes the extra rows after the upsert."
+    },
+    "orphan": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "No record holds this Mongo ID, so no Sheet Sync path removes the row. An exact-row delete with an identity check needs Owner approval."
+    },
+    "excluded": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "Bookings are never excluded; report this to the Owner."
+    }
+   }
+  },
+  {
+   "tab": "Cancelled Deals",
+   "workbook": "Master Booked",
+   "policy": "repairable",
+   "owner_managed": false,
+   "label": null,
+   "status": "read",
+   "managed_headers_match": true,
+   "rows_with_id": 14,
+   "blank_id_rows": 0,
+   "distinct_ids": 14,
+   "expected_records": 14,
+   "placed": 14,
+   "categories": {
+    "missing": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) ({ resource: \"cancellation_chain\", cancellationId }). The chain also re-delivers the Booking and its Lead; if that Lead is a Call Lead, it touches the Call tabs and needs the Owner's decision."
+    },
+    "wrong_tab": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "A Cancellation belongs only on Cancelled Deals. Report the row to the Owner; no Sheet Sync path moves it."
+    },
+    "duplicate": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "With Owner approval only: queue an ordinary re-delivery with enqueueSheetSyncJob(..., { createdBy: \"script\" }) ({ resource: \"cancellation_chain\", cancellationId }), subject to the Call-tab caveat for missing rows."
+    },
+    "orphan": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "No record holds this Mongo ID, so no Sheet Sync path removes the row. An exact-row delete with an identity check needs Owner approval."
+    },
+    "excluded": {
+     "count": 0,
+     "breakdown": {},
+     "samples": [],
+     "more": false,
+     "repair": "Cancellations are never excluded; report this to the Owner."
+    }
+   }
+  }
+ ],
+ "read_plan": {
+  "writes": "none",
+  "mongo": {
+   "target": "production …mongodb.net",
+   "database": "vantagemovers",
+   "operation": "find with an empty filter and an inclusion projection (no customer fields)",
+   "read_preference": "secondaryPreferred",
+   "app_name": "vantage-cli-sheet-reconcile-readonly",
+   "collections": {
+    "form_leads": [
+     "_id",
+     "duplicate",
+     "bad_lead",
+     "no_sync",
+     "form_fill",
+     "created_on_unmatched",
+     "external_sheet_review",
+     "external_call_admission",
+     "source_company",
+     "lead_source_company",
+     "source_granularity_id",
+     "timestamp",
+     "ingestion_origin",
+     "ringcentral.ingestion_source",
+     "ringcentral.qualification_reason",
+     "ringcentral.duration_seconds",
+     "ringcentral.telephony_session_id",
+     "ringcentral.call_log_id",
+     "ringcentral.start_time",
+     "ringcentral.final_result",
+     "ringcentral.final_result_observed_at",
+     "ringcentral.final_result_call_log_id",
+     "ringcentral.final_result_answered"
+    ],
+    "call_leads": [
+     "_id",
+     "duplicate",
+     "bad_lead",
+     "no_sync",
+     "form_fill",
+     "created_on_unmatched",
+     "external_sheet_review",
+     "external_call_admission",
+     "source_company",
+     "lead_source_company",
+     "source_granularity_id",
+     "timestamp",
+     "ingestion_origin",
+     "ringcentral.ingestion_source",
+     "ringcentral.qualification_reason",
+     "ringcentral.duration_seconds",
+     "ringcentral.telephony_session_id",
+     "ringcentral.call_log_id",
+     "ringcentral.start_time",
+     "ringcentral.final_result",
+     "ringcentral.final_result_observed_at",
+     "ringcentral.final_result_call_log_id",
+     "ringcentral.final_result_answered"
+    ],
+    "booked_leads": [
+     "_id"
+    ],
+    "cancelled_leads": [
+     "_id"
+    ]
+   }
+  },
+  "sheets": {
+   "scope": "https://www.googleapis.com/auth/spreadsheets.readonly",
+   "methods": [
+    "spreadsheets.get (sheets.properties.title)",
+    "spreadsheets.values.get (row 1 and the Mongo ID column)"
+   ],
+   "workbooks": [
+    {
+     "workbook": "Master Leads",
+     "spreadsheet": "…eMPI",
+     "tabs": [
+      "Forms",
+      "Duplicate Forms",
+      "Bad Form Leads",
+      "Calls",
+      "Duplicate Calls",
+      "Bad Call Leads"
+     ]
+    },
+    {
+     "workbook": "Master Booked",
+     "spreadsheet": "…HRHs",
+     "tabs": [
+      "Booked Deals",
+      "Cancelled Deals"
+     ]
+    }
+   ]
+  },
+  "env_file": ".env (checkout root)",
+  "env_names_used": [
+   "TEST_MODE",
+   "MONGO_URI",
+   "MASTER_LEADS_SHEET_ID",
+   "MASTER_BOOKED_SHEET_ID",
+   "GOOGLE_SERVICE_ACCOUNT_JSON",
+   "MONGO_DNS_SERVERS"
+  ]
+ },
+ "limitations": [
+  "Read-only: MongoDB find and Google Sheets spreadsheets.get / values.get only. Nothing is queued, written or repaired.",
+  "Sheets are read first, then MongoDB. The reads are not a snapshot: a record saved within one drain cycle (about five minutes) of the read can show as missing.",
+  "Master Sheets only. Source Company Sheets and the retired titles Duplicates, Bad Leads and Bad Calls are not read.",
+  "Expected tabs come from the server's planExpectedSheetTabs over raw stored flags; the drainer reads the same flags through Mongoose.",
+  "Rows with a blank Mongo ID cell (managed cells cleared, operator content kept) are counted, not classified.",
+  "Calls and Duplicate Calls are Owner-managed (Owner directive, November 20): report only, no repair suggestion."
+ ],
+ "evidence_note": "Single Owner-scoped production read-only run (branch feat/sheet-sync-profile-and-reconcile, before the PR). Command: pnpm --silent vantage -- sheet-sync reconcile --production-read --samples 400 --json. After the run, read_plan.mongo.target (Atlas cluster host) and read_plan.env_file (absolute local path) were redacted here; the CLI now redacts both itself. Contents are Mongo IDs, row numbers, ObjectId creation times, ingestion origins and reason codes only; no customer field was read from Mongo and only the header row and Mongo ID column were read from Sheets."
+}
