@@ -1,8 +1,113 @@
 # Resume the server optimization sprint from main
 
-**After this handoff: the [next program](NEXT-PROGRAM-2026-11-20.md) (Owner, November 20).** It covers a Google Cloud Storage service, further reviews, a clean-code cleanup, git-triggered quality checkpoints, and agent profiles with CLI runners for every major service. State at hand-off: `main` `194e486d` serves production with PRs #243, #244 and #245.
+## Start here — next session (Owner, November 20)
 
-## Next session: two tracks (Owner, November 20)
+The next session starts the Owner's [next program](NEXT-PROGRAM-2026-11-20.md). It has five workstreams:
+
+1. A Google Cloud Storage service.
+2. Further reviews.
+3. A clean-code cleanup.
+4. Git-triggered quality checkpoints.
+5. Agent profiles and CLI runners for every major service.
+
+The November 20 tracks are complete; their record is below.
+
+**Kickoff prompt.** Paste this to start:
+
+> In the `vantage-dev` cloud environment ([CLOUD-SESSIONS.md](docs/operations/CLOUD-SESSIONS.md); run its first-session checklist first), run the next program from `docs/operations/NEXT-PROGRAM-2026-11-20.md`, workstreams in order, with separate agents and one worktree per agent. Start with workstream 5's Sheet Sync profile and CLI runner and workstream 1's GCS module design, in parallel. First close the carry-overs listed under "Start here" in `NEXT-SESSION.md`. Every merge to `main` deploys production. Open PRs, have each independently reviewed, and merge only with my approval, just after a top-of-hour slot.
+
+### State at close (November 20, 20:15 New York)
+
+**Production.** `main` `9c0cc421` is serving production. Every release below is deployed and observed:
+
+| PR | What it changed |
+| --- | --- |
+| #243 | Granot scheduled sibling catch-up, Record Links, bounded post-commit steps and disputes. Follow-ups are capped at 50 per plan, with a 6-hour backoff. |
+| #245 | Forms and Duplicate Forms are exclusive. Every positional Sheet update rechecks row identity. |
+| #246 | The routine three-day purge is restored after a retry. |
+| #247 | Sheet removals honour protection editors. Stale `processing` leases are reclaimed (cap 3, then the job fails), replacing "never reset processing jobs". |
+| #250 | Lead job-number point lookups (Calls fell from about 1,342 keys to about 6). Retention holds are hardened. |
+| #251 | Two Form Lead contact-email indexes, 344 KB per member. The contact match fell from about 1,771 keys to about 1.3. |
+| #252 | Booking job-number validation in **shadow** mode, a normalization drift check on the booking-reconciliation cron, and removal of the Pool full scan. |
+
+**Docs.** #244 is the [Lead lifecycle pack](../knowledge/lead-lifecycle/README.md). #248 is the next program.
+
+**Sheets.** Forms, Duplicate Forms, Bad Form Leads, Booked Deals and Cancelled Deals match MongoDB exactly. Calls and Duplicate Calls are handled manually by the Owner. The [pack's COVERAGE](../knowledge/lead-lifecycle/COVERAGE.md) lists their known differences.
+
+**Owner-approved data fixes on November 20:**
+
+- 592 pre-November 3 Bad Forms were removed from Forms.
+- 7 Forms were re-delivered to their correct tab.
+- 6 orphan rows and 1 stale Duplicate Forms row were removed.
+- The September 6 No-Sync test booking row was removed.
+- The August 19–20 replica-test fixtures were purged: 37 Cancellations and 3 Bookings.
+- The September 8 `EJBA03` test Booking and its test Call Lead were deleted.
+
+Evidence is in the main checkout's untracked `.tmp/bad-form-cleanup-2026-11-20/` and the workspace's private `internal/booking-job-number-2026-11-20/`.
+
+### Carry-overs to close first
+
+1. **Hidden-index drop (22:17 New York, November 20).** Read its result on [PR #249](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/249).
+   - If it ran, confirm the task is unregistered, then merge #249 with Owner approval.
+   - If it did not run, dropping now needs Owner approval.
+2. **Booking job-number shadow review.** Run `node --env-file=.env --import tsx ops/booking-job-number/control.ts status`. Report the would-reject records by reason and the drift result. The Owner decides on `enforce` only after this review.
+   - The rule rejects these spellings, which never appeared in the replay: `P5556759-1`, `P5556759 (2nd)`, `5,556,759`, `5556759A` and a Cyrillic `Р` prefix.
+3. **Booked Deals row 541.** Booking `6a7a47dfc78f1e03f807d970` (August 10) has the customer's name in its Job Number field. The Owner does not know the job. A read-only search of the Lead link and every other stored record ran on November 20; see the private evidence folder for its result.
+   - Without a definitive Granot job, leave it as is (Owner, November 20). It still reports as a booking, and its Lead stays out of the Pool through `lead_ref`.
+   - The job-number rule checks only a changed job number, so it is not flagged.
+4. **Calls tabs: Owner only.** No Calls-tab backfill, repair job or major change (Owner directive, November 20). The known differences:
+   - 209 rows of pre-November 3 Calls without RingCentral admission.
+   - Calls row 317, a Form Fill Call.
+   - 3 Form Fill Calls with no row.
+   - 55 qualified Calls with no row.
+
+   A hand-removed row on a billable Call comes back on that Call's next update.
+5. **Owner decisions still open.** Details are in COVERAGE.
+   - `form_fill` is never cleared.
+   - `POST /booked-leads/from-source` still accepts the retired Best Relocation source.
+   - `confirmGranotBooking` does not prefer the Form Lead.
+   - The Desk, the Daily Operations rebuild and legacy Analytics do not check Call admission.
+   - Legacy Analytics sums the stamped CPL.
+   - The optional Number summary consistency check needs a cadence and alerting decision.
+6. **Follow-ups found on November 20.**
+   - Cross-path job matching: cancellation correlation, employee-booking matching, `equivalentNormalizedJobFilter` and the unique index do not treat `P 5556759` as `P5556759` (#252 docs).
+   - After hardening, the retention fast path still scans 29 of 34 batches.
+   - 40 production job groups have Record Links that name more than one Lead.
+   - Header migration before any new managed Sheet column: the proposal is on #247.
+   - The seven-day all-member `$indexStats` series has not started. Atlas slow-query access from this workstation is blocked by the service account's API access list.
+   - ~~The #252 drift check and the #251 tool's `countDocuments` have no `maxTimeMS`.~~ Fixed in [PR #255](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/255). A timed-out drift scan now records `last_attempt_at` and stays throttled hourly.
+7. **Earlier clocks.** See "Clocks still open" in the record below: November 21 17:33, November 22 16:27, November 23 21:06, November 26 00:00 UTC, November 27 20:04 and December 19.
+
+8. **Late November 20 stability pass (21:40 New York).**
+   - **PR #255** is reviewed and green, waiting for the Owner's merge. On a MongoDB credential rejection (code 18), the five queue consumers now acknowledge the wake-up, and the current deployment's cron drains the work. Before this, the superseded November 19 deployment `5137f06f` retried Sales Intelligence and Granot lifecycle wake-ups about 176 times an hour from 10:00 to 16:30 UTC. Live production was unaffected. [Rule](README.md)
+   - **Repository cleanup.**
+     - Six merged worktrees were removed: `booking-jobno`, `pr245-review`, `-lifecycle`, `-ops`, `-ops2` and `-tracka`. Their `.tmp` evidence was copied, verified identical, to the main checkout's `.tmp/bad-form-cleanup-2026-11-20/from-worktree-*`.
+     - Every merged branch was deleted, locally and on GitHub. Only `main` and the open PRs #222, #249, #253, #254 and #255 remain.
+     - The main checkout is on `main`.
+     - The root's ignored scratch files (`.owner-*.log`, `.cleanup-*`, `.storage-*`) moved to `.tmp/root-scratch-archive-2026-11-20/`.
+
+### Working rules learned on November 20
+
+These are also part of [workstream 5](NEXT-PROGRAM-2026-11-20.md#5-agent-profiles-and-cli-runners-per-stack-and-service).
+
+- **Worktrees.** Give each agent its own worktree with a real `pnpm install`. Never junction `node_modules`. Never edit a worktree another agent uses; two collisions happened on November 20.
+- **Line endings.** The repository stores LF, and this machine has `core.autocrlf=true`. Never commit with `-c core.autocrlf=false`. Check with `git ls-files --eol` and `git diff --stat origin/main...HEAD`.
+- **New York time.** Use PowerShell `Get-Date`; the machine's local zone is Eastern. Git Bash `TZ=America/New_York date` prints UTC.
+- **Merging.** Use `gh pr merge --match-head-commit <sha>`. Re-check CI right before merging, because leaving draft re-runs the checks. Merge just after a top-of-hour slot. Estimates slots run at 06, 09, 13, 17 and 21; ALL and Pool run hourly.
+- **Replica tests.**
+  - Use a suffixed `TEST_MONGO_DATABASE_NAME` (`testvantagemovers_<x>`) on csi01: `mongodb://127.0.0.1:27189/?replicaSet=csi01`.
+  - Some suites hard-code ports 27961, 27964 or 27129, or the `poolcollector` and `capacityp1` fixtures.
+  - Every replica test must assert a loopback target; the August fixtures that reached production show why.
+- **Production access.**
+  - Mongo: `.env` with `TEST_MODE=false`, and find or aggregate only.
+  - Sheets: `values.get` and `spreadsheets.get` only.
+  - Queue ordinary Sheet Sync re-delivery (`enqueueSheetSyncJob`, `createdBy: "script"`) only with Owner approval, and never for the Calls tabs.
+
+## Completed November 20 tracks (record)
+
+Track A (engineering) and Track B (Lead lifecycle documentation) both closed on November 20. The original instructions follow.
+
+### Two tracks (Owner, November 20)
 
 Run both tracks in the same session, with separate agents.
 
@@ -10,7 +115,7 @@ Run both tracks in the same session, with separate agents.
 - **Track B, Lead lifecycle documentation:** document completely, and from the current code, how Form Leads, Duplicate Forms, Bad Form Leads, Call Leads, Duplicate Calls and Bad Call Leads are created and move through their lifecycle. The [brief](LEAD-LIFECYCLE-DOCUMENTATION-BRIEF.md) sets the outputs, the four mandatory inventories and the verification. Track B is complete only when its coverage file has zero unclassified rows and an independent verifier signs off.
 - **Hand-off between tracks:** after Track A merges, Track B re-verifies its Granot sibling and Form Fill sections against the merged code. Track A's sibling fix must satisfy Track B's documented gate.
 
-## Start here — November 20 handoff
+## November 20 handoff (completed record)
 
 **State.** `main` is serving `25ae0026` in production. The November 20 review of Sales Outreach, Sheet Sync, Granot runs and Lead updates, and RingCentral found one critical defect, in Sheet Sync. It was fixed and deployed in [PR #237](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/237). Every queue was empty and healthy at review time. [Full review, evidence and verified behaviour](SERVICE-REVIEW-2026-11-20.md)
 
