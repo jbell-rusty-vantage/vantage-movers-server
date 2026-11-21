@@ -1,5 +1,6 @@
 import { QueueClient } from "@vercel/queue";
 import { logger } from "../../src/logger";
+import { acknowledgeWhenCredentialsRejected } from "../../src/queueConsumerFailure";
 import {
   continueGranotRuns,
   runGranotWorker,
@@ -7,7 +8,7 @@ import {
 
 const queue = new QueueClient();
 
-export default queue.handleNodeCallback(async () => {
+async function consumeGranotAutomationWakeup(): Promise<void> {
   const result = await runGranotWorker();
   if (!result.claimed && result.status === "lease_busy") {
     // Another callback owns the account-wide Granot session. It will publish
@@ -26,4 +27,13 @@ export default queue.handleNodeCallback(async () => {
     ...result,
     continuation,
   });
+}
+
+export default queue.handleNodeCallback(async () => {
+  try {
+    await consumeGranotAutomationWakeup();
+  } catch (error) {
+    if (acknowledgeWhenCredentialsRejected("granot_automation", error)) return;
+    throw error;
+  }
 });

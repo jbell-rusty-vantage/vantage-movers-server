@@ -103,7 +103,7 @@ async function memberSizes(client) {
     const status = await db.admin().command({ replSetGetStatus: 1 }).catch(() => null);
     const members = status?.members?.map((m) => ({ name: m.name.split(".")[0], state: m.stateStr, health: m.health })) ?? null;
     if (members && members.some((m) => m.health !== 1 || !["PRIMARY", "SECONDARY"].includes(m.state))) problems.push("replica set not healthy");
-    const counts = Object.fromEntries(await Promise.all(TARGETS.map(async (t) => [t.name, await coll.countDocuments({ [Object.keys(t.key)[0]]: { $type: "string" } })])));
+    const counts = Object.fromEntries(await Promise.all(TARGETS.map(async (t) => [t.name, await coll.countDocuments({ [Object.keys(t.key)[0]]: { $type: "string" } }, { maxTimeMS: 15000 })])));
     const plan = await planOf(db);
     const beforeFile = path.join(evidenceDir, `form-lead-email-indexes-before-${stamp}.json`);
     fs.writeFileSync(beforeFile, JSON.stringify({ at: new Date(), mode, targets: TARGETS, problems, members, documents_with_value: counts, plan, indexes: before }, null, 2));

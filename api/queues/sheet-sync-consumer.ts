@@ -1,6 +1,7 @@
 import { QueueClient } from "@vercel/queue";
 import { connectMongo } from "../../src/db";
 import { logger } from "../../src/logger";
+import { acknowledgeWhenCredentialsRejected } from "../../src/queueConsumerFailure";
 import { runSheetSyncDrain } from "../../src/services/sheetSync";
 
 /**
@@ -20,7 +21,12 @@ import { runSheetSyncDrain } from "../../src/services/sheetSync";
 const queue = new QueueClient();
 
 export default queue.handleNodeCallback(async () => {
-  await connectMongo();
-  const summary = await runSheetSyncDrain("queue");
-  logger.info({ msg: "sheet_sync.consumer.drained", ...summary });
+  try {
+    await connectMongo();
+    const summary = await runSheetSyncDrain("queue");
+    logger.info({ msg: "sheet_sync.consumer.drained", ...summary });
+  } catch (error) {
+    if (acknowledgeWhenCredentialsRejected("sheet_sync", error)) return;
+    throw error;
+  }
 });
