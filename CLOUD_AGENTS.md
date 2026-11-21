@@ -64,6 +64,10 @@ This is **credential isolation, not a network sandbox**. Some explicit provider 
 
 The legacy `dev:granot`, `dev:vercel`, `db:*` and operational scripts retain their own environment/side-effect contracts; they are outside this safe onboarding path. Do not use them merely to bypass a refusal.
 
+## Claude Code on the web
+
+See [CLOUD-SESSIONS.md](docs/operations/CLOUD-SESSIONS.md). The environment's setup script is `ops/cloud-session/setup.sh`, which installs Node 24 and pnpm 10.13.1. The repository's SessionStart hook (`.claude/settings.json` → `ops/cloud-session/session-start.sh`) runs only when `CLAUDE_CODE_REMOTE=true`. It installs dependencies and starts loopback Docker replicas `csi01` (27189) and `rs0` (27017). It never reads `.env` or contacts production.
+
 ## Cursor Cloud
 
 [environment.json](.cursor/environment.json) uses the [Dockerfile](.cursor/Dockerfile): Ubuntu 24.04, Node 24, pnpm 10.13.1 and MongoDB 8.0. Install uses the frozen lockfile. [Bootstrap](.cursor/scripts/ensure-cloud-runtime.sh) starts a local `rs0` in `/home/ubuntu/.local-mongo/data`, initiates only an uninitialized replica with that identity, waits within bounded retries, and starts the same isolated API launcher. Mongo is not forwarded as a public Cloud port.
