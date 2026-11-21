@@ -1,5 +1,3 @@
-import "dotenv/config";
-
 /**
  * Granot CRM endpoint construction and form-lead config constants.
  *
