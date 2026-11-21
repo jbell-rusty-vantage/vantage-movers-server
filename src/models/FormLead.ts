@@ -152,6 +152,20 @@ FormLeadSchema.index({
   email: 1,
   normalized_contact_name: 1,
 });
+/**
+ * The Granot identity contact match (`granotLifecycle/identity.ts` `findFormLeadsByScopedContact`) `$or`s six phone
+ * and email paths. With these two indexed, every branch has an index and the planner uses an index union instead of
+ * scanning the whole Lead Source scope (Owner-approved 2026-11-20; built by
+ * `ops/capacity/form-lead-email-indexes-2026-11-20.cjs`, which must keep the same definitions). Sparse: most Forms
+ * lack a Granot snapshot, and the match never queries null.
+ */
+export const FORM_LEAD_CONTACT_EMAIL_INDEXES = [
+  { name: "form_lead_ingested_contact_email", key: { "ingested_contact_snapshot.email": 1 }, sparse: true },
+  { name: "form_lead_granot_contact_email", key: { "granot_contact_snapshot.email": 1 }, sparse: true },
+] as const;
+for (const { key, name, sparse } of FORM_LEAD_CONTACT_EMAIL_INDEXES) {
+  FormLeadSchema.index(key, { name, sparse });
+}
 // All Numbers lead-link candidate lookup (14 §3): one keyed read per Contact Number.
 for (const { key, ...options } of FORM_LEAD_ATTACHMENT_INDEXES) {
   FormLeadSchema.index(key as Record<string, 1>, options);
