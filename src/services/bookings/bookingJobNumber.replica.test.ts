@@ -30,6 +30,7 @@ import {
   BOOKING_JOB_NUMBER_CONTROL_COLLECTION,
   BOOKING_JOB_NUMBER_CONTROL_ID,
   BookingJobNumberError,
+  markGranotLifecycleBookingWrite,
   type BookingJobNumberMode,
 } from "./bookingJobNumberGuard";
 
@@ -142,6 +143,16 @@ const isJobNumberError = (reason: string) => (error: unknown) => {
   assert.equal(error.reason, reason);
   return true;
 };
+/** Owner, 2026-11-21: in enforce only `missing` blocks, and only from a non-Granot write. */
+const isMissingJobNumber = isJobNumberError("missing");
+/** Passes the routes' non-empty Zod rule but normalizes to empty: a missing Job Number. */
+const MISSING = "--";
+/** One recorded-only enforce row for this Booking and reason, with its exemption. */
+async function assertRecordedOnly(bookingId: unknown, reason: string, exemption = "reason_not_enforced") {
+  const rows = (await checks(bookingId)).filter((row) => row.reason === reason);
+  assert.equal(rows.length, 1, `${reason} recorded for ${String(bookingId)}`);
+  assert.deepEqual([rows[0]?.verdict, rows[0]?.mode, rows[0]?.enforced, rows[0]?.exemption], ["would_reject", "enforce", false, exemption]);
+}
 
 test("model hook: shadow (missing control) records a would-reject and saves; valid values record nothing", async (t) => {
   if (!skipUnlessReady(t)) return;
@@ -152,6 +163,7 @@ test("model hook: shadow (missing control) records a would-reject and saves; val
   assert.equal(row?.verdict, "would_reject");
   assert.equal(row?.reason, "no_digits");
   assert.equal(row?.write_path, "create_leadless_booking");
+  assert.equal("enforced" in row! || "exemption" in row!, false, "shadow records are unchanged");
   assert.equal(JSON.stringify(row).includes("Jane"), false, "raw value is never stored");
   for (const valid of ["5556001", "p5556002", "P-5556003", "P5556004 new", " RF5556005 "]) {
     const ok = await bookingDoc(valid).save();
@@ -160,20 +172,34 @@ test("model hook: shadow (missing control) records a would-reject and saves; val
   assert.equal((await BookedLead.findById(bad._id).lean())?.normalized_job_no, "JANE CUSTOMER");
 });
 
-test("model hook: an unknown control value stays shadow; enforce rejects creates and job changes with 422", async (t) => {
+test("model hook: an unknown control value stays shadow; enforce blocks only a missing Job Number and records the rest", async (t) => {
   if (!skipUnlessReady(t)) return;
   const legacy = await bookingDoc("EJBA03-LL-20260908-A").save();
   await setMode("enforce_typo" as BookingJobNumberMode);
-  await bookingDoc("Another Name").save();
+  await bookingDoc(undefined).save();
   await setMode("enforce");
-  await assert.rejects(bookingDoc("Jane Customer").save(), isJobNumberError("no_digits"));
-  await assert.rejects(bookingDoc(undefined).save(), isJobNumberError("missing"));
-  await assert.rejects(bookingDoc("EJBA03-LL-20260908-B").save(), isJobNumberError("multiple_numbers"));
+  for (const [value, reason] of [["Enforce Customer", "no_digits"], ["EJBA03-LL-20260908-B", "multiple_numbers"], ["5556759A", "mixed_token"], ["123", "digit_core_length"]]) {
+    await assertRecordedOnly((await bookingDoc(value).save())._id, reason!);
+  }
+  const blocked = bookingDoc(undefined);
+  await assert.rejects(withTransaction((session) => blocked.save({ session })), isMissingJobNumber);
+  assert.equal(await BookedLead.countDocuments({ _id: blocked._id }), 0);
+  // The blocked record survives the aborted transaction: it is written outside it.
+  const [rejected] = await checks(blocked._id);
+  assert.deepEqual([rejected?.verdict, rejected?.enforced, rejected?.exemption, String(rejected?._id).endsWith(":rejected")], ["rejected", true, null, true]);
+  await assert.rejects(bookingDoc("   ").save(), isMissingJobNumber);
+  // A Granot lifecycle document is never blocked, even without a Job Number; the marker, not a field, decides.
+  const granot = bookingDoc(undefined);
+  markGranotLifecycleBookingWrite(granot);
+  await assertRecordedOnly((await granot.save())._id, "missing", "granot_lifecycle");
   // An untouched legacy value never blocks an unrelated edit (cancellation, deposit, deletion).
   legacy.deposit_amount = 650;
   await legacy.save();
   legacy.job_no = "Still A Name";
-  await assert.rejects(legacy.save(), isJobNumberError("no_digits"));
+  await legacy.save();
+  await assertRecordedOnly(legacy._id, "no_digits");
+  legacy.job_no = MISSING;
+  await assert.rejects(legacy.save(), isMissingJobNumber);
   legacy.job_no = uniqueJob();
   await legacy.save();
   assert.equal((await BookedLead.findById(legacy._id).lean())?.normalized_job_no, legacy.job_no);
@@ -184,17 +210,18 @@ test("model hook: query updates that set job_no are checked and keep normalized_
   if (!skipUnlessReady(t)) return;
   const row = await bookingDoc(uniqueJob()).save();
   await setMode("enforce");
-  await assert.rejects(
-    BookedLead.updateOne({ _id: row._id }, { $set: { job_no: "Jane Customer" } }).exec(),
-    isJobNumberError("no_digits"),
-  );
+  await BookedLead.updateOne({ _id: row._id }, { $set: { job_no: "Update Customer" } }).exec();
+  await assertRecordedOnly(row._id, "no_digits");
+  await assert.rejects(BookedLead.updateOne({ _id: row._id }, { $set: { job_no: MISSING } }).exec(), isMissingJobNumber);
   await BookedLead.updateOne({ _id: row._id }, { $set: { job_no: " p-5557001 " } }).exec();
   assert.equal((await BookedLead.findById(row._id).lean())?.normalized_job_no, "P 5557001");
   await setMode(null);
-  await BookedLead.findOneAndUpdate({ _id: row._id }, { $set: { job_no: "Query Customer" } }).exec();
+  // Same length as the enforce value, so the shadow write lands on (and cleans) the same record.
+  await BookedLead.findOneAndUpdate({ _id: row._id }, { $set: { job_no: "Query Customers" } }).exec();
   const after = await BookedLead.findById(row._id).lean();
-  assert.equal(after?.normalized_job_no, "QUERY CUSTOMER");
-  assert.equal((await checks(row._id))[0]?.write_path, "update_query");
+  assert.equal(after?.normalized_job_no, "QUERY CUSTOMERS");
+  const shadowRow = (await checks(row._id)).find((r) => r.reason === "no_digits");
+  assert.deepEqual([shadowRow?.write_path, shadowRow?.mode, "enforced" in shadowRow!], ["update_query", "shadow", false]);
 });
 
 test("shadow record is written in the caller's transaction: an aborted write leaves none", async (t) => {
@@ -213,7 +240,7 @@ test("shadow record is written in the caller's transaction: an aborted write lea
   assert.equal(await BookedLead.countDocuments({ _id: doc._id }), 0);
 });
 
-test("createLeadlessBooking: enforce answers 422 and writes nothing; shadow writes and records", async (t) => {
+test("createLeadlessBooking: enforce answers 422 only for a missing Job Number; other values write and record", async (t) => {
   if (!skipUnlessReady(t)) return;
   const data = (job_no: string) => ({
     book_date: "2026-11-20", job_no, source_company: "main_site", agent: AGENT,
@@ -221,31 +248,35 @@ test("createLeadlessBooking: enforce answers 422 and writes nothing; shadow writ
   });
   await setMode("enforce");
   const before = await BookedLead.countDocuments();
-  await assert.rejects(runExistingCreateLeadlessBooking({ data: data("Leadless Customer"), context: context("lls-enf") }), isJobNumberError("no_digits"));
+  await assert.rejects(runExistingCreateLeadlessBooking({ data: data(MISSING), context: context("lls-miss") }), isMissingJobNumber);
   assert.equal(await BookedLead.countDocuments(), before);
+  const named = await runExistingCreateLeadlessBooking({ data: data("Leadless Customer"), context: context("lls-enf") });
+  await assertRecordedOnly(named.command.entity_refs.find((ref) => ref.model === "BookedLead")!.id, "no_digits");
   const valid = await runExistingCreateLeadlessBooking({ data: data(`${uniqueJob()} vip`), context: context("lls-ok") });
   assert.equal(valid.command.status, "applied");
   await setMode(null);
   await runExistingCreateLeadlessBooking({ data: data("Shadow Customer"), context: context("lls-sh") });
-  assert.equal(await BookedLead.countDocuments(), before + 2);
+  assert.equal(await BookedLead.countDocuments(), before + 3);
   const recorded = await db().collection(BOOKING_JOB_NUMBER_CHECKS_COLLECTION).find({ write_path: "create_leadless_booking", reason: "no_digits" }).toArray();
   assert.ok(recorded.length >= 1);
 });
 
-test("createExistingReferralBooking: enforce answers 422", async (t) => {
+test("createExistingReferralBooking: enforce answers 422 only for a missing Job Number", async (t) => {
   if (!skipUnlessReady(t)) return;
   const data = (job_no: string) => ({
     book_date: "2026-11-20", job_no, customer_name: "Referral Synthetic", agent: AGENT,
     total_binder_amount: 100, deposit_amount: 500, merchant: MERCHANT, local: "long_distance",
   });
   await setMode("enforce");
-  await assert.rejects(runExistingCreateReferralBooking({ data: data("12"), context: context("ref-enf") }), isJobNumberError("digit_core_length"));
+  await assert.rejects(runExistingCreateReferralBooking({ data: data(MISSING), context: context("ref-miss") }), isMissingJobNumber);
+  const short = await runExistingCreateReferralBooking({ data: data("12"), context: context("ref-enf") });
+  await assertRecordedOnly(short.command.entity_refs.find((ref) => ref.model === "BookedLead")!.id, "digit_core_length");
   const ok = await runExistingCreateReferralBooking({ data: data(uniqueJob()), context: context("ref-ok") });
   assert.equal(ok.command.status, "applied");
   await setMode(null);
 });
 
-test("createBookingFromLead and updateBookedLead: enforce answers 422; a valid correction applies", async (t) => {
+test("createBookingFromLead and updateBookedLead: enforce answers 422 only for a missing Job Number; a valid correction applies", async (t) => {
   if (!skipUnlessReady(t)) return;
   const lead = await formLead();
   const data = (job_no?: string) => ({
@@ -254,14 +285,14 @@ test("createBookingFromLead and updateBookedLead: enforce answers 422; a valid c
     deposit_amount: 500, merchant: MERCHANT, source: "main_site", local: "long_distance",
   });
   await setMode("enforce");
-  await assert.rejects(runExistingCreateBookingFromLead({ data: data("Jane Customer"), context: context("bfl-enf") }), isJobNumberError("no_digits"));
-  await assert.rejects(runExistingCreateBookingFromLead({ data: data(undefined), context: context("bfl-miss") }), isJobNumberError("missing"));
+  await assert.rejects(runExistingCreateBookingFromLead({ data: data(undefined), context: context("bfl-miss") }), isMissingJobNumber);
   assert.equal(await BookedLead.countDocuments({ lead_ref: lead._id }), 0);
-  const created = await runExistingCreateBookingFromLead({ data: data(uniqueJob()), context: context("bfl-ok") });
+  const created = await runExistingCreateBookingFromLead({ data: data("Lead Customer"), context: context("bfl-enf") });
   const bookingId = created.command.entity_refs.find((ref) => ref.model === "BookedLead")!.id;
+  await assertRecordedOnly(bookingId, "no_digits");
   await assert.rejects(
-    runExistingUpdateBookedLead({ booking_id: bookingId, patch: { job_no: "Jane Customer" }, context: context("ubl-enf") }),
-    isJobNumberError("no_digits"),
+    runExistingUpdateBookedLead({ booking_id: bookingId, patch: { job_no: MISSING }, context: context("ubl-miss") }),
+    isMissingJobNumber,
   );
   const corrected = uniqueJob();
   await runExistingUpdateBookedLead({ booking_id: bookingId, patch: { job_no: corrected.toLowerCase() }, context: context("ubl-ok") });
@@ -269,7 +300,8 @@ test("createBookingFromLead and updateBookedLead: enforce answers 422; a valid c
   await setMode(null);
 });
 
-test("submitEmployeeBooking and updatePendingEmployeeBooking: enforce answers 422; valid input still books", async (t) => {
+// Employee preparation already refuses a missing Job Number (ValidationError) before the guard runs.
+test("submitEmployeeBooking and updatePendingEmployeeBooking: enforce records a non-missing invalid value and still books", async (t) => {
   if (!skipUnlessReady(t)) return;
   const submission = (job_no: string) => ({
     submission_id: randomUUID(), lead_source_company_id: companyId, source_granularity_key: "main_site_form",
@@ -277,18 +309,17 @@ test("submitEmployeeBooking and updatePendingEmployeeBooking: enforce answers 42
     phone_number: `55511${String(++seq).padStart(5, "0")}`, job_no,
   });
   await setMode("enforce");
-  await assert.rejects(submitEmployeeBooking(submission("Employee Customer")), isJobNumberError("no_digits"));
+  await assertRecordedOnly((await submitEmployeeBooking(submission("Employee Customer"))).booking_id, "no_digits");
   const booked = await submitEmployeeBooking(submission(`#${uniqueJob().toLowerCase()}`));
   assert.equal(booked.outcome, "booked_pending_lead");
   const caseDoc = await BookingLeadReconciliationCase.findOne({ booking: booked.booking_id }).lean();
   assert.ok(caseDoc);
   const actor = { actor: "owner:jobno-replica" };
-  await assert.rejects(
-    updatePendingEmployeeBooking(String(caseDoc._id), { revision: caseDoc.revision ?? 0, job_no: "Pending Customer" } as never, actor),
-    isJobNumberError("no_digits"),
-  );
+  await updatePendingEmployeeBooking(String(caseDoc._id), { revision: caseDoc.revision ?? 0, job_no: "Pending Customer" } as never, actor);
+  await assertRecordedOnly(booked.booking_id, "no_digits");
   const next = uniqueJob();
-  await updatePendingEmployeeBooking(String(caseDoc._id), { revision: caseDoc.revision ?? 0, job_no: `${next} new` } as never, actor);
+  const revised = await BookingLeadReconciliationCase.findById(caseDoc._id).lean();
+  await updatePendingEmployeeBooking(String(caseDoc._id), { revision: revised?.revision ?? 0, job_no: `${next} new` } as never, actor);
   assert.equal((await BookedLead.findById(booked.booking_id).lean())?.normalized_job_no, `${next} NEW`);
   await setMode(null);
 });
@@ -299,14 +330,13 @@ test("query hook: $setOnInsert, $unset and replacements are checked; pipeline an
   await setMode("enforce");
   const upsertId = new mongoose.Types.ObjectId();
   await assert.rejects(
-    BookedLead.updateOne({ _id: upsertId }, { $setOnInsert: { job_no: "Upsert Customer" } }, { upsert: true }).exec(),
-    isJobNumberError("no_digits"),
+    BookedLead.updateOne({ _id: upsertId }, { $setOnInsert: { job_no: MISSING } }, { upsert: true }).exec(),
+    isMissingJobNumber,
   );
-  await assert.rejects(BookedLead.updateOne({ _id: row._id }, { $unset: { job_no: 1 } }).exec(), isJobNumberError("missing"));
-  await assert.rejects(
-    BookedLead.replaceOne({ _id: row._id }, { ...row.toObject(), job_no: "Replace Customer" }).exec(),
-    isJobNumberError("no_digits"),
-  );
+  await assert.rejects(BookedLead.updateOne({ _id: row._id }, { $unset: { job_no: 1 } }).exec(), isMissingJobNumber);
+  await assert.rejects(BookedLead.replaceOne({ _id: row._id }, { ...row.toObject(), job_no: "   " }).exec(), isMissingJobNumber);
+  await BookedLead.replaceOne({ _id: row._id }, { ...row.toObject(), job_no: "Replace Customer" }).exec();
+  await assertRecordedOnly(row._id, "no_digits");
   await assert.rejects(BookedLead.updateOne({ _id: row._id }, [{ $set: { job_no: "x" } }], { updatePipeline: true } as never).exec(), /pipeline updates are not supported/);
   await assert.rejects(BookedLead.updateOne({ _id: row._id }, { $rename: { job_no: "old_job_no" } }).exec(), /\$rename of job_no/);
   const replacementJob = uniqueJob();

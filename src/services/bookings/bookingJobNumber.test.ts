@@ -7,7 +7,13 @@ import {
   bookingJobNumbersEquivalent,
   classifyBookingJobNumber,
 } from "./bookingJobNumber";
-import { BookingJobNumberError } from "./bookingJobNumberGuard";
+import {
+  BookingJobNumberError,
+  jobNumberEnforcement,
+  type BookingJobNumberMode,
+  type BookingJobNumberWriteOrigin,
+} from "./bookingJobNumberGuard";
+import type { BookingJobNumberRejection } from "./bookingJobNumber";
 
 const accepted = (raw: string, jobClass: string, core: string) => {
   const verdict = classifyBookingJobNumber(raw);
@@ -104,7 +110,7 @@ test("Booking job filter: exact keys plus one anchored digit-core regex on the n
   for (const key of ["15556759", "P55567590", "P5556761", "5556759A"]) assert.equal(regex.test(key), false, key);
 });
 
-test("plausible near-miss spellings never seen in production are rejected (Owner reviews shadow records before enforce)", () => {
+test("plausible near-miss spellings never seen in production are rejected (recorded, never blocked)", () => {
   rejected("P5556759-1", "multiple_numbers");
   rejected("P5556759 (2nd)", "multiple_numbers");
   rejected("5,556,759", "multiple_numbers");
@@ -122,4 +128,25 @@ test("BookingJobNumberError answers 422 with a stable code and the reason as a j
     issues: [{ path: "job_no", message: "no_digits" }],
   });
   assert.equal(error.toHttpBody("req-1").request_id, "req-1");
+});
+
+test("enforcement decision (Owner, 2026-11-21): only a missing Job Number from a non-Granot write blocks, only in enforce", () => {
+  const modes: BookingJobNumberMode[] = ["shadow", "enforce"];
+  const reasons: BookingJobNumberRejection[] = ["missing", "no_digits", "multiple_numbers", "mixed_token", "digit_core_length"];
+  const origins: BookingJobNumberWriteOrigin[] = ["standard", "granot_lifecycle"];
+  const expected = (mode: BookingJobNumberMode, reason: BookingJobNumberRejection, origin: BookingJobNumberWriteOrigin) => {
+    if (mode === "shadow") return { blocks: false, exemption: null };
+    if (origin === "granot_lifecycle") return { blocks: false, exemption: "granot_lifecycle" };
+    if (reason !== "missing") return { blocks: false, exemption: "reason_not_enforced" };
+    return { blocks: true, exemption: null };
+  };
+  let blocking = 0;
+  for (const mode of modes) for (const reason of reasons) for (const origin of origins) {
+    const decision = jobNumberEnforcement(mode, reason, origin);
+    assert.deepEqual(decision, expected(mode, reason, origin), `${mode} × ${reason} × ${origin}`);
+    if (decision.blocks) blocking += 1;
+  }
+  assert.equal(blocking, 1, "exactly one of the 20 combinations blocks: enforce × missing × standard");
+  assert.deepEqual(jobNumberEnforcement("enforce", "missing", "standard"), { blocks: true, exemption: null });
+  assert.deepEqual(jobNumberEnforcement("enforce", "missing", "granot_lifecycle"), { blocks: false, exemption: "granot_lifecycle" });
 });

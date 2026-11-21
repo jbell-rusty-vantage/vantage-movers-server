@@ -15,7 +15,11 @@ import {
  */
 export const BOOKING_JOB_NUMBER_CONTROL_COLLECTION = "booking_job_number_control";
 export const BOOKING_JOB_NUMBER_CONTROL_ID = "validation";
-/** One document per Booking, reason and value length: `${booking_id}:${reason}:${length}`. */
+/**
+ * One document per Booking, reason and value length: `${booking_id}:${reason}:${length}` for a
+ * recorded-only write, with a `:rejected` suffix for a blocked one (written outside the caller's
+ * transaction, so it must never share a key with an in-transaction record).
+ */
 export const BOOKING_JOB_NUMBER_CHECKS_COLLECTION = "booking_job_number_checks";
 
 export type BookingJobNumberMode = "shadow" | "enforce";
@@ -26,6 +30,50 @@ export type BookingJobNumberWritePath =
   | "create_employee_booking"
   | "update_booking"
   | "update_query";
+
+/**
+ * Who is writing the Booking, carried explicitly by the caller (never inferred from field values).
+ * `granot_lifecycle` is the Granot Confirm (lead and Leadless) and Referral creation commands.
+ */
+export type BookingJobNumberWriteOrigin = "standard" | "granot_lifecycle";
+/** Why an invalid value was allowed through in `enforce` mode. */
+export type BookingJobNumberExemption = "reason_not_enforced" | "granot_lifecycle";
+
+/** `$locals` key a Granot lifecycle site sets on a `BookedLead` document before `save`. */
+export const BOOKING_JOB_NUMBER_ORIGIN_LOCAL = "jobNumberOrigin";
+
+/** Marks a Booking document as written by the Granot lifecycle: its Job Number never blocks the write. */
+export function markGranotLifecycleBookingWrite(doc: { $locals: Record<string, unknown> }): void {
+  doc.$locals[BOOKING_JOB_NUMBER_ORIGIN_LOCAL] = "granot_lifecycle" satisfies BookingJobNumberWriteOrigin;
+}
+
+/** The write origin a document carries; anything unmarked or unknown is `standard`. */
+export function bookingJobNumberWriteOrigin(locals: Record<string, unknown> | undefined): BookingJobNumberWriteOrigin {
+  return locals?.[BOOKING_JOB_NUMBER_ORIGIN_LOCAL] === "granot_lifecycle" ? "granot_lifecycle" : "standard";
+}
+
+export type BookingJobNumberEnforcement =
+  | { blocks: true; exemption: null }
+  | { blocks: false; exemption: BookingJobNumberExemption | null };
+
+/**
+ * The one enforcement decision (Owner, 2026-11-21: "Don't make Granot records part of enforcement.
+ * Minimal enforcement of having a job number."). Only `enforce` mode can block, and only a missing
+ * or empty value (`missing`) from a non-Granot write. Every other case is recorded, never blocked:
+ * - `shadow`: no exemption (nothing is enforced; the record is today's would-reject);
+ * - `enforce` + Granot lifecycle origin: exempt by origin, for every reason including `missing`;
+ * - `enforce` + any reason other than `missing`: exempt by reason.
+ */
+export function jobNumberEnforcement(
+  mode: BookingJobNumberMode,
+  reason: BookingJobNumberRejection,
+  origin: BookingJobNumberWriteOrigin,
+): BookingJobNumberEnforcement {
+  if (mode !== "enforce") return { blocks: false, exemption: null };
+  if (origin === "granot_lifecycle") return { blocks: false, exemption: "granot_lifecycle" };
+  if (reason !== "missing") return { blocks: false, exemption: "reason_not_enforced" };
+  return { blocks: true, exemption: null };
+}
 
 export class BookingJobNumberError extends AppError {
   readonly reason: BookingJobNumberRejection;
@@ -68,11 +116,16 @@ export async function readBookingJobNumberMode(
 }
 
 /**
- * Checks one Booking Job Number write. Valid values return immediately without I/O. An invalid
- * value throws a 422 `BookingJobNumberError` in `enforce`; in `shadow` it records a would-reject
- * (inside the caller's transaction when there is one, so aborted writes leave no record) and the
- * write continues. The value is never stored, hashed or logged (a name is customer data and an
- * unsalted hash of a name is reversible by guessing): only its reason, length and the write path.
+ * Checks one Booking Job Number write. Valid values return immediately without I/O. For an invalid
+ * value, `jobNumberEnforcement` decides:
+ * - recorded only (every `shadow` write; in `enforce`, every exempt write): a `would_reject` record
+ *   is written inside the caller's transaction when there is one (so aborted writes leave no record)
+ *   and the write continues. In `enforce` the record also carries `enforced: false` and `exemption`.
+ * - blocked (`enforce`, `missing`, non-Granot): a `rejected` record with `enforced: true` is written
+ *   outside the caller's transaction (the refusal aborts it), best effort, then a 422
+ *   `BookingJobNumberError` is thrown.
+ * The value is never stored, hashed or logged (a name is customer data and an unsalted hash of a
+ * name is reversible by guessing): only its reason, length, the write path and the decision.
  */
 export async function checkBookingJobNumber(input: {
   connection: Connection;
@@ -80,33 +133,47 @@ export async function checkBookingJobNumber(input: {
   booking_id?: unknown;
   job_no: unknown;
   write_path: BookingJobNumberWritePath;
+  write_origin?: BookingJobNumberWriteOrigin;
   now?: Date;
-}): Promise<{ mode: BookingJobNumberMode | null; reason: BookingJobNumberRejection | null }> {
+}): Promise<{
+  mode: BookingJobNumberMode | null;
+  reason: BookingJobNumberRejection | null;
+  blocked: boolean;
+  exemption: BookingJobNumberExemption | null;
+}> {
   const verdict = classifyBookingJobNumber(input.job_no);
-  if (verdict.valid) return { mode: null, reason: null };
+  if (verdict.valid) return { mode: null, reason: null, blocked: false, exemption: null };
   const mode = await readBookingJobNumberMode(input.connection, input.session);
   const bookingId = input.booking_id == null ? null : String(input.booking_id);
-  if (mode === "enforce") {
-    throw new BookingJobNumberError(verdict.reason, { write_path: input.write_path, booking_id: bookingId });
-  }
-  if (input.connection.readyState === 1 && input.connection.db) {
-    const valueLength = typeof input.job_no === "string" ? input.job_no.length : 0;
-    const now = input.now ?? new Date();
-    await input.connection.db.collection<{ _id: string }>(BOOKING_JOB_NUMBER_CHECKS_COLLECTION).updateOne(
-      { _id: `${bookingId ?? "unknown"}:${verdict.reason}:${valueLength}` },
+  const decision = jobNumberEnforcement(mode, verdict.reason, input.write_origin ?? "standard");
+  const valueLength = typeof input.job_no === "string" ? input.job_no.length : 0;
+  const now = input.now ?? new Date();
+  const record = (session: ClientSession | undefined) => input.connection.db!
+    .collection<{ _id: string }>(BOOKING_JOB_NUMBER_CHECKS_COLLECTION)
+    .updateOne(
+      { _id: `${bookingId ?? "unknown"}:${verdict.reason}:${valueLength}${decision.blocks ? ":rejected" : ""}` },
       {
         $setOnInsert: { first_seen_at: now, booking_id: bookingId, value_length: valueLength },
         $set: {
           last_seen_at: now,
-          verdict: "would_reject",
+          verdict: decision.blocks ? "rejected" : "would_reject",
           mode,
           reason: verdict.reason,
           write_path: input.write_path,
           rule_version: BOOKING_JOB_NUMBER_RULE_VERSION,
+          // `shadow` records stay exactly as before 2026-11-21: no enforcement fields.
+          ...(mode === "enforce" ? { enforced: decision.blocks, exemption: decision.exemption } : {}),
         },
+        ...(mode === "enforce" ? {} : { $unset: { enforced: "", exemption: "" } }),
       },
-      { upsert: true, session: input.session ?? undefined },
+      { upsert: true, session },
     );
+  const connected = input.connection.readyState === 1 && Boolean(input.connection.db);
+  if (decision.blocks) {
+    // Never let the audit record mask the refusal.
+    if (connected) await record(undefined).catch(() => undefined);
+    throw new BookingJobNumberError(verdict.reason, { write_path: input.write_path, booking_id: bookingId });
   }
-  return { mode, reason: verdict.reason };
+  if (connected) await record(input.session ?? undefined);
+  return { mode, reason: verdict.reason, blocked: false, exemption: decision.exemption };
 }

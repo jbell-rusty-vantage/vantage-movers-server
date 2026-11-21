@@ -55,7 +55,7 @@ generated:
 
 Confirmation code is the last 8 hex chars of the Booking id.
 
-**Job Number rule.** The submitted `job_no` (and a later `job_no` edit through `PATCH /api/v1/admin/booking-lead-reconciliations/:id/booking`) must satisfy the Booking Job Number rule, checked when the Booking is saved. In `shadow` (default) a would-reject is recorded with `write_path: create_employee_booking` or `update_booking` and the submission proceeds; in `enforce` the submission answers 422 `booking.job_number_invalid` and nothing is written. Rule and modes: [bookings.md](./bookings.md#job-number-validation-owner-rule-2026-11-20).
+**Job Number rule.** The submitted `job_no` (and a later `job_no` edit through `PATCH /api/v1/admin/booking-lead-reconciliations/:id/booking`) must satisfy the Booking Job Number rule, checked when the Booking is saved. In `shadow` (default) a would-reject is recorded with `write_path: create_employee_booking` or `update_booking` and the submission proceeds. In `enforce` (Owner decision 2026-11-21) only a missing Job Number would block, and preparation already refuses that (`ValidationError: Job number is required`). Every other invalid value is recorded with `enforced: false` and `exemption: reason_not_enforced`, and the submission proceeds. Rule and modes: [bookings.md](./bookings.md#job-number-validation-owner-rule-2026-11-20).
 
 ## Auto-match (current code)
 

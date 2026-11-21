@@ -11,6 +11,7 @@ import {
 } from "./schemaHelpers";
 import { normalizeJobNo } from "../services/bookings/bookingIdentity";
 import {
+  bookingJobNumberWriteOrigin,
   checkBookingJobNumber,
   type BookingJobNumberWritePath,
 } from "../services/bookings/bookingJobNumberGuard";
@@ -159,7 +160,8 @@ BookedLeadSchema.pre("validate", function () {
 /**
  * Job Number rule on every Mongoose Booking write (all create, update and reconciliation paths save
  * a document). A new Booking or a changed `job_no` is checked; an untouched legacy value is not, so
- * unrelated edits, cancellation and deletion of an old record keep working.
+ * unrelated edits, cancellation and deletion of an old record keep working. The write origin comes
+ * from the document's `$locals` (`markGranotLifecycleBookingWrite`), never from its field values.
  */
 BookedLeadSchema.pre("validate", async function checkJobNumber() {
   if (!this.isNew && !this.isModified("job_no")) return;
@@ -178,6 +180,7 @@ BookedLeadSchema.pre("validate", async function checkJobNumber() {
     booking_id: this._id,
     job_no: this.job_no,
     write_path: writePath,
+    write_origin: bookingJobNumberWriteOrigin(this.$locals),
   });
 });
 
@@ -193,6 +196,8 @@ function queryBookingId(filter: unknown): string | null {
  * top-level key) or unsets it is checked and its `normalized_job_no` rewritten in step; a
  * replacement is checked as a whole document. `$rename` of `job_no` and aggregation-pipeline
  * updates cannot be checked reliably, so they are refused outright (no code path uses them).
+ * Query writes are always the `standard` origin: no Granot lifecycle path writes `job_no` by query
+ * (its raw `collection.updateOne` writes never set it; `bookingJobNumberWriters.test.ts` proves it).
  */
 BookedLeadSchema.pre(["updateOne", "updateMany", "findOneAndUpdate"], async function checkJobNumberUpdate() {
   const update = this.getUpdate() as Record<string, unknown> | unknown[] | null;

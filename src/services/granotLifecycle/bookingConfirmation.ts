@@ -4,6 +4,7 @@ import mongoose, { type ClientSession } from "mongoose";
 import { getGranotLifecycleFlags, type GranotLifecycleFlags } from "../../config/domain/granotLifecycle";
 import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
+import { markGranotLifecycleBookingWrite } from "../bookings/bookingJobNumberGuard";
 import { DomainCommandExecution } from "../../models/DomainCommandExecution";
 import { Merchant } from "../../models/Merchant";
 import { getCallLeadModel } from "../../models/CallLead";
@@ -312,6 +313,7 @@ async function applyConfirmation(input: {
     is_leadless_booking: false,
     domain_revision: 0,
   });
+  markGranotLifecycleBookingWrite(booking);
   await booking.save({ session: input.session });
 
   const leadUpdate = await updateLeadForBooking(selectedLead.lead_model,
@@ -457,6 +459,7 @@ async function persistLeadlessConfirmation(input: {
     is_leadless_booking: true,
     domain_revision: 0,
   });
+  markGranotLifecycleBookingWrite(booking);
   await booking.save({ session: input.input.session });
 
   const link = await persistLink({

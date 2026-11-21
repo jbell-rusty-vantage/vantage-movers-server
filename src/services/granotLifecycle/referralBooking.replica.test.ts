@@ -20,8 +20,8 @@ import { SheetSyncJob } from "../../models/SheetSyncJob";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
 import {
   BOOKING_JOB_NUMBER_CONTROL_COLLECTION,
+  BOOKING_JOB_NUMBER_CHECKS_COLLECTION,
   BOOKING_JOB_NUMBER_CONTROL_ID,
-  BookingJobNumberError,
 } from "../bookings/bookingJobNumberGuard";
 import { planJobWrites } from "../sheetSync/drainer/jobPlanner";
 import { createReferralBooking } from "./referralBooking";
@@ -370,16 +370,20 @@ test("[AC-28][AC-32] Referral creation rolls back after every persisted boundary
   }
 });
 
-test("Referral creation in Job Number enforce mode answers 422 for a value that cannot be a Job Number and writes no Booking", async (t) => {
+test("Referral creation in Job Number enforce mode is never blocked (Owner, 2026-11-21): it books and only records the invalid value", async (t) => {
   if (!(await replicaReady(t))) return;
   const fixture = await seed();
   // The fixture Job (`U28-<base36>-<hex>`) is not a Job Number under the Booking rule.
   const control = mongoose.connection.collection<{ _id: string }>(BOOKING_JOB_NUMBER_CONTROL_COLLECTION);
   await control.updateOne({ _id: BOOKING_JOB_NUMBER_CONTROL_ID }, { $set: { mode: "enforce" } }, { upsert: true });
   t.after(() => control.deleteOne({ _id: BOOKING_JOB_NUMBER_CONTROL_ID }));
-  await assert.rejects(
-    createReferralBooking(command(fixture, "jobno-enforce"), { flags }),
-    (error: unknown) => error instanceof BookingJobNumberError && error.statusCode === 422,
-  );
-  assert.equal(await BookedLead.countDocuments({ normalized_job_no: fixture.job }), 0);
+  await createReferralBooking(command(fixture, "jobno-enforce"), { flags });
+  const booking = await BookedLead.findOne({ normalized_job_no: fixture.job }).lean().exec();
+  assert.ok(booking);
+  const records = await mongoose.connection.collection(BOOKING_JOB_NUMBER_CHECKS_COLLECTION)
+    .find({ booking_id: String(booking._id) }).toArray();
+  assert.equal(records.length, 1);
+  assert.deepEqual([records[0]?.verdict, records[0]?.mode, records[0]?.enforced, records[0]?.exemption, records[0]?.write_path],
+    ["would_reject", "enforce", false, "granot_lifecycle", "create_referral_booking"]);
+  assert.equal(JSON.stringify(records).includes(jobPrefix), false, "raw value is never stored");
 });
