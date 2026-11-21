@@ -6,23 +6,29 @@ The Owner set this program on November 20, at the end of the service-optimizatio
 
 The program has five workstreams. Run them in the order below. Each one ends with a verifiable deliverable, not a summary.
 
-## State at hand-off (November 20, about 15:00 New York)
+## State at hand-off
 
-- **`main`:** `194e486d`, serving production. It contains the Granot scheduled-run fix ([PR #243](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/243)), the Sheet Sync lifecycle fixes ([PR #245](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/245)) and the [Lead lifecycle pack](../knowledge/lead-lifecycle/README.md) ([PR #244](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/244)).
-- **Master Sheets:**
-  - The Forms, Duplicate Forms, Bad Form Leads, Booked Deals and Cancelled Deals tabs match MongoDB exactly.
-  - The Calls and Duplicate Calls tabs still have known differences. The Owner handles those tabs manually (Owner directive, November 20). See the [pack's COVERAGE](../knowledge/lead-lifecycle/COVERAGE.md).
-- **Production data fixes this session:** each was Owner-approved and recorded in COVERAGE "Fixes during the session".
-  - 592 pre-November 3 Bad Forms were removed from Forms.
-  - 7 Forms were re-delivered to their correct tab.
-  - 6 orphan rows and 1 stale Duplicate Forms row were removed.
-  - The September 6 No-Sync test booking row was removed.
-  - The August 19–20 replica-test fixtures were purged: 37 Cancellations and 3 Bookings.
-- **Still open from the current handoff:**
-  - Scheduled hidden-index drop verification, after 22:17 New York on November 20.
-  - Sheet Sync follow-ups.
-  - Index and read phase.
-  - Minor review items.
+The current state and the carry-overs to close first are in [NEXT-SESSION "Start here"](NEXT-SESSION.md#start-here--next-session-owner-november-20). At close on November 20, `main` `9c0cc421` serves production with PRs #243–#248 and #250–#252.
+
+## What November 20 adds to each workstream
+
+1. **GCS.**
+   - The retention fast path still scans in most batches. Measure whether a GCS-backed closed-run index removes that need.
+   - The Granot receipt retention backlog in the handoff remains the first storage candidate.
+2. **Reviews.**
+   - The #252 shadow would-reject review and the enforce decision.
+   - Cross-path job matching: `P 5556759` against `P5556759` outside Pool.
+   - The 40 job groups whose Record Links name more than one Lead.
+   - The open Owner decisions in NEXT-SESSION carry-over 5.
+   - An audit of every `*.replica.test.ts` and replica runner for a loopback assertion. The August 19–20 fixtures reached production without one.
+3. **Clean code.**
+   - `legacyBookingJobFilter` is already gone (#252).
+   - Promote or delete the November 20 operator scripts: bad-Form cleanup, the two-way Sheet placement check, the orphan-row check and the fixture purge. They are untracked in the main checkout's `.tmp/bad-form-cleanup-2026-11-20/`.
+   - Remove the `ops`, `ops2`, `ops3`, `tracka`, `booking-jobno` and `lifecycle` worktrees once their work is merged. They have real installs, so nothing needs unlinking.
+4. **Git-triggered quality checks.** The November 20 CRLF and worktree collisions show the trigger must run per commit SHA, in its own worktree, never on a shared checkout.
+5. **Profiles and CLI runners.**
+   - The first Sheet Sync runner command to build is `pnpm vantage -- sheet-sync reconcile`: a two-way placement check that every Lead is on exactly its expected tab and every tab row resolves to a Lead. The prototype is `missing-rows.ts` in the evidence folder above.
+   - The "Working rules learned on November 20" in NEXT-SESSION become part of every profile.
 
 ## 1. Google Cloud Storage service
 
