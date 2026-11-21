@@ -1,6 +1,6 @@
 # Operate Sheet Sync
 
-This local CLI slice inspects Mongo evidence and runs the existing recovery proofs without loading the application or provider credentials. Its one production path is the read-only placement check, `sheet-sync reconcile --production-read` ([below](#check-placement-in-both-directions-reconcile)). Every other production inspection, and every repair, is unsupported. Agents start from the Sheet Sync agent profile. It has the same content for Claude Code ([`.claude/agents/sheet-sync.md`](../../.claude/agents/sheet-sync.md)) and Codex ([`.codex/agents/sheet-sync.toml`](../../.codex/agents/sheet-sync.toml)), and `ops/vantage/agent-profiles.test.ts` keeps the two identical. The canonical [Sheet Sync service](../knowledge/services/sheet-sync.md) owns scheduling, identity, leases and recovery behavior; this runbook does not change those rules.
+This local CLI slice inspects Mongo evidence and runs the existing recovery proofs without loading the application or provider credentials. Its one production path is the read-only placement check, `sheet-sync reconcile --production-read` ([below](#check-placement-in-both-directions-reconcile)). Every other production inspection, and every repair, is unsupported. Agents start from the Sheet Sync agent profile. It has the same content for Claude Code ([`.claude/agents/sheet-sync.md`](../../.claude/agents/sheet-sync.md)) and Codex ([`.codex/agents/sheet-sync.toml`](../../.codex/agents/sheet-sync.toml)), and a test in `ops/vantage/cli.test.ts` keeps the two identical. The canonical [Sheet Sync service](../knowledge/services/sheet-sync.md) owns scheduling, identity, leases and recovery behavior; this runbook does not change those rules.
 
 ## Start and discover
 
@@ -60,7 +60,7 @@ Rows with a blank Mongo ID cell (managed cells cleared, operator content kept) a
 
 - **MongoDB:** a frozen wrapper whose only method runs `find` with an empty filter and an inclusion projection, on `form_leads`, `call_leads`, `booked_leads` and `cancelled_leads`. It projects routing flags and `ingestion_origin` only, never contact fields.
 - **Google Sheets:** the production client uses the `https://www.googleapis.com/auth/spreadsheets.readonly` scope, so Google itself refuses writes. The wrapper calls only `spreadsheets.get` (tab titles) and `spreadsheets.values.get` (row 1 and the Mongo ID column).
-- **Tests:** `ops/vantage/sheet-reconcile.test.ts` uses recording proxies to prove that no other Mongo or Sheets method is reachable. It also scans the three reconcile modules for write calls and writer imports.
+- **Tests:** `ops/vantage/cli.test.ts` uses recording proxies to prove that no other Mongo or Sheets method is reachable. It also scans the three reconcile modules for write calls and writer imports.
 
 **Targets.**
 
