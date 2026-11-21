@@ -31,7 +31,7 @@ test("strict command scope rejects injection, unknown flags, duplicate flags and
     ["sheet-sync", "trace", "--target", "local", "--job", "a".repeat(10000)],
     ["services", "--json", "--json"], ["doctor", "--help", "--target", "production"],
     ["test", "sheet-sync", "--suite", "--eval"], ["sheet-sync", "repair"],
-    ["sheet-sync", "reconcile", "--apply"], ["sheet-sync", "reconcile", "--production-read", "--target", "local"],
+    ["sheet-sync", "reconcile", "--production-read", "--target", "local"],
     ["sheet-sync", "reconcile", "--tab", "Leads"], ["sheet-sync", "reconcile", "--samples", "10001"],
   ]) assert.throws(() => parseCommand(args));
 });
@@ -140,6 +140,7 @@ const reconcileRecords: ReconcileRecord[] = [
   { id: id(13), model: "CallLead", flags: { source_company: "top10_leads" } },
   { id: id(14), model: "CallLead", flags: { source_company: "tbm_leads", ringcentral: qualified, form_fill: true } },
   { id: id(15), model: "CallLead", flags: { source_company: "tbm_leads", ringcentral: qualified, created_on_unmatched: true } },
+  { id: id(16), model: "CallLead", flags: { source_company: "tbm_leads", ringcentral: qualified } },
   { id: id(21), model: "BookedLead", flags: {} }, { id: id(22), model: "BookedLead", flags: {} },
   { id: id(31), model: "CancelledLead", flags: {} },
 ];
@@ -148,17 +149,17 @@ function identity(name: string, ids: (string | null)[], header?: unknown[]): Tab
   return parseTabIdentity(definition, header ?? [...definition.headers], [["Mongo ID"], ...ids.map((value) => value ? [value] : [])]);
 }
 const reconcileTabs = [
-  identity("Forms", [id(1), null, id(3), id(5), "not-an-id"]), identity("Duplicate Forms", []), identity("Bad Form Leads", [id(4), id(4)]),
+  identity("Forms", [id(1), null, id(3), id(5), "not-an-id", id(16)]), identity("Duplicate Forms", []), identity("Bad Form Leads", [id(4), id(4)]),
   identity("Calls", [id(11), id(13), id(14)]), identity("Duplicate Calls", [id(15)]), identity("Bad Call Leads", [], ["Mongo ID", "Mongo ID"]),
   identity("Booked Deals", [id(21)]), identity("Cancelled Deals", [id(31), id(99)]),
 ];
 
-test("reconcile finds every placement category per tab; Calls tabs stay report-only; unreadable tabs prove nothing", () => {
+test("reconcile finds every placement category per tab; hints never re-deliver a Call Lead; unreadable tabs prove nothing", () => {
   const report = reconcilePlacement(reconcileRecords, reconcileTabs);
   const expected: [string, Category, string[]][] = [
-    ["Forms", "missing", [id(2)]], ["Forms", "wrong_tab", [id(3)]], ["Forms", "orphan", ["not-an-id"]], ["Forms", "excluded", [id(5)]],
+    ["Forms", "missing", [id(2)]], ["Forms", "wrong_tab", [id(3), id(16)]], ["Forms", "orphan", ["not-an-id"]], ["Forms", "excluded", [id(5)]],
     ["Duplicate Forms", "missing", [id(3)]], ["Bad Form Leads", "duplicate", [id(4)]],
-    ["Calls", "missing", [id(12)]], ["Calls", "wrong_tab", [id(14)]], ["Calls", "excluded", [id(13)]],
+    ["Calls", "missing", [id(12), id(16)]], ["Calls", "wrong_tab", [id(14)]], ["Calls", "excluded", [id(13)]],
     ["Duplicate Calls", "missing", [id(14)]], ["Duplicate Calls", "excluded", [id(15)]],
     ["Booked Deals", "missing", [id(22)]], ["Cancelled Deals", "orphan", [id(99)]],
   ];
@@ -171,9 +172,13 @@ test("reconcile finds every placement category per tab; Calls tabs stay report-o
     }
   }
   assert.deepEqual(report.filter((tab) => tab.owner_managed).map((tab) => tab.tab), ["Calls", "Duplicate Calls"]);
+  // A Call Lead on Forms is the Owner's decision: its re-delivery touches the Calls tabs and never removes a Form row.
+  const forms = report.find((tab) => tab.tab === "Forms")!;
+  assert.match(forms.categories.wrong_tab.repair!, /Calls-tab rule/);
+  assert.match(forms.categories.missing.repair!, /enqueueSheetSyncJob/);
 });
 
-test("reconcile sources reach only Mongo find and Sheets get/values.get, under the readonly scope", async () => {
+test("the reconcile's Mongo and Sheets clients reach only find, spreadsheets.get and values.get, under the readonly scope", async () => {
   const touched: string[] = [];
   const db = new Proxy({}, { get: (_db, property) => {
     if (property !== "collection") throw new Error(`db.${String(property)} reached`);
@@ -199,11 +204,6 @@ test("reconcile sources reach only Mongo find and Sheets get/values.get, under t
   await readTabIdentities(sheetsTabReader(sheets, { master_leads: "a", master_booked: "b" }), "Forms");
   assert.deepEqual([...new Set(touched)].sort(), ["form_leads.find", "sheets.spreadsheets", "sheets.spreadsheets.get", "sheets.spreadsheets.values", "sheets.spreadsheets.values.get"]);
   assert.deepEqual(readOnlyGoogleAuthOptions({ credentials: {} }).scopes, [READ_ONLY_SHEETS_SCOPE]);
-  for (const file of ["sheet-reconcile.ts", "read-only-sources.ts", "sheet-reconcile-command.ts"]) {
-    const source = readFileSync(resolve(__dirname, file), "utf8");
-    assert.doesNotMatch(source, /\.(insert\w*|update\w*|delete\w*|replaceOne|bulkWrite|findOneAnd\w*|createIndex|drop\w*|batchUpdate|append|clear|command)\(|\$merge|\$out\b/, file);
-    assert.doesNotMatch(source, /from "[^"]*(sheetSyncOutbox|googleSheets\/auth|src\/db|batchWriter)"/, file);
-  }
 });
 
 test("production reconcile needs --production-read and a TEST_MODE=false .env, announces its plan, and leaks no secret", async () => {

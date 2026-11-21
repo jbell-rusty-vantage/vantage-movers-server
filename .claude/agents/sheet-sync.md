@@ -76,20 +76,20 @@ Offline proofs cover faked providers; they do not qualify production delivery. A
 ## Read-only production access
 
 Allowed, and only these:
-- **MongoDB:** the checkout's `.env` with `TEST_MODE=false`, database `vantagemovers`, `find` and `aggregate` only, with projections that exclude customer fields (names, phones, emails, addresses, contact snapshots). Typical collections: `form_leads`, `call_leads`, `booked_leads`, `cancelled_leads`, `sheet_sync_jobs`, `sheet_sync_attempts`, `sheet_sync_runs`, `sheet_sync_leases`.
+- **MongoDB:** the checkout's `.env` with `TEST_MODE=false`, database `vantagemovers`, `find` and `aggregate` only, with projections that exclude customer fields (names, phones, emails, addresses, contact snapshots). `MONGO_URI` is currently the read-write application user, so read-only is enforced by your code and these rules, not by Atlas. Switch to the read-only Atlas user once it exists. Typical collections: `form_leads`, `call_leads`, `booked_leads`, `cancelled_leads`, `sheet_sync_jobs`, `sheet_sync_attempts`, `sheet_sync_runs`, `sheet_sync_leases`.
 - **Google Sheets:** the service account from `.env`, `spreadsheets.get` (titles and properties, no grid data unless needed) and `spreadsheets.values.get` only. Prefer the header row and the Mongo ID column; read other columns only when the task requires it and never store contact cells.
 - Copy `.env` into your worktree only for the read, confirm `git check-ignore .env`, never print or commit it, and delete it afterwards. `src/services/crm/crmConfig.ts` loads `.env` through `dotenv/config`, so a test run in a worktree that holds a production `.env` loads it too.
 - Evidence files go in `docs/operations/evidence/` and hold Mongo IDs, row numbers, counts and reason codes only.
-- Not allowed: any Mongo write (`insert*`, `update*`, `delete*`, `findOneAnd*`, `bulkWrite`, index or TTL changes), any Sheets write (`values.update|append|clear|batchUpdate`, `spreadsheets.batchUpdate`), queueing, Admin retry, or deploys.
+- Not allowed: any Mongo write (`insert*`, `update*`, `delete*`, `findOneAnd*`, `bulkWrite`, index or TTL changes), any aggregation with a `$out` or `$merge` stage, any arbitrary `runCommand` / `db.command`, any Sheets write (`values.update|append|clear|batchUpdate`, `spreadsheets.batchUpdate`), queueing, Admin retry, or deploys.
 
 ## Reconcile: two-way placement check
 
 ```text
 pnpm vantage -- sheet-sync reconcile --production-read [--tab "<tab>"] [--samples <n>] [--json]
-pnpm vantage -- sheet-sync reconcile --sheet-snapshot <file.json> [--tab "<tab>"] [--json]
+pnpm vantage -- sheet-sync reconcile --sheet-snapshot <file.json> [--tab "<tab>"] [--samples <n>] [--json]
 ```
 
-- Read-only by construction: production Sheets use the `spreadsheets.readonly` scope, and the code holds only `find` and `spreadsheets.get`/`values.get` wrappers (`ops/vantage/read-only-sources.ts`). It prints what it will read before reading and writes nothing.
+- Read-only by construction: production Sheets use the `spreadsheets.readonly` scope, and the code holds only `find` and `spreadsheets.get`/`values.get` wrappers (`ops/vantage/read-only-sources.ts`). The Mongo wrapper accepts no pipeline, so `$out` and `$merge` cannot reach it; if it ever accepts one, it must reject those stages. It prints what it will read before reading and writes nothing.
 - Default target is local: the `rs0` agent replica plus a workbook snapshot file `{ "master_leads": { "Forms": [[header…], [row…]] }, "master_booked": { … } }`. Production needs `--production-read`; `--target production` alone exits 4.
 - Per tab it reports **missing** (expected here, no row), **wrong_tab** (row belongs to a reportable record expected elsewhere), **duplicate** (same Mongo ID on more than one row), **orphan** (Mongo ID in no record, or not an ObjectId) and **excluded** (record exists but is not reportable: `missing_call_reporting_admission`, `created_on_unmatched`, `no_sync`). Unreadable or absent tabs report `null` counts: they never prove absence.
 - Calls and Duplicate Calls are labelled Owner-managed with no repair suggestion. Other tabs carry the next step, which always requires Owner approval.

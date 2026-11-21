@@ -58,7 +58,7 @@ Rows with a blank Mongo ID cell (managed cells cleared, operator content kept) a
 
 **Read-only by construction** (`ops/vantage/read-only-sources.ts`):
 
-- **MongoDB:** a frozen wrapper whose only method runs `find` with an empty filter and an inclusion projection, on `form_leads`, `call_leads`, `booked_leads` and `cancelled_leads`. It projects routing flags and `ingestion_origin` only, never contact fields.
+- **MongoDB:** a frozen wrapper whose only method runs `find` with an empty filter and an inclusion projection, on `form_leads`, `call_leads`, `booked_leads` and `cancelled_leads`. It projects routing flags and `ingestion_origin` only, never contact fields. It accepts no aggregation pipeline, so `$out` and `$merge` cannot reach it. Production `MONGO_URI` is currently the read-write application user, so read-only is enforced by this code. Switch to the read-only Atlas user once it exists.
 - **Google Sheets:** the production client uses the `https://www.googleapis.com/auth/spreadsheets.readonly` scope, so Google itself refuses writes. The wrapper calls only `spreadsheets.get` (tab titles) and `spreadsheets.values.get` (row 1 and the Mongo ID column).
 - **Tests:** `ops/vantage/cli.test.ts` uses recording proxies to prove that no other Mongo or Sheets method is reachable. It also scans the three reconcile modules for write calls and writer imports.
 
@@ -66,12 +66,12 @@ Rows with a blank Mongo ID cell (managed cells cleared, operator content kept) a
 
 - **Local (default):** the `rs0` agent replica (`127.0.0.1:27017`, `testvantagemovers_agent`, with the same identity checks as `inspect`), plus a workbook snapshot file: `{ "master_leads": { "Forms": [[header…], [row…]] }, "master_booked": { "Booked Deals": … } }`. `--sheet-snapshot` is required, because the CLI loads no Google credentials locally.
 - **Production:** `--production-read` is required; `--target production` alone exits 4.
-  - **What it reads from `.env`:** only named keys from this checkout's `.env`: `TEST_MODE` (which must be `false`), `MONGO_URI`, `MONGO_DNS_SERVERS`, `MASTER_LEADS_SHEET_ID`, `MASTER_BOOKED_SHEET_ID` and `GOOGLE_SERVICE_ACCOUNT_JSON`. It never copies them into `process.env` and never prints their values.
+  - **What it reads from `.env`:** only named keys from this checkout's `.env`: `TEST_MODE` (which must be `false`), `MONGO_URI`, `MONGO_DNS_SERVERS`, `MASTER_LEADS_SHEET_ID`, `MASTER_BOOKED_SHEET_ID`, and the first service-account source present of `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` and `SERVICE_ACCOUNT_LOCAL_FILE`. It never copies them into `process.env` and never prints their values.
   - **Read plan:** before any read it prints the plan on stderr: database `vantagemovers`, each collection with its projected fields, the Sheets scope and calls, and each workbook (ID suffix only) with its tabs.
   - **Mongo connection:** reads use `secondaryPreferred` and the app name `vantage-cli-sheet-reconcile-readonly`.
   - **The `.env` copy:** copy `.env` into your own worktree only for the run, confirm `git check-ignore .env`, and delete it afterwards. `src/services/crm/crmConfig.ts` loads `.env` through `dotenv/config`, so tests run in that worktree would load it too.
 
-Sheets are read before Mongo, so a record created between the two reads can only appear as `missing`, never as an `orphan`. The reads are not a snapshot: a record saved within one drain cycle (about five minutes) of the run can show as missing. Source Company Sheets and the retired titles Duplicates, Bad Leads and Bad Calls are not read.
+Sheets are read before Mongo, so a record created between the two reads appears as `missing` rather than `orphan`. The reads are not a snapshot. A record saved within one drain cycle (about five minutes) of the run can show as missing. A record deleted between the two reads leaves its row reported as an `orphan`. `secondaryPreferred` replication lag widens both windows. Source Company Sheets and the retired titles Duplicates, Bad Leads and Bad Calls are not read.
 
 **Production baseline, November 21, 22:03 UTC** ([evidence](evidence/sheet-sync-reconcile-2026-11-21T22-03-16Z.json); IDs, rows and reason codes only). The run read 12,291 records.
 

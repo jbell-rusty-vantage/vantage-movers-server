@@ -12,7 +12,7 @@ export type ReconcileRequest = { target: "local" | "production"; productionRead:
 
 const LIMITATIONS = [
   "Read-only: MongoDB find and Google Sheets spreadsheets.get / values.get only. Nothing is queued, written or repaired.",
-  "Sheets are read first, then MongoDB. The reads are not a snapshot: a record saved within one drain cycle (about five minutes) of the read can show as missing.",
+  "Sheets are read first, then MongoDB, so a record created between the reads shows as missing rather than orphan. The reads are not a snapshot: a record saved within one drain cycle (about five minutes) can show as missing, a record deleted between the reads shows its row as an orphan, and secondaryPreferred replication lag widens both windows.",
   "Master Sheets only. Source Company Sheets and the retired titles Duplicates, Bad Leads and Bad Calls are not read.",
   "Expected tabs come from the server's planExpectedSheetTabs over raw stored flags; the drainer reads the same flags through Mongoose.",
   "Rows with a blank Mongo ID cell (managed cells cleared, operator content kept) are counted, not classified.",
@@ -84,7 +84,8 @@ export async function runReconcile(request: ReconcileRequest, deps: ReconcileDep
   const plan = readPlan(request, production);
   deps.announce(formatReadPlan(plan));
   const observedAt = deps.now();
-  // Sheets first: a row whose record was created after this read can only appear as missing, never as an orphan.
+  // Sheets first: a record created between the reads shows as missing, not as an orphan. A deletion between the reads
+  // (or secondary lag) can still produce an orphan; LIMITATIONS says so.
   const tabs: TabIdentity[] = await readTabIdentities(production ? deps.productionTabReader(production) : snapshotTabReader(request.snapshot!), request.tab);
   const records: ReconcileRecord[] = production
     ? await deps.withProductionMongo(production, readRecords)

@@ -139,6 +139,10 @@ class Bucket {
     this.items.push(sample);
     this.counts.set(key, (this.counts.get(key) ?? 0) + 1);
   }
+  /** Record models behind this category's rows; orphans have none. */
+  models(): Set<RecordModel> {
+    return new Set(this.items.flatMap((sample) => sample.model ? [sample.model] : []));
+  }
   result(repair: string | null, evaluated = true): CategoryResult {
     const sorted = [...this.items].sort((a, b) => a.id.localeCompare(b.id));
     return {
@@ -167,8 +171,14 @@ export function reconcilePlacement(records: readonly ReconcileRecord[], tabs: re
     const buckets = Object.fromEntries(CATEGORIES.map((category) => [category, new Bucket(limit)])) as Record<Category, Bucket>;
     const expectedHere = [...index.values()].filter((entry) => entry.expected.has(definition.tab));
     const ownerManaged = definition.policy === "owner_managed";
-    // Hints follow the tab's family. Calls and Duplicate Calls carry none (Owner directive, November 20).
-    const repairFor = (category: Category) => ownerManaged ? null : REPAIR_HINTS[definition.model][category];
+    // Calls and Duplicate Calls carry no hint (Owner directive, November 20). Elsewhere the hint follows the
+    // records: a Call Lead re-delivery touches the Calls tabs, and a record from another family on this tab
+    // is not repaired by this tab's re-delivery, so either case is the Owner's decision.
+    const repairFor = (category: Category) => {
+      if (ownerManaged) return null;
+      const foreign = [...buckets[category].models()].some((model) => model === "CallLead" || model !== definition.model);
+      return foreign ? OWNER_DECISION_LABEL : REPAIR_HINTS[definition.model][category];
+    };
     let placed = 0;
     const seen = new Map<string, number[]>();
     if (identity.status === "read") {
