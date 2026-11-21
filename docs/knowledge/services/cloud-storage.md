@@ -39,7 +39,7 @@ sources:
     title: Platform glossary
 generated:
   by: process:agent
-  at: 2026-11-21T22:00:00Z
+  at: 2026-11-21T22:15:00Z
 ---
 **Platform glossary:** [`../../operations/shared-glossary.md`](../../operations/shared-glossary.md)  
 **Primary code:** [`src/services/cloudStorage/`](../../../src/services/cloudStorage/)  
@@ -81,7 +81,7 @@ A store handle is scoped to one bucket and one prefix. A name outside the prefix
 | `readVerified({ name, generation?, sha256, size? })` | Downloads the pinned generation and verifies SHA-256 and the optional size. `generation` may be absent only for a legacy locator; the read then uses the live generation and still verifies SHA-256. |
 | `stat(name, generation?)` | `ObjectState`: generation, metageneration, size, recovery-clock marker, named holds, `independentHold`, `retentionLocked`, metadata, `updated`. |
 | `list({ prefix, pageToken?, maxResults? })` | Live objects under a prefix inside the store prefix, page by page. |
-| `hold(ref, { holder, token?, replaces?, metadata? })` | Adds a named hold to an exact generation in one compare-and-swap. It can replace other holders (a release review replaces the publisher hold) and write extra metadata (review evidence). |
+| `hold(ref, { holder, token?, replaces?, metadata? })` | Adds a named hold to an exact generation in one compare-and-swap. It can replace other holders (a release review replaces the publisher hold) and write extra metadata (review evidence). Extra metadata cannot name a hold key; those change only through `holder` / `replaces`. |
 | `release(ref, holder, token?)` | Drops one named hold. Idempotent. The provider hold stays on while another named hold remains. |
 | `startRecoveryClock(ref, guard)` | Conditional expiry. It stamps the recovery-clock marker (GCS `customTime`) on a verified generation, and the bucket lifecycle deletes the generation once the recovery window has passed. Idempotent once started. |
 | `deleteIfGeneration(ref, guard)` | Immediate delete of the live generation, with generation and metageneration preconditions. |
@@ -103,7 +103,7 @@ These are the production rules, in contract form.
    - provider retention applies (an event-based hold or object retention), which the module never sets;
    - an independent hold or any other named hold is active.
    With `guard.requireHold`, the named review hold must be active with the same token, and its `updated` time must be at least `heldForMs` old. For Granot that is 800 seconds, the publication drain window. The marker can only move forward. A released generation can only be protected again by a hold, never un-released.
-5. **Reuse protects before reading.** Under the Granot `rehold` policy, a `put` that finds a released or under-review generation first cancels the review and sets the publisher hold, in one compare-and-swap. A released generation held by neither the publisher nor a cancellable review is refused (`independent_hold`). The Sales Intelligence `refuse_released` policy refuses any generation whose clock has started.
+5. **Reuse protects before reading.** Under the Granot `rehold` policy, a `put` that finds a released or under-review generation first cancels the review and sets the publisher hold, in one compare-and-swap. A released generation held by neither the publisher nor a cancellable review is refused (`independent_hold`). The Sales Intelligence `refuse_released` policy refuses a generation whose clock has started **unless this `put` itself stamps `customTime`** (a sealed catalog, matching today's `seal()` 412 retry). A pack put without `customTime` still refuses.
 6. **Original-ID lookups fall back to the archive.** Callers keep that rule. The module only guarantees that a verified read returns the exact bytes the locator recorded.
 
 The module never writes lifecycle rules, bucket retention, versioning or soft-delete settings. Those are Owner-approved bucket changes.
@@ -160,7 +160,7 @@ Today `src/` has exactly one GCS client: `src/services/granotHistory/archiveObje
 | 1b | Operator readers: `ops/granot-archive-run-closure.ts`, `ops/granot-targeted-deletion-dry-run.ts`, `ops/granot-history-archive.ts`, `ops/granot-closed-cohort.ts`, `ops/verify-granot-history-archive.ts` | through #1 | operator manifests | **Yes.** | 1 |
 | 2 | `ops/granot-release-archive-generation.ts` (begin and release) | full-control stat; review hold patch; recovery-clock patch | evidence JSON (`hash`, `generation`) | **Yes** for objects and metadata: begin = `hold(review, replaces publisher, evidence)`; release = `startRecoveryClock(requireHold review, heldForMs 800000, references = stillReferenced)`. Two behavior differences: release adds a verified read before stamping, and "review already started" stays a caller check on the evidence digest, because today's review token is a fresh UUID on each run. | 1 (same PR as the writer it pairs with) |
 | 3 | `ops/sales-outreach/retire-historical-jobs.cjs` (Sales Intelligence rollback packs) | insert `ifGenerationMatch: 0` (`application/gzip`); on 412, refuse a discharged object; pinned read with SHA-256; bucket lifecycle assert; `customTime` patch fenced on generation and metageneration; sealed `catalog.json` inserted with `customTime` | operator manifest and the sealed catalog in GCS | **Yes.** Same names (test), bytes, content types and `{ customTime }` patch body, under `refuse_released`. Today's lifecycle assertion is a strict `deepEqual`. Keep it beside `checkRecoveryPolicy` or tighten the check. The task brief named `src/services/salesIntelligence/jobs.ts`, but that file has no GCS code: its retired-stage fence is Mongo-only. | 2. Sales Intelligence packs |
-| 4 | Granot receipt retirement: `completedWebhooks.ts` (`retireWebhookReceipt`, `readRetiredLifecycleReceipt`), `futureRetention.ts`, `retireLeadEvidence.ts`, `settledLeadEvidence.ts` | through #1 (injected `store` / `read`) | `granot_archived_receipts`, `granot_webhook_receipts.evidence_archive` / `history_archive` | **Yes.** This PR retypes the injected seams to `ObjectStore` and moves their unit and replica tests onto the fake bucket. No object or locator changes. | 3. Granot receipt retirement |
+| 4 | Granot receipt retirement: `completedWebhooks.ts` (`retireWebhookReceipt`, `readRetiredLifecycleReceipt`), `futureRetention.ts`, `retireLeadEvidence.ts`, `settledLeadEvidence.ts` | through #1 (injected `store` / `read`) | `granot_archived_receipts`, `granot_webhook_receipts.evidence_archive` / `history_archive` | **Yes.** A later PR retypes the injected seams to `ObjectStore` and moves their tests onto the fake bucket. No object or locator changes in this module PR. | 3. Granot receipt retirement |
 | 5 | `ops/cloud/mongodb-backup/backup.mjs` | `@google-cloud/storage`: resumable file upload `ifGenerationMatch: 0` with SHA-256 custom metadata, metadata verify, server-side copy to `weekly/`, manifest save; age-based lifecycle (8 and 29 days) | the success manifest in GCS | **Does not fit as is.** It is a separate ESM Cloud Run package (excluded from `tsconfig`) with its own runtime identity (ADC) and its own dependency. It needs streaming file upload and server-side copy, which the contract does not have, and its expiry is age-based rather than marker-based. Objects could stay byte-identical, but adopting the module means bundling it into the job image. | 4, only if the Owner wants it; otherwise keep its client and mirror the contract shape |
 
 Each migration PR must show:
@@ -181,7 +181,8 @@ Run all of them offline with `pnpm test`:
   - reuse cancels a review;
   - an unreleased reuse makes no metadata change;
   - `refuse_released`;
-  - a `customTime` put (sealed catalog);
+  - a `customTime` put (sealed catalog) and its 412 retry;
+  - extra metadata cannot overwrite a hold key;
   - stacked holds;
   - a lost compare-and-swap;
   - legacy locators without a generation;

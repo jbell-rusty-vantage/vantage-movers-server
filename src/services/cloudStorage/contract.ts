@@ -101,7 +101,10 @@ export type HoldRequest = {
   token?: string;
   /** Holders this hold replaces in the same compare-and-swap (a release review replaces the publisher hold). */
   replaces?: string[];
-  /** Extra metadata written in the same compare-and-swap (for example review evidence). */
+  /**
+   * Extra metadata written in the same compare-and-swap (for example review evidence).
+   * Hold keys (`holdKeys` on the store) are refused here; change them only via `holder` / `replaces`.
+   */
   metadata?: Record<string, string>;
 };
 
@@ -128,8 +131,9 @@ export type LifecycleRule = {
  * - `rehold`: a released or under-review generation is protected again by `holder` (cancelling
  *   `cancels`) before it acquires a new reader. A released generation under a hold the store
  *   cannot attribute is refused. This is the Granot history rule.
- * - `refuse_released`: a generation whose recovery clock has started is refused. This is the
- *   Sales Intelligence rollback-pack rule.
+ * - `refuse_released`: a generation whose recovery clock has started is refused, unless this `put`
+ *   itself stamps `customTime` (a sealed catalog born on the clock). That retry path is today's
+ *   Sales Intelligence `seal()` 412 handling. A pack put without `customTime` still refuses.
  */
 export type ReusePolicy =
   | { mode: "rehold"; holder: string; cancels: string[] }

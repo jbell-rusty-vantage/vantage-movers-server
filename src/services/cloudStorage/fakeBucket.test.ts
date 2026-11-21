@@ -113,6 +113,21 @@ test("put can create an object already on its recovery clock (a sealed catalog)"
   assert.equal((await store.stat(stored.name))?.recoveryClockStartedAt, customTime.toISOString());
 });
 
+test("a sealed catalog put is idempotent after a create conflict (today's SI seal 412 path)", async () => {
+  const { store } = createFakeObjectStore({ prefix, reuse: { mode: "refuse_released" } });
+  const customTime = new Date("2026-11-19T00:00:00.000Z");
+  const bytes = Buffer.from("{}");
+  const first = await store.put({ name: prefix + "catalog.json", bytes, contentType: "application/json", customTime });
+  const retry = await store.put({ name: prefix + "catalog.json", bytes: Buffer.from(bytes), contentType: "application/json", customTime });
+  assert.equal(retry.created, false);
+  assert.equal(retry.generation, first.generation);
+  assert.ok(retry.persisted.equals(bytes));
+  await rejectsWith(
+    store.put({ name: prefix + "catalog.json", bytes, contentType: "application/json" }),
+    "released",
+  );
+});
+
 test("release is idempotent and keeps the provider hold while another named hold remains", async () => {
   const { store, bucket } = granotLike();
   const stored = await put(store);
@@ -151,4 +166,15 @@ test("unknown holders and bad generations are refused", async () => {
   await rejectsWith(store.hold({ name: stored.name, generation: "abc" }, { holder: "publisher" }), "invalid_name");
   assert.throws(() => createFakeObjectStore({ prefix: "no-slash", reuse: { mode: "refuse_released" } }), /Invalid store prefix/);
   assert.throws(() => createFakeObjectStore({ prefix, reuse: { mode: "rehold", holder: "publisher", cancels: [] } }), /without a metadata key/);
+});
+
+test("hold extra metadata cannot overwrite another holder's reserved key", async () => {
+  const { store } = granotLike();
+  const stored = await put(store);
+  await store.hold(stored, { holder: "review", token: "r" });
+  await rejectsWith(
+    store.hold(stored, { holder: "publisher", metadata: { contractReleaseReview: "" } }),
+    "invalid_configuration",
+  );
+  assert.deepEqual((await store.stat(stored.name))?.holds, { review: "r" });
 });

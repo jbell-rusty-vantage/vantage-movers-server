@@ -5,6 +5,7 @@ import {
   type HoldRequest,
   type ObjectState,
   type ObjectStore,
+  type PutInput,
   type RecoveryGuard,
   type ReferenceGuard,
   type ReusePolicy,
@@ -88,9 +89,14 @@ export function createObjectStore(driver: BucketDriver, options: ObjectStoreOpti
   }
 
   /** Protects an existing generation before it acquires another reader (see `ReusePolicy`). */
-  async function reuseExisting(existing: RawObject) {
+  async function reuseExisting(existing: RawObject, input: PutInput) {
     if (reuse.mode === "refuse_released") {
-      if (existing.customTime) fail("released", "Existing generation is already on its recovery clock");
+      // Packs: a later startRecoveryClock / customTime patch discharges the object; a new reader is refused.
+      // Sealed catalogs are born with customTime (today's SI `seal()`). A lost insert that later 412s
+      // must verify the existing generation, not throw `released`.
+      if (existing.customTime && input.customTime === undefined) {
+        fail("released", "Existing generation is already on its recovery clock");
+      }
       return;
     }
     const state = toState(existing);
@@ -128,7 +134,7 @@ export function createObjectStore(driver: BucketDriver, options: ObjectStoreOpti
         const existing = (await driver.stat(input.name)) ?? fail("generation_mismatch", "Generation unavailable after a create conflict");
         generation = existing.generation;
         created = false;
-        await reuseExisting(existing);
+        await reuseExisting(existing, input);
       } else {
         generation = inserted.generation;
       }
@@ -165,6 +171,12 @@ export function createObjectStore(driver: BucketDriver, options: ObjectStoreOpti
       if (current && current !== token) fail("held", `${request.holder} already holds this generation`);
       const replaced = (request.replaces ?? []).filter((holder) => state.holds[holder]);
       if (current === token && !replaced.length) return state;
+      const reserved = new Set(Object.values(holdKeys));
+      if (request.metadata) {
+        for (const metaKey of Object.keys(request.metadata)) {
+          if (reserved.has(metaKey)) fail("invalid_configuration", "Extra metadata cannot name a hold key");
+        }
+      }
       const metadata = { ...raw.metadata, ...request.metadata };
       for (const holder of request.replaces ?? []) metadata[keyFor(holder)] = "";
       metadata[key] = token;
