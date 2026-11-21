@@ -112,3 +112,9 @@ test("CLI discovery works in a real scrubbed subprocess without Mongo or a .env"
   });
   assert.equal(JSON.parse(output).services[0].name, "sheet-sync");
 });
+test("the fast Sheet Sync proof excludes opt-in replica files, whose skip would fail it", () => {
+  const args = sheetTestInvocation("fast", {}).args;
+  assert.ok(args.some((arg) => arg.endsWith("jobPlanner.test.ts")));
+  assert.ok(!args.some((arg) => arg.endsWith(".replica.test.ts")));
+  assert.ok(!args.some((arg) => arg.includes("*")));
+});

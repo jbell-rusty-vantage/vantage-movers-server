@@ -4,8 +4,14 @@ import { GRANOT_RUNBOOK, HELP, parseCommand, RUNBOOK, type Command } from "./com
 import { inspectSheetSync, traceSheetSync } from "./sheet-sync";
 import { traceGranotAction } from "./granot-trace";
 import { testSheetSync } from "./test-command";
+import { runReconcile } from "./sheet-reconcile-command";
+import { formatReconcileSummary } from "./sheet-reconcile";
 
 export async function executeCommand(command: Command): Promise<unknown> {
+  if (command.name === "reconcile") {
+    return runReconcile({ target: command.target!, productionRead: command.productionRead === true, tab: command.tab,
+      samples: command.samples!, snapshot: command.snapshot });
+  }
   if (command.target === "production") throw new OperatorError("production_diagnostics_unsupported_use_reviewed_operator_path", 4);
   if (command.name === "help") return { status: "available", help: HELP };
   if (command.name === "granot-runbook") return { status: "available", path: GRANOT_RUNBOOK };
@@ -17,7 +23,7 @@ export async function executeCommand(command: Command): Promise<unknown> {
       identity: { database: identity.database, replicaSet: identity.replicaSet, address: identity.address },
     }));
   }
-  if (command.name === "services") return { status: "available", services: [{ name: "sheet-sync", commands: ["inspect", "trace", "test", "runbook"], production: "unsupported", repair: "unsupported", runbook: RUNBOOK },
+  if (command.name === "services") return { status: "available", services: [{ name: "sheet-sync", commands: ["inspect", "trace", "reconcile", "test", "runbook"], production: "reconcile --production-read only (read-only)", repair: "unsupported", runbook: RUNBOOK },
       { name: "granot", commands: ["trace", "runbook"], production: "unsupported", repair: "unsupported", runbook: GRANOT_RUNBOOK }],
     remaining_services: "Use docs/operations/README.md; no CLI support is claimed for other services." };
   if (command.name === "runbook") return { status: "available", path: RUNBOOK };
@@ -39,6 +45,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
     command = parseCommand(args);
     const result = await executeCommand(command);
     if (command.name === "help" && !command.json) process.stdout.write(HELP);
+    else if (command.name === "reconcile" && !command.json) process.stdout.write(formatReconcileSummary(result as Parameters<typeof formatReconcileSummary>[0]));
     else process.stdout.write(`${JSON.stringify(result, null, command.json ? 0 : 2)}\n`);
   } catch (error) {
     const { exitCode, ...failure } = publicFailure(error);

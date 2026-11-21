@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { globSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { AGENT_LOCAL, localChildEnvironment, OperatorError, SHEET_REPLICA } from "./local-safety";
@@ -13,14 +13,21 @@ export function saveTestFailure(stdout: string, stderr: string): string {
   return path;
 }
 
+/** Offline Sheet Sync files. `*.replica.test.ts` skip without a replica, and a skip fails the fast proof. */
+export function fastSheetTestFiles(cwd: string): string[] {
+  return globSync("src/services/sheetSync/**/*.test.ts", { cwd }).map((file) => file.replaceAll("\\", "/"))
+    .filter((file) => !file.endsWith(".replica.test.ts")).sort();
+}
+
 export function sheetTestInvocation(suite: "fast" | "replica", parent: NodeJS.ProcessEnv) {
   const identity = suite === "replica" ? SHEET_REPLICA : AGENT_LOCAL;
+  const cwd = resolve(__dirname, "../..");
   return {
     executable: process.execPath,
     args: suite === "replica" ? ["--import", "tsx", "ops/sheet-sync-recovery/replica.ts"]
-      : ["--import", "tsx", "--import", "./ops/test-setup.ts", "--test", "--test-reporter=tap", "src/services/sheetSync/**/*.test.ts"],
+      : ["--import", "tsx", "--import", "./ops/test-setup.ts", "--test", "--test-reporter=tap", ...fastSheetTestFiles(cwd)],
     env: localChildEnvironment(parent, identity),
-    cwd: resolve(__dirname, "../.."),
+    cwd,
   };
 }
 export async function testSheetSync(suite: "fast" | "replica") {
