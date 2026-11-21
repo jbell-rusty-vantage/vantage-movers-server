@@ -2,7 +2,7 @@
 
 This is an exact copy of the workspace `AGENTS.md`, which lives outside every git repository, plus the Owner's reporting directive. It exists so that cloud sessions, which clone only this repository, still see the locked Owner rules. The workspace file stays canonical. When it changes, refresh this snapshot in the same session and update the date.
 
-- Snapshot taken: 2026-11-20, from workspace `AGENTS.md`. Relative links below are workspace-relative.
+- Snapshot taken: 2026-11-21, from workspace `AGENTS.md`. Relative links below are workspace-relative.
 - Reporting directive source: the Owner's `~/.codex/AGENTS.md`, also referenced by the Owner's global `~/.claude/CLAUDE.md`.
 
 ## Owner reporting directive
@@ -26,6 +26,16 @@ Check each repository's Git remote to identify its owner; do not infer ownership
 - **MongoDB Atlas guidance.** The eight official MongoDB skills are in [`.agents/skills/`](.agents/skills/). Start with [Query Optimizer](.agents/skills/mongodb-query-optimizer/SKILL.md) for slow queries or index advice, [Schema Design](.agents/skills/mongodb-schema-design/SKILL.md) for data models, or [Connection](.agents/skills/mongodb-connection/SKILL.md) for pooling. The project MCP server `vantage-atlas` runs read-only in Codex and Cursor. Its [launcher](.agents/mongodb/start.mjs) reads `MONGO_CLIENT_ID` and `MONGO_CLIENT_SECRET` from `vantage-main-server/MONGO.env` at startup. Install its pinned dependencies with `npm ci --prefix .agents/mongodb` when setting up another checkout and adjust the Codex server working directory for that checkout.
 
 - **Server and MongoDB capacity decisions (Owner directive, 2026-11-17).** Use measured read and write rates and explicit scenario math to guide changes to storage, data models and server behavior. State the measurement window, units, assumptions and the business behavior each proposal preserves or changes. Start with Leads, Bookings, Cancellations, the Master Leads and Master Booked sheets and their tabs, then Sales Outreach. The project agent is [storage_capacity_analyst](.codex/agents/storage_capacity_analyst.toml).
+- **Lean, purposeful tests (Owner directive, 2026-11-21; standing, every repository and every agent).** "Keep tests lean and purposeful. I do not want our tests to balloon again." Applies to every change, review and agent brief.
+  - **When a test is earned.** Only when it protects behavior that could realistically break:
+    - an Owner rule or business invariant;
+    - a fixed bug (one regression test);
+    - a safety guard (deletion, production writes, money, Call admission);
+    - a public contract.
+  - **One test per behavior.** Use table-driven cases instead of near-duplicate tests. Never test framework or library behavior, restate the implementation, snapshot large outputs, or assert incidental details such as log text or key order.
+  - **Extend before adding.** Add cases to an existing file rather than a new suite. When a change makes tests redundant, delete or merge them in the same PR.
+  - **Replica tests** are for what needs real MongoDB: transactions, indexes, concurrency. Everything else is an offline unit test.
+  - **Reporting.** Every PR states its test delta (added and removed) and a one-line reason for each new test. Reviewers flag ballooning as a should-fix. `pnpm test` time must not regress meaningfully; the server suite runs in about 85 s locally.
 - **Glossary:** [`CONTEXT.md`](CONTEXT.md) — platform terms. Use these words. Do not invent synonyms.
 - **Call Lead billing — Owner directive, 2026-11-03:** only RingCentral inbound queue qualification may create a Call Lead or make it eligible for Calls reporting and lead billing. A Form/Call sibling must already have qualified; enrichment, matching contacts, a Granot job, booking status, or an old sheet row never qualifies it. Remove manual and external-sheet Call creation and Granot Call `create_if_missing` (including BestRelocation Inbounds). Preserve legitimate saved historical RingCentral qualification without requiring perfect modern provenance. Official Booking/Cancellation rows remain reportable. Implementation and release evidence: [`vantage-main-server/docs/call-lead-billing.md`](vantage-main-server/docs/call-lead-billing.md).
 - **Best Relocation final-import owner clarification, 2026-11-03:** the one-time final external tracker reconciliation is an exception to the RingCentral-only rule above. Best Relocation has no RingCentral qualification queue. Use protected source evidence and canonical idempotent commands; adopt existing Calls before create, parse both checker columns and cross-reference Booked Deal responses/refunds. The owner HELD the preliminary 125 proposed new normal Calls for inspection: do not create them. Bad Forms move exclusively to Bad Form Leads. Retire external ingestion and Granot creation policies after reconciliation, but keep the Source Company active; the owner will retire it separately. Canonical report: `vantage-storage-main/docs/lead-reporting-retirement/OWNER-CLARIFICATION.md`.
@@ -79,4 +89,3 @@ Existing server behavior stays in `vantage-main-server`. Per the user's October 
 3. **Concept search:** Grep [`vantage-main-server/docs/knowledge`](vantage-main-server/docs/knowledge) — `okf:query` is a frontmatter filter, not full-text. Tags are clusters (`form-lead`, `granot-lifecycle`), not concepts (`duplicate`).
 4. **Read** the matching Service. Do not invent invariants from `src/` first.
 5. **Glossary:** [`CONTEXT.md`](CONTEXT.md)
-
