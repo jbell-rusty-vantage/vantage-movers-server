@@ -6,26 +6,7 @@ import { connectMongo } from "../src/db";
 import mongoose from "mongoose";
 import { ARCHIVE_BUCKET, archiveObject } from "../src/services/granotHistory/archiveCodec";
 import { createGoogleServiceAccountAuth } from "../src/services/googleAuth/serviceAccount";
-import type { Db, Document } from "mongodb";
-
-async function stillReferenced(db: Db, hash: string) {
-  const checks: [string, Document][] = [
-    ["granot_history_archive_chunks", { $or: [{ _id: hash }, { hash }] }],
-    ["granot_closed_automation_runs", { $or: [{ hash }, { "run_archive.hash": hash }] }],
-    ["granot_archived_receipts", { $or: [{ hash }, { "evidence_archive.hash": hash }, { "history_archive.hash": hash }] }],
-    ["granot_webhook_receipts", { $or: [{ "evidence_archive.hash": hash }, { "history_archive.hash": hash }] }],
-    ["granot_automation_runs", { "archive_summary.hash": hash }],
-  ];
-  const session = db.client.startSession();
-  try {
-    return await session.withTransaction(async () => {
-      for (const [name, filter] of checks) {
-        if (await db.collection<Document & { _id: unknown }>(name).findOne(filter, { session, projection: { _id: 1 }, maxTimeMS: 5000 })) return true;
-      }
-      return false;
-    }, { readConcern: { level: "snapshot" } });
-  } finally { await session.endSession(); }
-}
+import { archiveObjectReferenced as stillReferenced } from "../src/services/granotHistory/archiveReferences";
 
 async function main() {
   const [mode, evidencePath] = process.argv.slice(2);

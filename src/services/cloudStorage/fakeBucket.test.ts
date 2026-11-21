@@ -131,7 +131,7 @@ test("holds the store cannot attribute block holds, reuse, expiry and delete", a
   }
 });
 
-test("reuse policies: Granot re-holds only matching bytes; packs refuse a released generation but a sealed catalog retry succeeds", async () => {
+test("reuse policies: Granot re-holds only matching bytes; packs refuse a released generation; only a sealed catalog starts on its clock", async () => {
   const granot = granotLike();
   const stored = await granot.put();
   const untouched = granot.bucket.peek(name)!.metageneration;
@@ -142,9 +142,16 @@ test("reuse policies: Granot re-holds only matching bytes; packs refuse a releas
   assert.deepEqual(granot.bucket.peek(name)!.metadata, { contractReleaseReview: "r" }, "different bytes never touch the holds");
   await granot.put();
   assert.deepEqual(granot.bucket.peek(name)!.metadata, { contractReleaseReview: "", contractPublisherHold: "1" }, "a reuse cancels the review");
+  await granot.store.hold(stored, { holder: "review", token: "r2" });
+  await granot.store.release(stored, "publisher");
+  assert.equal(granot.bucket.peek(name)!.temporaryHold, true, "the provider hold stays while another named hold remains");
+  await granot.store.release(stored, "review");
+  assert.equal(granot.bucket.peek(name)!.temporaryHold, false, "the last named hold drops the provider hold");
+  await rejectsWith(granot.store.put({ name: prefix + "c.bin", bytes: body, contentType: "x", customTime: new Date() }), "not_permitted");
 
-  const { store: packs } = createFakeObjectStore({ prefix, reuse: { mode: "refuse_released" } });
+  const { store: packs } = createFakeObjectStore({ prefix, reuse: { mode: "refuse_released" }, sealedNames: /\/catalog\.json$/ });
   const pack = await packs.put({ name: prefix + "p.bson.gz", bytes: body, contentType: "application/gzip" });
+  await rejectsWith(packs.put({ name: pack.name, bytes: body, contentType: "application/gzip", customTime: new Date() }), "not_permitted");
   await packs.startRecoveryClock(pack, { references: async () => false });
   await rejectsWith(packs.put({ name: pack.name, bytes: body, contentType: "application/gzip" }), "released");
   await rejectsWith(packs.deleteIfGeneration({ ...pack, generation: pack.generation }, { references: async () => false, reviewToken: "r" }), "not_permitted");
@@ -152,4 +159,22 @@ test("reuse policies: Granot re-holds only matching bytes; packs refuse a releas
   const sealed = await packs.put(catalog);
   const retried = await packs.put(catalog);
   assert.deepEqual([retried.generation, retried.created], [sealed.generation, false], "a lost catalog response retries like production");
+  const unsealed = { ...catalog, name: prefix + "other/catalog.json" };
+  await packs.put({ ...unsealed, customTime: undefined });
+  await rejectsWith(packs.put(unsealed), "generation_mismatch");
+});
+
+test("store options that would weaken a rule are refused at construction", () => {
+  const reuse = { mode: "rehold" as const, holder: "publisher", cancels: ["review"] };
+  const cases: Array<[string, Parameters<typeof createFakeObjectStore>[0]]> = [
+    ["prefix without a trailing slash", { prefix: "unit", holdKeys: CONTRACT_HOLD_KEYS, reuse }],
+    ["reuse holder without a key", { prefix, holdKeys: { review: "k" }, reuse }],
+    ["review holder without a key", { prefix, holdKeys: CONTRACT_HOLD_KEYS, reuse, review: { holder: "other", drainMs: 0 } }],
+    ["negative drain", { prefix, holdKeys: CONTRACT_HOLD_KEYS, reuse, review: { holder: "review", drainMs: -1 } }],
+    ["re-put that keeps the review", { prefix, holdKeys: CONTRACT_HOLD_KEYS, reuse: { ...reuse, cancels: [] }, review: { holder: "review", drainMs: 0 } }],
+    ["sealed names under rehold", { prefix, holdKeys: CONTRACT_HOLD_KEYS, reuse, sealedNames: /x/ }],
+  ];
+  for (const [label, options] of cases) {
+    assert.throws(() => createFakeObjectStore(options), (e) => isCloudStorageError(e, "invalid_configuration"), label);
+  }
 });

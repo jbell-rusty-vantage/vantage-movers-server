@@ -101,6 +101,8 @@ A skipped action records its outcome in the run without a Decision. The outcome 
 
 The following contracts describe pre-cutover automation captures and their replay.
 
+**Retirement.** A completed HTTP automation receipt leaves MongoDB once its operation appears, unchanged, in its run's verified closed-run replay (`granot_closed_automation_runs`). That replay fences re-application: `applyAutomationPlanAction` answers a repeated operation from it, and a changed payload hash raises `OperationIdempotencyConflictError`. A legacy run closes only after its original seven-day action expiry (`prepareClosedRun`), so its receipts stay hot until then. The retire-on-use pass publishes the closed run when it can. `resumeCapturedAutomationAction` also finds a retired operation by its locator key. See [retire on use](./storage-retention-operations.md#retire-on-use).
+
 ## Plan schema v2
 
 Before checksum lock, `sealAutomationPlan` attaches:

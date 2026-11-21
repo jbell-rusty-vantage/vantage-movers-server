@@ -55,7 +55,10 @@ export type PutInput = {
   name: string;
   bytes: Buffer;
   contentType: string;
-  /** Starts the recovery clock at creation. Only for objects that are disposable from birth (a sealed catalog). */
+  /**
+   * Starts the recovery clock at creation. Refused (`not_permitted`) unless the namespace lists the
+   * name as sealed: only the Sales Intelligence `catalog.json`, which is disposable from birth.
+   */
   customTime?: Date;
   metadata?: Record<string, string>;
 };
@@ -143,8 +146,9 @@ export type LifecycleRule = {
  *   `cancels`) before it acquires a new reader. A released generation under a hold the store
  *   cannot attribute is refused. This is the Granot history rule.
  * - `refuse_released`: a generation whose recovery clock has started is refused, unless the put
- *   itself starts the clock at creation (`customTime`, a sealed catalog), which accepts the
- *   existing generation as production does. This is the Sales Intelligence rollback-pack rule.
+ *   itself starts the clock at creation (`customTime`, a sealed catalog). That retry accepts the
+ *   existing generation only when it is already on its clock, as production asserts. This is the
+ *   Sales Intelligence rollback-pack rule.
  */
 export type ReusePolicy =
   | { mode: "rehold"; holder: string; cancels: string[] }

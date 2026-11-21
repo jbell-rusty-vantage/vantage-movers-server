@@ -1,5 +1,5 @@
 import { readCaseDecision } from "./caseEvidence";
-import { readRetiredLifecycleReceipt } from "../granotHistory/completedWebhooks";
+import { readRetiredReceipt } from "../granotHistory/retiredRecords";
 import { withTransaction } from "../../db";
 import { currentReceiptReplay, storeReceiptReplay, type StoredReceiptReplay } from "./receiptReplay";
 import { acceptsLead, certifyWinningLead } from "./acceptedLeadEvidence";
@@ -464,9 +464,8 @@ async function runFencedProcessor(
           "processing.completed_at": now,
           "processing.latest_decision_id": toObjectId(result.decision_id),
           ...(claimed.claimed.channel_operation_id ? { "processing.replay_result": storeReceiptReplay(claimed.claimed.observation_channel, result) } : {}),
-          ...((result.target?.model === "FormLead" || result.target?.model === "CallLead") &&
-            ["already_current", "stale", "created", "linked", "applied"].includes(result.outcome)
-            ? { "processing.retention_review_at": new Date(+now + 86400000 + 60000) } : {}),
+          // Retire on use: the storage pass reviews every completed receipt at once (granotHistory/retireOnUse.ts).
+          "processing.retention_review_at": now,
           "processing.technical_attempts": 0,
         },
         $unset: {
@@ -517,6 +516,7 @@ async function finalizePendingMatch(input: {
           "processing.state": "completed",
           "processing.completed_at": now,
           "processing.latest_decision_id": toObjectId(input.result.decision_id),
+          "processing.retention_review_at": now,
           "processing.technical_attempts": 0,
         },
         $inc: { "processing.match_attempt": 1 },
@@ -933,7 +933,7 @@ export async function finalizeReceiptClaim(
 
 async function defaultLoadReceipt(id: string): Promise<ClaimedReceiptSnapshot | null> {
   const model = getGranotObservationReceiptModel();
-  const row = await model.findById(id).lean() ?? await readRetiredLifecycleReceipt(model.db.db!, toObjectId(id));
+  const row = await model.findById(id).lean() ?? await readRetiredReceipt(model.db.db!, toObjectId(id));
   return row ? toSnapshot(row) : null;
 }
 

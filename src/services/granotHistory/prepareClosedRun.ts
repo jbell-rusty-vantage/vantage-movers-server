@@ -116,15 +116,15 @@ function matchesDecisionEffects(cached: ProcessorResult["effects"], decision: Pr
   return isDeepStrictEqual(cached, comparable);
 }
 
-export async function publishClosedRun(db: Db, run: string, cutoff: Date) {
+export async function publishClosedRun(db: Db, run: string, cutoff: Date, storage = { store: storeArchiveObject, read: readArchiveObject }) {
   const current = await closedRuns(db).findOne({ _id: run });
   if (current) {
-    unpackClosedRun(current, await readArchiveObject(db.databaseName, current.hash, current.generation));
+    unpackClosedRun(current, await storage.read(db.databaseName, current.hash, current.generation));
     return "previously_closed";
   }
   const result = await prepareClosedRun(db, run, cutoff);
   if (result.reason !== "ready") return result.reason;
-  const { hash, persisted, generation } = await storeArchiveObject(db.databaseName, result.bytes);
+  const { hash, persisted, generation } = await storage.store(db.databaseName, result.bytes);
   const entry = { _id:run, hash, generation, count:result.count, closed_at:new Date() };
   unpackClosedRun(entry, persisted);
   const checked = await prepareClosedRun(db,run,cutoff);

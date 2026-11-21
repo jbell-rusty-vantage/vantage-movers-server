@@ -1,27 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MongoClient, ObjectId } from "mongodb";
+import { ObjectId } from "mongodb";
 import { readEvidenceIds } from "./evidencePage";
-import { policies, runFutureRetention } from "./futureRetention";
 import { closedRuns, packClosedRun } from "./closedAutomationRun";
-import { digest } from "./archiveCodec";
+import { fakeGranotArchive, historyReplica } from "./archiveTestSupport";
 import { retireLeadEvidence } from "./retireLeadEvidence";
-import { readRetiredLifecycleReceipt } from "./completedWebhooks";
-import { readArchivedReceipt } from "./settledLeadEvidence";
+import { retireReceipt } from "./retireOnUse";
+import { readGranotChain, readRetiredReceipt } from "./retiredRecords";
 import { loadClosedOperations } from "./prepareClosedRun";
 
 test("evidence retirement preserves replay, original missing Decisions, and concurrent reference holds", async (t) => {
-  if (process.env.GRANOT_ARCHIVE_REPLICA_TESTS !== "true")
-    return t.skip("isolated archive replica");
-  const client = new MongoClient(
-    "mongodb://127.0.0.1:27964/?replicaSet=archiveSlim",
-    { serverSelectionTimeoutMS: 3000 },
-  );
-  const db = client.db("testvantagemovers_evidence" + new ObjectId());
+  const replica = await historyReplica(t, "evidence");
+  if (!replica) return;
+  const { client, db } = replica;
   try {
-    assert.deepEqual((await db.admin().command({ hello: 1 })).hosts, [
-      "127.0.0.1:27964",
-    ]);
     const hot = db.collection("granot_webhook_receipts"),
       obs = db.collection("granot_observations"),
       ds = db.collection("synchronization_decisions");
@@ -72,6 +64,7 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
           _id: d,
           observation_id: o,
           outcome: "already_current",
+          reason_code: "desired_state_already_current",
           effects: [],
           target,
           execution_mode: "live",
@@ -91,35 +84,30 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
       edited = await seed(),
       p5 = await seed(false, "5"),
       active = await seed(false, "2", true);
-    const blobs = new Map<string, Buffer>();
-    const read = async (_db: string, hash: string, generation?: string) => {
-      assert.equal(generation, "123");
-      return Buffer.from(blobs.get(hash)!);
-    };
+    const { storage } = fakeGranotArchive();
+    const read = storage.read;
     await assert.rejects(
       retireLeadEvidence(db, async () => {
         throw Error("GCS unavailable");
       }),
     );
     assert.equal(await obs.countDocuments(), 5);
-    const result = await retireLeadEvidence(db, async (_db, bytes) => {
-      const hash = digest(bytes);
-      blobs.set(hash, bytes);
+    const result = await retireLeadEvidence(db, async (name, bytes) => {
       await db
         .collection("lead_messages")
         .insertOne({ observation_id: edited.o });
-      return { hash, generation: "123", persisted: Buffer.from(bytes) };
-    });
+      return storage.store(name, bytes);
+    }, read);
     assert.equal(result.observations, 2);
     assert.equal(result.decisions, 1);
     for (const row of [edited, p5, active])
       assert.ok(await obs.findOne({ _id: row.o }));
     assert.equal(
-      (await readArchivedReceipt(db, normal.r, read))?.decisions.length,
+      (await readGranotChain(db, normal.r, read))?.decisions.length,
       1,
     );
     assert.equal(
-      (await readArchivedReceipt(db, orphan.r, read))?.decisions.length,
+      (await readGranotChain(db, orphan.r, read))?.decisions.length,
       0,
     );
     assert.equal(
@@ -152,52 +140,30 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
     );
     await hot.updateOne(
       { _id: normal.r },
-      {
-        $set: {
-          "processing.replay_result.outcome": "already_current",
-          "processing.retention_review_at": at,
-        },
-      },
+      { $set: { "processing.replay_result.outcome": "already_current" } },
     );
-    await hot.createIndex(
-      { "processing.retention_review_at": 1 },
-      { name: "granot_retention_review_v1", sparse: true },
-    );
+    // Without its closed-run replay the HTTP receipt is not used yet: it fences re-application.
+    assert.deepEqual(await retireReceipt(db, normal.r, storage), {
+      status: "held", channel: "granot_http_automation", reason: "closed_run:unfinished_or_recent",
+    });
     const closed = await loadClosedOperations(db, run, new Date());
     assert.ok(closed.reason === "ready");
-    const bytes = packClosedRun(run, closed.rows),
-      hash = digest(bytes);
-    blobs.set(hash, bytes);
+    const object = await storage.store(db.databaseName, packClosedRun(run, closed.rows));
     await closedRuns(db).insertOne({
       _id: run,
       count: closed.rows.length,
-      generation: "123",
-      hash,
+      generation: object.generation,
+      hash: object.hash,
       closed_at: new Date(),
     });
-    await policies(db).insertOne({
-      _id: "v1",
-      mode: "future",
-      new_data_from: new Date(+at - 1000),
-    });
-    const sweep = await runFutureRetention(db, new Date(), undefined, {
-      read,
-      store: async () => {
-        throw Error("archive already exists");
-      },
-    });
-    assert.equal(sweep.stamped, 1);
-    assert.ok(
-      (await hot.findOne({ _id: normal.r }))?.retention_purge_at instanceof
-        Date,
-    );
-    await hot.deleteOne({ _id: normal.r });
-    const recovered = await readRetiredLifecycleReceipt(db, normal.r, undefined, read);
+    assert.equal((await retireReceipt(db, normal.r, storage)).status, "retired");
+    assert.equal(await hot.countDocuments({ _id: normal.r }), 0);
+    const recovered = await readRetiredReceipt(db, normal.r, { read });
     assert.equal(String(recovered?._id), String(normal.r));
     assert.equal(recovered?.observation_channel, "granot_http_automation");
     assert.equal(recovered?.processing.state, "completed");
     assert.equal(
-      (await readArchivedReceipt(db, normal.r, read))?.decisions.length,
+      (await readGranotChain(db, normal.r, read))?.decisions.length,
       1,
     );
   } finally {

@@ -23,6 +23,12 @@ export type ObjectStoreOptions = {
   /** The namespace release review. Without one, the store never deletes directly. */
   review?: ReviewPolicy;
   /**
+   * Names that may be created already on their recovery clock (`PutInput.customTime`): only a
+   * sealed catalog. Every other put with `customTime` is refused, because it would create an
+   * object the lifecycle deletes with no hold, review, drain or reference check.
+   */
+  sealedNames?: RegExp;
+  /**
    * Whether this handle may start recovery clocks or delete. `openObjectStore` grants it only after
    * the bucket lifecycle rule has been checked. Defaults to true for directly built stores (tests).
    */
@@ -41,7 +47,7 @@ const fail = (code: CloudStorageError["code"], message: string): never => {
  * drain and the generation fences, so the fake bucket and GCS behave the same by construction.
  */
 export function createObjectStore(driver: BucketDriver, options: ObjectStoreOptions): ObjectStore {
-  const { prefix, reuse, review } = options;
+  const { prefix, reuse, review, sealedNames } = options;
   const holdKeys = options.holdKeys ?? {};
   const canRelease = options.canRelease ?? true;
   const now = options.now ?? (() => new Date());
@@ -54,6 +60,9 @@ export function createObjectStore(driver: BucketDriver, options: ObjectStoreOpti
   }
   if (reuse.mode === "rehold" && review && !reuse.cancels.includes(review.holder)) {
     fail("invalid_configuration", "A re-put must cancel the review hold");
+  }
+  if (sealedNames && reuse.mode !== "refuse_released") {
+    fail("invalid_configuration", "Only a refuse_released namespace may create sealed objects on their clock");
   }
 
   function checkName(name: string) {
@@ -128,8 +137,13 @@ export function createObjectStore(driver: BucketDriver, options: ObjectStoreOpti
   /** Protects an existing generation before it acquires another reader (see `ReusePolicy`). */
   async function reuseExisting(existing: RawObject, input: PutInput) {
     if (reuse.mode === "refuse_released") {
-      // A sealed catalog is created on its clock; production accepts its existing generation on retry.
-      if (existing.customTime && !input.customTime) fail("released", "Existing generation is already on its recovery clock");
+      if (input.customTime) {
+        // A sealed catalog is created on its clock. A retry accepts the existing generation only when
+        // it is on its clock too, as `seal()` in ops/sales-outreach/retire-historical-jobs.cjs asserts.
+        if (!existing.customTime) fail("generation_mismatch", "Existing sealed object is not on its recovery clock");
+        return;
+      }
+      if (existing.customTime) fail("released", "Existing generation is already on its recovery clock");
       return;
     }
     const state = toState(existing);
@@ -159,6 +173,9 @@ export function createObjectStore(driver: BucketDriver, options: ObjectStoreOpti
     async put(input) {
       checkName(input.name);
       if (!Buffer.isBuffer(input.bytes)) fail("invalid_name", "Bytes must be a Buffer");
+      if (input.customTime && !sealedNames?.test(input.name)) {
+        fail("not_permitted", "Only a sealed catalog may be created on its recovery clock");
+      }
       const sha256 = sha256Hex(input.bytes);
       const verify = (persisted: Buffer) => {
         if (persisted.length !== input.bytes.length || sha256Hex(persisted) !== sha256) {

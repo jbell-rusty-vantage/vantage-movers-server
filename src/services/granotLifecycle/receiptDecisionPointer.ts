@@ -1,4 +1,4 @@
-import { archivedReceipts, webhookReceiptFormat } from "../granotHistory/completedWebhooks";
+import { archivedReceipts, RETIRED_RECEIPT_FORMATS } from "../granotHistory/retiredRecords";
 import type { ClientSession, Types } from "mongoose";
 import { withTransaction } from "../../db";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
@@ -17,7 +17,7 @@ export async function pointReceiptToDecision(id: Types.ObjectId, next: Types.Obj
     const opts = {session:txn,projection:{"processing.certified_lead":1}};
     const hot = await receipts.findOne({_id:id}, opts);
     const cold = archivedReceipts(getGranotObservationReceiptModel().db.db!);
-    const receipt = hot ?? await cold.findOne({_id:id,format:webhookReceiptFormat}, opts);
+    const receipt = hot ?? await cold.findOne({_id:id,format:{$in:[...RETIRED_RECEIPT_FORMATS]}}, opts);
     const source = hot ? receipts : cold;
     if (!receipt) return;
     const owner = receipt.processing?.certified_lead;

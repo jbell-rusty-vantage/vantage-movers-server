@@ -29,6 +29,8 @@ type NamespaceDefinition = {
   reuse: ReusePolicy;
   /** The release review every recovery clock and delete must pass. Absent: no direct delete. */
   review?: ReviewPolicy;
+  /** Names a put may create already on their recovery clock (a sealed catalog). Absent: none. */
+  sealedNames?: RegExp;
   timeouts: { readMs: number; writeMs: number };
 };
 
@@ -53,6 +55,7 @@ export const CLOUD_STORAGE_NAMESPACES: Record<CloudStorageNamespace, NamespaceDe
     recoveryDays: 30,
     holdKeys: {},
     reuse: { mode: "refuse_released" },
+    sealedNames: /\/catalog\.json$/,
     timeouts: { readMs: 30_000, writeMs: 60_000 },
   },
 };
@@ -108,7 +111,8 @@ export type OpenOptions = {
 
 function build(config: ResolvedNamespace, driver: BucketDriver, canRelease: boolean, now?: () => Date): ObjectStore {
   return createObjectStore(driver, {
-    prefix: config.prefix, holdKeys: config.holdKeys, reuse: config.reuse, review: config.review, canRelease, now,
+    prefix: config.prefix, holdKeys: config.holdKeys, reuse: config.reuse, review: config.review,
+    sealedNames: config.sealedNames, canRelease, now,
   });
 }
 const driverFor = (config: ResolvedNamespace, driver?: BucketDriver) =>

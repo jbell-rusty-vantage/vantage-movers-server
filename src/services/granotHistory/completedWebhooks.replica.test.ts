@@ -1,23 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BSON, MongoClient, ObjectId } from "mongodb";
+import { BSON, ObjectId } from "mongodb";
 import { getDailyOperationsCollectionName } from "../../config/domain/dailyOperations";
 import { easternDayKey } from "../dailyOperations/dayDocument";
-import { digest } from "./archiveCodec";
-import { archivedReceipts, retireWebhookReceipt } from "./completedWebhooks";
-import { readArchivedReceipt } from "./settledLeadEvidence";
+import { fakeGranotArchive, historyReplica } from "./archiveTestSupport";
+import { retireWebhookReceipt } from "./completedWebhooks";
+import { archivedReceipts, readGranotChain } from "./retiredRecords";
 
 test("completed inbound Lead receipts leave Mongo only after exact GCS recovery and committed business evidence", async (t) => {
-  if (process.env.GRANOT_ARCHIVE_REPLICA_TESTS !== "true")
-    return t.skip("isolated archive replica");
-  const client = new MongoClient(
-    "mongodb://127.0.0.1:27964/?replicaSet=archiveSlim",
-  );
-  const db = client.db("testvantagemovers_webhook" + new ObjectId());
+  const replica = await historyReplica(t, "webhook");
+  if (!replica) return;
+  const { client, db } = replica;
   try {
-    assert.deepEqual((await db.admin().command({ hello: 1 })).hosts, [
-      "127.0.0.1:27964",
-    ]);
     const at = new Date(),
       receipts = db.collection("granot_webhook_receipts");
     const observations = db.collection("granot_observations"),
@@ -25,18 +19,8 @@ test("completed inbound Lead receipts leave Mongo only after exact GCS recovery 
     await db
       .collection(getDailyOperationsCollectionName("days"))
       .insertOne({ day: easternDayKey(at), webhook_counts_version: 1 });
-    const objects = new Map<string, Buffer>();
-    const storage = {
-      store: async (_db: string, bytes: Buffer) => {
-        const hash = digest(bytes);
-        objects.set(hash, bytes);
-        return { hash, persisted: Buffer.from(bytes), generation: "1" };
-      },
-    };
-    const read = async (_db: string, hash: string, generation?: string) => {
-      assert.equal(generation, "1");
-      return Buffer.from(objects.get(hash)!);
-    };
+    const { storage } = fakeGranotArchive();
+    const read = storage.read;
     async function seed(
       route: string,
       outcome: string,
@@ -105,7 +89,7 @@ test("completed inbound Lead receipts leave Mongo only after exact GCS recovery 
     );
     await assert.rejects(
       retireWebhookReceipt(db, created.id, {
-        store: async (name, bytes) => ({
+        store: async (name: string, bytes: Buffer) => ({
           ...(await storage.store(name, bytes)),
           persisted: Buffer.alloc(0),
         }),
@@ -118,7 +102,7 @@ test("completed inbound Lead receipts leave Mongo only after exact GCS recovery 
     ]);
     assert.equal(results.filter((x) => x === "retired").length, 1);
     assert.equal(await receipts.countDocuments({ _id: created.id }), 0);
-    const restored = await readArchivedReceipt(db, created.id, read);
+    const restored = await readGranotChain(db, created.id, read);
     assert.ok(restored);
     assert.deepEqual(restored.receipt.payload, { synthetic: true });
     assert.ok(Buffer.isBuffer(original));
@@ -137,7 +121,7 @@ test("completed inbound Lead receipts leave Mongo only after exact GCS recovery 
     await db.collection("form_leads").insertOne({ _id: update.lead });
     assert.equal(
       await retireWebhookReceipt(db, update.id, {
-        store: async (name, bytes) => {
+        store: async (name: string, bytes: Buffer) => {
           await receipts.updateOne(
             { _id: update.id },
             { $set: { "processing.latest_decision_id": new ObjectId() } },

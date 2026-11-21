@@ -1,4 +1,4 @@
-import { readRetiredLifecycleReceipt } from "../granotHistory/completedWebhooks";
+import { readRetiredReceipt } from "../granotHistory/retiredRecords";
 import { createHash } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { toObjectId } from "../../utils/objectId";
@@ -369,7 +369,7 @@ async function defaultFindReceipt(
   channel_operation_id?: string;
 } | null> {
   const model = getGranotObservationReceiptModel();
-  return await model.findById(id).session(session ?? null).lean() ?? await readRetiredLifecycleReceipt(model.db.db!, id, session);
+  return await model.findById(id).session(session ?? null).lean() ?? await readRetiredReceipt(model.db.db!, id, { session });
 }
 
 async function defaultTransitionDeadLetter(

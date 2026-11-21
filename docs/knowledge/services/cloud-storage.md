@@ -1,7 +1,7 @@
 ---
 type: Service
 title: Cloud Storage
-description: One deep module for every Google Cloud Storage interaction. Create-only put with a pinned read-back (generation plus SHA-256), verified reads, named holds, conditional expiry and generation-fenced delete, configured from Mongo. Module and tests only; no caller is migrated yet.
+description: One deep module for every Google Cloud Storage interaction. Create-only put with a pinned read-back (generation plus SHA-256), verified reads, named holds, conditional expiry and generation-fenced delete, configured from Mongo. The Granot history writer and reader run on it; the Sales Intelligence packs and the release script are still to migrate.
 tags: [cloud-storage, granot-lifecycle, operations]
 status: draft
 stale_after: 2027-02-28
@@ -14,6 +14,7 @@ applies_to:
   - src/services/cloudStorage/fakeBucket.ts
   - src/services/cloudStorage/namespaces.ts
   - src/services/cloudStorage/contractSuite.ts
+  - src/services/granotHistory/archiveObjects.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -52,7 +53,8 @@ generated:
 
 **State (2026-11-21).**
 - Implemented and tested offline: the contract, the GCS driver, the in-memory fake bucket and Mongo runtime configuration.
-- Not integrated: no caller uses the module, and runtime behavior is unchanged. Each caller migrates in its own PR (see [Migration](#call-sites-and-migration-order)).
+- **Integrated (PR #257):** every Granot history write and read in `src/` goes through `granotArchiveStorage` in `archiveObjects.ts`, over the `granot-history` namespace. That covers chunks, month pages, evidence pages, closed runs, scheduled runs and retired receipts. Object names, bytes, content type and hold metadata are unchanged. The Granot unit and replica tests run on the fake bucket.
+- Still to migrate: `ops/granot-release-archive-generation.ts` (its reference check is now `archiveObjectReferenced` in `src/`), the Sales Intelligence packs and the operator readers under `ops/` that build their own client.
 - The real-bucket proof has not been run.
 
 ## Shape
@@ -77,7 +79,7 @@ A store handle is scoped to one bucket and one prefix. A name outside the prefix
 
 | Operation | Behavior |
 | --- | --- |
-| `put({ name, bytes, contentType, customTime?, metadata? })` | Create-only insert (`ifGenerationMatch: "0"`), then a pinned read-back that must match length and SHA-256 (`verification_failed`). If the name exists, the existing generation is read back and compared first, and only matching bytes go on to the store's reuse policy, so a different object under the name is never re-held. Returns `{ name, generation, sha256, size, created, persisted }`. Callers decode `persisted`, never their input. Identical bytes are idempotent: the same generation comes back with `created: false`. |
+| `put({ name, bytes, contentType, customTime?, metadata? })` | Create-only insert (`ifGenerationMatch: "0"`), then a pinned read-back that must match length and SHA-256 (`verification_failed`). If the name exists, the existing generation is read back and compared first, and only matching bytes go on to the store's reuse policy, so a different object under the name is never re-held. Returns `{ name, generation, sha256, size, created, persisted }`. Callers decode `persisted`, never their input. Identical bytes are idempotent: the same generation comes back with `created: false`. `customTime` is refused (`not_permitted`) unless the namespace lists the name as sealed (`sealedNames`: only the Sales Intelligence `catalog.json`). Otherwise a Granot or pack put could create an object that the lifecycle deletes with no hold, review, drain or reference check. |
 | `readVerified({ name, generation?, sha256, size? })` | Downloads the pinned generation and verifies SHA-256 and the optional size. `generation` may be absent only for a legacy locator; the read then uses the live generation and still verifies SHA-256. |
 | `stat(name, generation?)` | `ObjectState`: generation, metageneration, size, recovery-clock marker, named holds, `independentHold`, `retentionLocked`, metadata, `updated`. |
 | `list({ prefix, pageToken?, maxResults? })` | Live objects under a prefix inside the store prefix, page by page. |
@@ -103,7 +105,7 @@ These are the production rules, in contract form.
    - provider retention applies (an event-based hold or object retention), which the module never sets;
    - an independent hold or any other named hold is active.
    In a namespace with a review policy (`CLOUD_STORAGE_NAMESPACES[ns].review`, a code constant), the review hold must be active under `guard.reviewToken`, alone, and its `updated` time must be at least the namespace drain window old. For Granot that is 800 seconds, the server's maximum invocation lifetime. A caller cannot shorten or skip it. A namespace without a review policy refuses any hold. The marker can only move forward. A released generation can only be protected again by a hold, never un-released.
-5. **Reuse protects before reading.** Under the Granot `rehold` policy, a `put` that finds matching bytes in a released or under-review generation cancels the review and sets the publisher hold, in one compare-and-swap, before it returns. A released generation held by neither the publisher nor a cancellable review is refused (`independent_hold`). The Sales Intelligence `refuse_released` policy refuses any generation whose clock has started. The exception is a put that itself starts the clock (`customTime`, the sealed `catalog.json`), which accepts the existing generation on retry, as production does.
+5. **Reuse protects before reading.** Under the Granot `rehold` policy, a `put` that finds matching bytes in a released or under-review generation cancels the review and sets the publisher hold, in one compare-and-swap, before it returns. A released generation held by neither the publisher nor a cancellable review is refused (`independent_hold`). The Sales Intelligence `refuse_released` policy refuses any generation whose clock has started. The exception is a put that itself starts the clock (`customTime`, the sealed `catalog.json`). On retry it accepts the existing generation only when that generation already has its `customTime`, as `seal()` in `retire-historical-jobs.cjs` asserts; otherwise it refuses with `generation_mismatch`.
 6. **Release capability.** `openObjectStore(db, ns, { capability: "release" })` returns a store that can start recovery clocks or delete only after it has read the bucket lifecycle and `checkRecoveryPolicy` has matched `<prefix><database>/` to the namespace's recovery days. Every other store, including `storeForNamespace`, refuses both with `not_permitted`.
 7. **Direct delete cannot strand a new locator.** A re-put of identical bytes to an unheld, unreleased Granot object writes nothing, and its writer records the locator only after `put` returns. A reference check alone would therefore miss a reader that is about to appear. `deleteIfGeneration` closes that gap in three layers:
    - The namespace review hold must be in place and drained, as for the recovery clock. Any writer that obtained the generation before the review has finished and written its locator by then, so `references` sees it. A re-put during the review cancels the review, and the delete refuses.
@@ -113,6 +115,20 @@ These are the production rules, in contract form.
 8. **Original-ID lookups fall back to the archive.** Callers keep that rule. The module only guarantees that a verified read returns the exact bytes the locator recorded.
 
 The module never writes lifecycle rules, bucket retention, versioning or soft-delete settings. Those are Owner-approved bucket changes.
+
+### The drain assumption
+
+The review drain (rule 4 and rule 7) is safe only if **every publisher saves its MongoDB locator within the 800-second window after its `put` returns**. A writer that obtained a generation before the review began must have written its locator by the time the drain ends, so that `references` sees it. The bound holds for the server: a Vercel invocation lives at most 800 seconds, and each server publisher writes its locator in the same invocation.
+
+These local publishers have **no such bound**. They run on an operator machine with no invocation lifetime, and can pause between upload and locator for any length of time:
+- `ops/granot-history-archive.ts --publish`;
+- `ops/granot-archive-run-closure.ts`;
+- `ops/granot-closed-cohort.ts`;
+- `ops/granot-retire-used-receipts.ts --apply`. It writes each receipt's locator seconds after its put. A crash in between leaves an unheld, unreleased object that never expires, so the crash is safe. A paused process is not bounded.
+
+Do not begin or release a review while any of them is running. Record that in the review's `external_writer_clearance`.
+
+**Clock skew.** The drain compares the server's clock with the provider's `updated` time on the review hold. A server clock that runs ahead of GCS shortens the effective window by the skew; one that runs behind lengthens it. Vercel and GCS clocks are NTP-disciplined to well under a second, which the 800-second window absorbs, but an operator machine with a wrong clock is not. Run releases from the server environment or a host with a synchronized clock.
 
 ## Configuration
 
@@ -151,7 +167,7 @@ Compare-and-swap patches and deletes are never blindly retried. After a lost res
 No GCS request rate or byte volume was measured for this PR: it has no production access, and nothing in it runs in production. The figures below are scenario math from code budgets and earlier measurements. They use Google list prices for `us-east1` Standard storage, the prices the [backup deployment record](../../mongodb-backup-automation/deployment-record.md#estimated-monthly-cost) used: storage about $0.020 per GiB-month, Class A operations (insert, patch, list) $0.005 per 1,000, Class B operations (get) $0.0004 per 1,000. Verify them on the billing account before any capacity decision.
 
 - **Per verified put:** one insert (Class A) and one pinned download (Class B). The download is also egress from GCS to Vercel. A reused generation adds a stat and possibly one patch.
-- **Granot retention ceiling.** The two-minute cron runs about 720 times a day. Its code budgets allow at most 16 scheduled runs (two objects each), 16 webhook receipts, one evidence page and up to 64 receipt reviews per invocation. Scenario: 120 puts per invocation would be 86,400 puts a day, about $0.43 a day in Class A plus about $0.03 in Class B. That ceiling is roughly $14 a month in requests, before egress. Actual arrivals are far below the budget. Measure them before using this number: the November 19 scheduled-run cutover archived 992 runs in total.
+- **Granot retention ceiling.** The two-minute cron runs about 720 times a day. Its code budgets allow at most 16 scheduled runs (two objects each), 16 webhook receipts, one evidence page and up to 32 retire-on-use reviews per invocation (one object each). Scenario: 120 puts per invocation would be 86,400 puts a day, about $0.43 a day in Class A plus about $0.03 in Class B. That ceiling is roughly $14 a month in requests, before egress. Actual arrivals are far below the budget. Measure them before using this number: the November 19 scheduled-run cutover archived 992 runs in total.
 - **Bytes at rest (measured).** Sales Intelligence rollback packs: 38.72 MiB in GCS on November 19. Granot raw rollback exports: 149.65 MB compressed on November 18, in addition to application archives. At list price, 1 GiB costs about $0.02 a month, plus the same again during the seven days of soft delete.
 - **What this module adds.** `startRecoveryClock` and `deleteIfGeneration` add one verified download each, compared with today's release script. That is one Class B operation plus the object's egress, the price of the "no delete without a verified generation" rule.
 
@@ -161,12 +177,12 @@ Today `src/` has exactly one GCS client: `src/services/granotHistory/archiveObje
 
 | # | Call site | GCS operations today | Locator in Mongo | Can objects and locators stay byte-identical? | PR |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `src/services/granotHistory/archiveObjects.ts` (`storeArchiveObject`, `readArchiveObject`) | insert `ifGenerationMatch: 0`; on 412, stat, then a publisher re-hold compare-and-swap; pinned `alt=media` read-back | `{ hash, generation }`; name derived from database and hash | **Yes.** Same name (test: `granotHistoryObjectName` equals `archiveObject` for 48 cases), same bytes, same content type, same hold metadata and fences (test: emulated request shapes). Request differences: the patch and stat requests add a `fields` list, and on a name conflict the read-back now runs before the re-hold patch rather than after it. The existing error messages need a thin mapping in the shim. | 1. Granot history |
+| 1 | `src/services/granotHistory/archiveObjects.ts` (`storeArchiveObject`, `readArchiveObject`) | insert `ifGenerationMatch: 0`; on 412, stat, then a publisher re-hold compare-and-swap; pinned `alt=media` read-back | `{ hash, generation }`; name derived from database and hash | **Yes.** Same name (test: `granotHistoryObjectName` equals `archiveObject` for 48 cases), same bytes, same content type, same hold metadata and fences (test: emulated request shapes). Request differences: the patch and stat requests add a `fields` list, and on a name conflict the read-back now runs before the re-hold patch rather than after it. Failures now surface as `CloudStorageError` codes; no caller matched the old messages. | **Done in #257** |
 | 1a | Its Granot callers: `publishArchiveChunk.ts`, `monthArchive.ts`, `scheduledRunArchive.ts`, `prepareClosedRun.ts`, `closedAutomationRun.ts`, `archiveReads.ts`, `evidencePage.ts` | through #1 | `granot_history_archive_chunks`, `granot_closed_automation_runs`, `granot_automation_runs.archive_summary` | **Yes**, unchanged code above the seam. Legacy chunks without `generation` keep reading the live generation with SHA-256 verification. | 1 |
 | 1b | Operator readers: `ops/granot-archive-run-closure.ts`, `ops/granot-targeted-deletion-dry-run.ts`, `ops/granot-history-archive.ts`, `ops/granot-closed-cohort.ts`, `ops/verify-granot-history-archive.ts` | through #1 | operator manifests | **Yes.** | 1 |
 | 2 | `ops/granot-release-archive-generation.ts` (begin and release) | full-control stat; review hold patch; recovery-clock patch | evidence JSON (`hash`, `generation`) | **Yes** for objects and metadata: begin = `hold(review, replaces publisher, evidence)`; release = `startRecoveryClock({ reviewToken, references: stillReferenced })` on a `release` store, with the 800-second drain enforced by the namespace. Two behavior differences: release adds a verified read before stamping, and "review already started" stays a caller check on the evidence digest, because today's review token is a fresh UUID on each run. | 1 (same PR as the writer it pairs with) |
 | 3 | `ops/sales-outreach/retire-historical-jobs.cjs` (Sales Intelligence rollback packs) | insert `ifGenerationMatch: 0` (`application/gzip`); on 412, refuse a discharged object; pinned read with SHA-256; bucket lifecycle assert; `customTime` patch fenced on generation and metageneration; sealed `catalog.json` inserted with `customTime` | operator manifest and the sealed catalog in GCS | **Yes.** Same names (the test reads the script's own constants), bytes, content types and `{ customTime }` patch body, under `refuse_released`. A lost `catalog.json` response retries onto the existing generation, as production does. Request differences: the catalog body is a Buffer rather than a one-chunk stream (same bytes), and stat requests add a `fields` list. Today's lifecycle assertion is a strict `deepEqual`. Keep it beside `checkRecoveryPolicy` or tighten the check. The task brief named `src/services/salesIntelligence/jobs.ts`, but that file has no GCS code: its retired-stage fence is Mongo-only. | 2. Sales Intelligence packs |
-| 4 | Granot receipt retirement: `completedWebhooks.ts` (`retireWebhookReceipt`, `readRetiredLifecycleReceipt`), `futureRetention.ts`, `retireLeadEvidence.ts`, `settledLeadEvidence.ts` | through #1 (injected `store` / `read`) | `granot_archived_receipts`, `granot_webhook_receipts.evidence_archive` / `history_archive` | **Yes.** This PR retypes the injected seams to `ObjectStore` and moves their unit and replica tests onto the fake bucket. No object or locator changes. | 3. Granot receipt retirement |
+| 4 | Granot receipt retirement: `retireOnUse.ts`, `completedWebhooks.ts`, `retiredRecords.ts`, `retireLeadEvidence.ts` (replacing `futureRetention.ts` and `settledLeadEvidence.ts`) | through #1 (injected `ArchiveStorage`) | `granot_archived_receipts`, `granot_webhook_receipts.evidence_archive` | **Yes** for existing objects and locators. New channel-operation receipts add one locator format, `channel-receipt-bson-v1`. Replica tests run on the fake bucket. | **Done in #257** |
 | 5 | `ops/cloud/mongodb-backup/backup.mjs` | `@google-cloud/storage`: resumable file upload `ifGenerationMatch: 0` with SHA-256 custom metadata, metadata verify, server-side copy to `weekly/`, manifest save; age-based lifecycle (8 and 29 days) | the success manifest in GCS | **Does not fit as is.** It is a separate ESM Cloud Run package (excluded from `tsconfig`) with its own runtime identity (ADC) and its own dependency. It needs streaming file upload and server-side copy, which the contract does not have, and its expiry is age-based rather than marker-based. Objects could stay byte-identical, but adopting the module means bundling it into the job image. | 4, only if the Owner wants it; otherwise keep its client and mirror the contract shape |
 
 Each migration PR must show:
@@ -181,7 +197,7 @@ Owner rule (November 21): keep tests lean and purposeful. Each test below guards
 | File | Tests | What each protects |
 | --- | --- | --- |
 | `contractSuite.ts` | 5, run twice: on the fake bucket and on the GCS driver over a JSON API emulator | 1. Put and read verify generation and SHA-256, cover idempotent re-put and legacy locators. 2. Holds block expiry and delete until released. 3. `deleteIfGeneration` refuses a mismatch, a missing review and a reference. 4. The recovery clock needs the review, and a re-put re-holds. 5. Prefix confinement. |
-| `fakeBucket.test.ts` | 5 | Corruption is never deleted; the 800 s review drain; **put and locator-write interleaved with delete at four points, the object survives**; unattributed holds; reuse policies (bytes checked before re-hold, sealed-catalog retry). |
+| `fakeBucket.test.ts` | 6 | Corruption is never deleted; the 800 s review drain; **put and locator-write interleaved with delete at four points, the object survives**; unattributed holds; reuse policies (bytes checked before re-hold, the provider hold kept while another named hold remains, `customTime` only for a sealed catalog whose retry must find it on its clock); store options that would weaken a rule are refused at construction. |
 | `gcsDriver.test.ts` | 2 | Granot requests equal today's archive writer (insert, read-back, re-hold fences); retry and error-mapping boundaries. |
 | `namespaces.test.ts` | 4 | Runtime configuration (defaults, refused moves); release capability needs a matching lifecycle rule; object names equal today's Granot and Sales Intelligence code; the lifecycle check. |
 | `gcsDriver.contract.test.ts` | the contract suite against a real bucket | **Skipped by default.** |
@@ -212,4 +228,4 @@ The suite also refuses to run without `TEST_MODE=true`, so it always uses the te
 2. **Backup job.** Bundle the module into the Cloud Run image (#5), or leave the backup job on its own client?
 3. **Lifecycle assertion strictness.** Keep today's strict `deepEqual` for the Sales Intelligence pack rule, or accept `checkRecoveryPolicy`? It also accepts one rule listing several prefixes, as the Granot rule does.
 4. **Verified read before the recovery clock.** It adds one download per release. The recommendation is to keep it.
-5. **Operator runbook.** The program also asks for a runbook in `docs/operations/`. Write it with the first migration PR, when there is an operator command to document.
+5. **Operator runbook.** The receipt retirement runbook (enable, backlog dry run and apply, rollback, fetch by ID) is in [storage retention](../granot-lifecycle/storage-retention-operations.md#enabling-rollback-and-recovery). A general Cloud Storage runbook in `docs/operations/` waits for the release-script migration.

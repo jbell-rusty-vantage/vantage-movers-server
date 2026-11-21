@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MongoClient, BSON, ObjectId } from "mongodb";
+import { BSON, ObjectId } from "mongodb";
+import { historyReplica } from "./archiveTestSupport";
 import { computeChecksum } from "../durableWork/checksum";
 import { hashCredentialRedactedPayload } from "../granotLifecycle/receiptEvidence";
 import { digest } from "./archiveCodec";
@@ -9,12 +10,10 @@ import { checkClosedOperation, closedRuns, readClosedRun } from "./closedAutomat
 import { archiveDueScheduledRuns, archiveScheduledRun, readArchivedScheduledRun } from "./scheduledRunArchive";
 
 test("scheduled archive preserves historical replay and original BSON across upload failure and concurrent retry", async t => {
-  if (process.env.GRANOT_ARCHIVE_REPLICA_TESTS !== "true") return t.skip("opt-in isolated archive replica");
-  const client = new MongoClient("mongodb://127.0.0.1:27964/?replicaSet=archiveSlim", { serverSelectionTimeoutMS: 3000 });
-  const db = client.db("testvantagemovers_archive" + new ObjectId());
+  const replica = await historyReplica(t, "archive");
+  if (!replica) return;
+  const { client, db } = replica;
   try {
-    const hello = await db.admin().command({ hello: 1 });
-    assert.deepEqual(hello.hosts, ["127.0.0.1:27964"]);
     const runs = db.collection("granot_automation_runs"), receipts = db.collection("granot_webhook_receipts");
     await runs.createIndex({ archive_review_at: 1 }, { name: "granot_scheduled_archive_due", sparse: true });
     await receipts.createIndex({ observation_channel: 1, channel_operation_id: 1 }, { name: "granot_observation_receipt_channel_operation_id_unique", unique: true });

@@ -12,6 +12,8 @@ applies_to:
   - src/services/granotLifecycle/receiptEvidence.ts
   - src/models/GranotObservationReceipt.ts
   - src/services/granotHistory/completedWebhooks.ts
+  - src/services/granotHistory/retireOnUse.ts
+  - src/services/granotHistory/retiredRecords.ts
   - src/services/granotHistory/retireLeadEvidence.ts
 owners: [team:main-server]
 sources:
@@ -89,17 +91,24 @@ Channel capture (`captureChannelOperationReceipt`) does **not** publish. Extensi
 
 A dedicated consumer (`api/queues/granot-lifecycle-consumer.ts`) and five-minute cron `/api/cron/granot-lifecycle-drain` scan due work. Both are wake-ups only: Mongo receipt `processing.*` remains the durable work source. Details: [`drainer.md`](./drainer.md).
 
-## Retirement of completed inbound Lead receipts
+## Retirement of completed receipts (retire on use)
 
-Every two minutes the retention worker examines up to eight completed receipts per Lead route. The daily webhook count, Observation and live Decision must already exist. A creation Decision also requires the created Form Lead. An observation-only or expired match requires a matching version of the source policy that permits observation or linking only. Applied updates require the target Lead and its recorded effect.
+A receipt leaves MongoDB as soon as it is used. "Used" is defined per channel in [storage retention](./storage-retention-operations.md#retire-on-use): the Lead effect is committed, or the outcome is a terminal already-current, stale or policy-final one. Inbound webhooks also need their Daily Operations day count, and HTTP actions need their row in a verified closed-run replay. Pending matches, retries, conflicts, ambiguous and deferred outcomes stay hot. `booking_status_changed` receipts stay hot by policy.
 
-The worker reads back the exact compressed BSON from a pinned GCS generation, verifies its checksum and compares it with the original. It rechecks the receipt and business evidence inside one MongoDB transaction, inserts a compact locator in `granot_archived_receipts` and deletes the hot receipt. The locator keeps the hash, generation, route, capture time, latest Decision ID and certified Lead. The drainer, Owner requeue and case readers resolve the retired receipt by its original ID through `readRetiredLifecycleReceipt`. The Observation and Decision continue to support the Desk and booking readers. Failed storage verification leaves the receipt available for retry. Booking status receipts use their own lifecycle.
+The drainer stamps `processing.retention_review_at` with the completion time. The two-minute storage cron reviews that queue once the Owner enables it, and the per-route webhook scan remains a backstop. The worker stores the exact receipt BSON, gzipped, as a create-only GCS object and reads it back from the pinned generation, verifying its SHA-256. It then compares the restored bytes with the original. Inside one MongoDB transaction it rereads the receipt and the "used" proof, inserts a compact locator in `granot_archived_receipts` and deletes the hot receipt. Failed storage verification leaves the receipt available for retry.
+
+- **Webhook locator** (`completed-webhook-bson-v1`, unchanged): hash, generation, route, capture time, latest Decision ID and certified Lead.
+- **Channel-operation locator** (`channel-receipt-bson-v1`, extension and HTTP automation): hash, generation, channel, `channel_operation_id`, kind, payload hash, capture and completion time, latest Decision ID, saved replay and certified Lead. The unique index `granot_archived_receipt_operation_unique` (`observation_channel, channel_operation_id`) carries the operation identity after the hot unique index no longer does.
+
+**Duplicate delivery after retirement.** Channel capture inserts inside a transaction that first looks up the retired operation key. A match behaves as the hot unique index would: the capture replays the original receipt ID, and a changed payload hash or kind raises `OperationIdempotencyConflictError`. A retirement committing concurrently either write-conflicts with the insert (the transaction retries and sees the locator) or leaves the hot key in place (duplicate key, then the same replay). The drainer then answers the replayed ID from the restored receipt and its saved replay. Webhooks have no delivery key: each delivery is its own receipt, and its retirement keeps the Daily Operations count untouched.
+
+**Reads by original ID.** `readGranotReceipt`, `readGranotObservation` and `readGranotDecision` in [`retiredRecords.ts`](../../../src/services/granotHistory/retiredRecords.ts) return the hot document or the verified archive. The drainer, Owner requeue, case readers, decision repointing, Pool admission and the job timeline use them or the locator itself.
 
 ## Retirement of Lead Observations and Decisions
 
-The two-minute retention job scans Observations in ID order, 192 per pass. For a completed HTTP automation receipt the saved replay must identify the same Observation, Decision and Lead and report an effect-free already-current or stale outcome. If the original Decision was previously removed, history contains the Observation and an empty Decision list. A surviving Decision also requires a later winning Lead Observation. For an inbound Lead webhook whose receipt is already in GCS, the worker uses the verified completed receipt and the linked live Decision. Priority 5, booking actions, unresolved work and live references stay hot.
+The two-minute retention job scans Observations in ID order, 192 per pass. For a completed HTTP automation receipt the saved replay must identify the same Observation, Decision and Lead and report an effect-free already-current or stale outcome. If the original Decision was previously removed, history contains the Observation and an empty Decision list. A surviving Decision also requires a later winning Lead Observation. For a receipt already in GCS (an inbound Lead webhook, or an extension or HTTP Lead snapshot), the worker uses the verified retired receipt and the linked live Decision. Priority 5, booking actions, unresolved work and live references stay hot.
 
-The worker verifies a compressed GCS page, repeats the source and reference checks, then commits the job history catalog, original-ID lookup, receipt locator and source removals together. The receipt continues serving its original replay. A sealed automation run can verify an archived Decision against the saved replay digest. This path operates independently of the general shadow retention policy and the MongoDB TTL monitor.
+The worker verifies a compressed GCS page, repeats the source and reference checks, then commits the job history catalog, original-ID lookup, receipt locator and source removals together. The receipt continues serving its original replay. A sealed automation run can verify an archived Decision against the saved replay digest. Nothing in this path depends on a TTL index.
 
 ## Related
 
