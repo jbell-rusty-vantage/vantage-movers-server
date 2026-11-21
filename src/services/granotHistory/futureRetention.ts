@@ -232,7 +232,8 @@ export async function runFutureRetention(
         let stamped = 0,
           retired = 0,
           qualified = 0,
-          comparisons = 0;
+          comparisons = 0,
+          retiredChainSkips = 0;
         const fresh = await readChains(db, ids, archived, storage.read, session);
         const eligible = fresh.filter((c) =>
           isDeepStrictEqual(verified.get(String(c.observation._id)), c),
@@ -320,9 +321,18 @@ export async function runFutureRetention(
                   _id: sample.lead_id,
                   "last_accepted_granot_observation.evidence.version": 2,
                 },
-                { session, projection: { _id: 1 } },
+                { session, projection: { "last_accepted_granot_observation.observation_id": 1 } },
               );
-            if (lead) {
+            // The comparison reads the accepted Observation's full chain from MongoDB. Once a
+            // retention path has moved that chain out (the Lead keeps its v2 proof), the history
+            // read can only refuse, so the sample is counted as skipped and the cursor still
+            // advances. Comparing it anyway failed every run on the same sample (2026-11-21).
+            const acceptedObservationId = (lead?.last_accepted_granot_observation as { observation_id?: unknown } | undefined)?.observation_id;
+            const chainInMongo = lead && acceptedObservationId
+              ? await db.collection("granot_observations").findOne({ _id: acceptedObservationId }, { session, projection: { _id: 1 } })
+              : null;
+            if (lead && !chainInMongo) retiredChainSkips++;
+            else if (lead) {
               if (
                 !(await compare(
                   db,
@@ -350,6 +360,7 @@ export async function runFutureRetention(
               reviewed: ids.length,
               qualified,
               read_comparisons: comparisons,
+              read_comparisons_skipped_retired_chain: retiredChainSkips,
               archived_reviews: verified.size,
               ttl_stamped: stamped,
               archived_retired: retired,
