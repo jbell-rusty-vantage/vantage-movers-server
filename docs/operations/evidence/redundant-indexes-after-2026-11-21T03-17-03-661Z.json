@@ -1,0 +1,811 @@
+{
+  "at": "2026-11-21T03:17:05.259Z",
+  "mode": "drop",
+  "results": [
+    {
+      "coll": "booked_leads",
+      "name": "lead_ref_1",
+      "result": "drop"
+    },
+    {
+      "coll": "lead_messages",
+      "name": "form_lead_1",
+      "result": "drop"
+    },
+    {
+      "coll": "booking_lead_reconciliation_cases",
+      "name": "origin_1",
+      "result": "drop"
+    },
+    {
+      "coll": "booking_lead_reconciliation_cases",
+      "name": "reason_1",
+      "result": "drop"
+    },
+    {
+      "coll": "booking_lead_reconciliation_cases",
+      "name": "status_1",
+      "result": "drop"
+    },
+    {
+      "coll": "call_leads",
+      "name": "lead_source_company_1",
+      "result": "drop"
+    },
+    {
+      "coll": "call_leads",
+      "name": "source_company_1",
+      "result": "drop"
+    },
+    {
+      "coll": "call_leads",
+      "name": "source_company_1_normalized_phone_number_1_duplicate_1",
+      "result": "drop"
+    },
+    {
+      "coll": "form_leads",
+      "name": "lead_source_company_1",
+      "result": "drop"
+    },
+    {
+      "coll": "form_leads",
+      "name": "normalized_phone_number_1",
+      "result": "drop"
+    },
+    {
+      "coll": "form_leads",
+      "name": "ref_no_1",
+      "result": "drop"
+    },
+    {
+      "coll": "form_leads",
+      "name": "source_company_1",
+      "result": "drop"
+    },
+    {
+      "coll": "form_leads",
+      "name": "source_granularity_id_1",
+      "result": "drop"
+    }
+  ],
+  "indexes": {
+    "booked_leads": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "lead_ref": 1,
+          "lead_model": 1
+        },
+        "name": "lead_ref_1_lead_model_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "is_referral_booking": 1
+        },
+        "name": "is_referral_booking_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "booking_origin": 1
+        },
+        "name": "booking_origin_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "submission_id": 1
+        },
+        "name": "submission_id_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "normalized_job_no": 1
+        },
+        "name": "normalized_job_no_1",
+        "unique": true,
+        "partialFilterExpression": {
+          "normalized_job_no": {
+            "$type": "string"
+          }
+        }
+      },
+      {
+        "v": 2,
+        "key": {
+          "job_no": 1
+        },
+        "name": "job_no_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "customer": 1
+        },
+        "name": "customer_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "lead_model": 1
+        },
+        "name": "lead_model_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "agent_allocations.agent": 1
+        },
+        "name": "agent_allocations.agent_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "is_leadless_booking": 1
+        },
+        "name": "is_leadless_booking_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "local": 1
+        },
+        "name": "local_1"
+      }
+    ],
+    "lead_messages": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "form_lead": 1,
+          "createdAt": -1
+        },
+        "name": "form_lead_1_createdAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "twilio_message_sid": 1
+        },
+        "name": "twilio_message_sid_1",
+        "unique": true,
+        "partialFilterExpression": {
+          "twilio_message_sid": {
+            "$type": "string"
+          }
+        }
+      },
+      {
+        "v": 2,
+        "key": {
+          "status": 1,
+          "next_attempt_at": 1,
+          "createdAt": 1
+        },
+        "name": "status_1_next_attempt_at_1_createdAt_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "purpose": 1,
+          "status": 1,
+          "createdAt": -1
+        },
+        "name": "purpose_1_status_1_createdAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "lead_ref.model": 1,
+          "lead_ref.id": 1,
+          "createdAt": -1
+        },
+        "name": "lead_message_lead_ref_created"
+      },
+      {
+        "v": 2,
+        "key": {
+          "granot_crm_source": 1,
+          "createdAt": -1
+        },
+        "name": "lead_message_granot_crm_source_created"
+      },
+      {
+        "v": 2,
+        "key": {
+          "to": 1
+        },
+        "name": "lead_message_to"
+      },
+      {
+        "v": 2,
+        "key": {
+          "twilio_message_sids": 1
+        },
+        "name": "twilio_message_sids_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "leased_until": 1
+        },
+        "name": "leased_until_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "observation_id": 1,
+          "purpose": 1
+        },
+        "name": "lead_message_observation_purpose_unique",
+        "unique": true,
+        "partialFilterExpression": {
+          "observation_id": {
+            "$exists": true,
+            "$type": "objectId"
+          }
+        }
+      },
+      {
+        "v": 2,
+        "key": {
+          "lead_source_company": 1,
+          "createdAt": -1
+        },
+        "name": "lead_message_lead_source_company_created"
+      }
+    ],
+    "booking_lead_reconciliation_cases": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "submission.normalized_lid": 1
+        },
+        "name": "submission.normalized_lid_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "submission.normalized_name": 1
+        },
+        "name": "submission.normalized_name_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "origin": 1,
+          "status": 1,
+          "createdAt": -1
+        },
+        "name": "origin_1_status_1_createdAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "status": 1,
+          "retry.next_attempt_at": 1
+        },
+        "name": "status_1_retry.next_attempt_at_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "submission.normalized_phone_number": 1
+        },
+        "name": "submission.normalized_phone_number_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "submission.normalized_email": 1
+        },
+        "name": "submission.normalized_email_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "retry.next_attempt_at": 1
+        },
+        "name": "retry.next_attempt_at_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "reason": 1,
+          "status": 1,
+          "updatedAt": -1
+        },
+        "name": "reason_1_status_1_updatedAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "submission.normalized_job_no": 1,
+          "createdAt": -1
+        },
+        "name": "submission.normalized_job_no_1_createdAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "booking": 1
+        },
+        "name": "booking_1",
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "status": 1,
+          "createdAt": -1
+        },
+        "name": "status_1_createdAt_-1"
+      }
+    ],
+    "call_leads": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "source_granularity_id": 1
+        },
+        "name": "source_granularity_id_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "ringcentral.route_id": 1
+        },
+        "name": "ringcentral.route_id_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "local": 1
+        },
+        "name": "local_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "source_company": 1,
+          "createdAt": -1
+        },
+        "name": "source_company_1_createdAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "ringcentral.route_assignment_id": 1
+        },
+        "name": "ringcentral.route_assignment_id_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "phone_number": 1
+        },
+        "name": "phone_number_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "duplicate": 1
+        },
+        "name": "duplicate_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "lead_source_company": 1,
+          "source_granularity_key": 1,
+          "normalized_job_no": 1
+        },
+        "name": "lead_source_company_1_source_granularity_key_1_normalized_job_no_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "ingested_contact_snapshot.normalized_phone_number": 1,
+          "_id": 1
+        },
+        "name": "call_lead_attach_ingested_contact_snapshot_normalized_phone_number"
+      },
+      {
+        "v": 2,
+        "key": {
+          "created_on_unmatched": 1
+        },
+        "name": "created_on_unmatched_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "source_company": 1,
+          "normalized_phone_number": 1,
+          "duplicate": 1,
+          "timestamp": -1
+        },
+        "name": "source_company_1_normalized_phone_number_1_duplicate_1_timestamp_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "lead_source_company": 1,
+          "source_granularity_key": 1,
+          "createdAt": -1
+        },
+        "name": "lead_source_company_1_source_granularity_key_1_createdAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "normalized_phone_number": 1,
+          "createdAt": -1
+        },
+        "name": "normalized_phone_number_1_createdAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "source_granularity_key": 1
+        },
+        "name": "source_granularity_key_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "ringcentral.target_phone_number": 1
+        },
+        "name": "ringcentral.target_phone_number_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "source_granularity_id": 1,
+          "normalized_job_no": 1
+        },
+        "name": "call_lead_source_granularity_normalized_job_no"
+      },
+      {
+        "v": 2,
+        "key": {
+          "normalized_phone_number": 1,
+          "_id": 1
+        },
+        "name": "call_lead_attach_normalized_phone_number"
+      },
+      {
+        "v": 2,
+        "key": {
+          "job_no": 1
+        },
+        "name": "job_no_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "lead_source_company": 1,
+          "createdAt": -1
+        },
+        "name": "lead_source_company_1_createdAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "receiver_agent": 1
+        },
+        "name": "receiver_agent_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "source_granularity_id": 1,
+          "normalized_phone_number": 1,
+          "createdAt": -1
+        },
+        "name": "call_lead_source_granularity_normalized_phone_created"
+      },
+      {
+        "v": 2,
+        "key": {
+          "ingestion_origin": 1,
+          "source_granularity_id": 1,
+          "ingested_contact_snapshot.normalized_phone_number": 1,
+          "createdAt": -1
+        },
+        "name": "call_lead_origin_source_ingested_phone_created"
+      },
+      {
+        "v": 2,
+        "key": {
+          "ringcentral.telephony_session_id": 1
+        },
+        "name": "ringcentral.telephony_session_id_1",
+        "unique": true,
+        "sparse": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "normalized_job_no": 1
+        },
+        "name": "normalized_job_no_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "granot_contact_snapshot.normalized_phone_number": 1,
+          "_id": 1
+        },
+        "name": "call_lead_attach_granot_contact_snapshot_normalized_phone_number"
+      },
+      {
+        "v": 2,
+        "key": {
+          "ringcentral.original_caller.normalized_phone_number": 1,
+          "_id": 1
+        },
+        "name": "call_lead_attach_ringcentral_original_caller_normalized_phone_number"
+      },
+      {
+        "v": 2,
+        "key": {
+          "timestamp": 1,
+          "receiver_agent": 1
+        },
+        "name": "call_lead_overview_timestamp_receiver"
+      }
+    ],
+    "form_leads": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "duplicate": 1
+        },
+        "name": "duplicate_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "receiver_agent": 1
+        },
+        "name": "receiver_agent_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "lead_source_company": 1,
+          "source_granularity_key": 1,
+          "normalized_lid": 1
+        },
+        "name": "lead_source_company_1_source_granularity_key_1_normalized_lid_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "lead_source_company": 1,
+          "source_granularity_key": 1,
+          "createdAt": -1
+        },
+        "name": "lead_source_company_1_source_granularity_key_1_createdAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "normalized_phone_number": 1,
+          "_id": 1
+        },
+        "name": "form_lead_attach_normalized_phone_number"
+      },
+      {
+        "v": 2,
+        "key": {
+          "ingested_contact_snapshot.normalized_phone_number": 1,
+          "_id": 1
+        },
+        "name": "form_lead_attach_ingested_contact_snapshot_normalized_phone_number"
+      },
+      {
+        "v": 2,
+        "key": {
+          "bad_lead": 1
+        },
+        "name": "bad_lead_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "source_company": 1,
+          "createdAt": -1
+        },
+        "name": "source_company_1_createdAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "phone_number": 1
+        },
+        "name": "phone_number_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "lead_source_company": 1,
+          "source_granularity_key": 1,
+          "email": 1,
+          "normalized_contact_name": 1
+        },
+        "name": "lead_source_company_1_source_granularity_key_1_email_1_normalized_contact_name_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "email": 1
+        },
+        "name": "email_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "lead_source_company": 1,
+          "createdAt": -1
+        },
+        "name": "lead_source_company_1_createdAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "normalized_lid": 1
+        },
+        "name": "normalized_lid_1",
+        "sparse": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "normalized_contact_name": 1
+        },
+        "name": "normalized_contact_name_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "source_granularity_id": 1,
+          "normalized_job_no": 1
+        },
+        "name": "form_lead_source_granularity_normalized_job_no"
+      },
+      {
+        "v": 2,
+        "key": {
+          "ref_no": 1,
+          "duplicate": 1
+        },
+        "name": "form_lead_ref_no_duplicate"
+      },
+      {
+        "v": 2,
+        "key": {
+          "granot_contact_snapshot.normalized_phone_number": 1,
+          "_id": 1
+        },
+        "name": "form_lead_attach_granot_contact_snapshot_normalized_phone_number"
+      },
+      {
+        "v": 2,
+        "key": {
+          "lead_source_company": 1,
+          "source_granularity_key": 1,
+          "normalized_phone_number": 1
+        },
+        "name": "lead_source_company_1_source_granularity_key_1_normalized_phone_number_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "normalized_job_no": 1
+        },
+        "name": "form_lead_normalized_job_no"
+      },
+      {
+        "v": 2,
+        "key": {
+          "local": 1
+        },
+        "name": "local_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "lid": 1
+        },
+        "name": "lid_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "source_granularity_key": 1
+        },
+        "name": "source_granularity_key_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "source_granularity_id": 1,
+          "normalized_phone_number": 1,
+          "duplicate": 1
+        },
+        "name": "form_lead_source_granularity_normalized_phone_duplicate"
+      },
+      {
+        "v": 2,
+        "key": {
+          "timestamp": 1,
+          "receiver_agent": 1
+        },
+        "name": "form_lead_overview_timestamp_receiver"
+      },
+      {
+        "v": 2,
+        "key": {
+          "move_date": 1,
+          "_id": -1
+        },
+        "name": "sod_form_lead_move_date"
+      },
+      {
+        "v": 2,
+        "key": {
+          "ingested_contact_snapshot.email": 1
+        },
+        "name": "form_lead_ingested_contact_email",
+        "sparse": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "granot_contact_snapshot.email": 1
+        },
+        "name": "form_lead_granot_contact_email",
+        "sparse": true
+      }
+    ]
+  }
+}

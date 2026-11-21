@@ -107,6 +107,18 @@ Declare these indexes in code, or record why they are operator-managed. [Command
 
 After hiding, `explain` on ten busy query shapes chose the covering compounds, with keys examined equal to documents returned. Examples are `form_leads` by `ref_no`, `source_granularity_id` and `normalized_phone_number`, and `booked_leads` by `lead_ref`. Unhide (`--unhide`) is the rollback. The model declarations are removed in PR #235. A read-only check at about 04:10 UTC on November 20 found all 13 still hidden, no new slow query shape and no Advisor suggestion. Details are in the [review](SERVICE-REVIEW-2026-11-20.md#redundant-index-drop). The drop is scheduled for 22:17 New York on November 20, and `--drop` refuses any target that is no longer hidden. The total size is about 1.6 MB, so the gain is lower write cost on Lead inserts and updates. [Before](evidence/redundant-indexes-before-2026-11-20T03-04-35-157Z.json) · [After](evidence/redundant-indexes-after-2026-11-20T03-04-35-157Z.json) · [Plans](evidence/redundant-indexes-hidden-plans-2026-11-20.json)
 
+**Scheduled drop: done at 22:17 New York on November 20 (03:17 UTC, November 21).**
+- The Windows task ran on time and the log ends `exit 0`. All 13 targets report `"result": "drop"`.
+- A read-only `listIndexes` at about 16:10 New York on November 21 found:
+  - all 13 names absent;
+  - `call_leads.source_granularity_id_1` still present;
+  - the covering compounds visible: `booked_leads.lead_ref_1_lead_model_1`, `form_leads.form_lead_source_granularity_normalized_job_no` and `call_leads.lead_source_company_1_createdAt_-1`.
+- The task was unregistered after the check.
+- Not checked: Atlas slow-query access from this workstation is still blocked by the service account's API access list.
+- Rollback is `createIndex` from the before file.
+
+[Before](evidence/redundant-indexes-before-2026-11-21T03-17-03-661Z.json) · [After](evidence/redundant-indexes-after-2026-11-21T03-17-03-661Z.json)
+
 **Compact trial on secondary 00.** At about 03:20 UTC on November 20, `scripts/storage-compact.ts --apply` compacted seven collections on `ac-9mmcj05-shard-00-00`, a secondary. The script's guards passed: healthy set, lag under 30 s, no other compact running. Each collection finished in 1–3 seconds. Afterwards, all members reported healthy and the API `/health` returned `ok`.
 
 | Collection | File before MB | Freed MB | File after MB |
