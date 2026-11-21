@@ -34,15 +34,19 @@ export interface ObjectStore {
   /**
    * Conditional expiry: stamps the recovery-clock marker on an exact, verified generation, after
    * which the bucket lifecycle deletes it once the recovery window has passed. Refuses while a
-   * locator still points at the object, while any hold other than `guard.requireHold` is active,
-   * and while the required hold has not been held for `heldForMs`. Idempotent once started.
+   * locator still points at the object and while any hold other than the namespace review hold is
+   * active. In a namespace with a review policy, the review hold must be active under
+   * `guard.reviewToken` and must have drained for the namespace window. Idempotent once started.
    */
   startRecoveryClock(ref: VerifiedRef & { generation: string }, guard: RecoveryGuard): Promise<ObjectState>;
   /**
-   * Immediate delete of an exact generation. Refuses unless the generation is live, unheld, unreferenced
-   * and its bytes still verify. Uses generation and metageneration preconditions.
+   * Immediate delete of an exact live generation. Only a namespace with a review policy can delete:
+   * the review hold must be active under `guard.reviewToken` and drained for the namespace window,
+   * nothing else may hold it, no locator may reference it and its bytes must still verify. The
+   * delete first stamps the recovery-clock marker, so a concurrent re-put re-holds the generation
+   * and the fenced delete loses. Every other namespace expires through the lifecycle only.
    */
-  deleteIfGeneration(ref: VerifiedRef & { generation: string }, guard: ReferenceGuard): Promise<void>;
+  deleteIfGeneration(ref: VerifiedRef & { generation: string }, guard: DeleteGuard): Promise<void>;
   /** Bucket lifecycle rules, read-only. The module never writes lifecycle configuration. */
   lifecycle(): Promise<LifecycleRule[]>;
 }
@@ -103,7 +107,7 @@ export type HoldRequest = {
   replaces?: string[];
   /**
    * Extra metadata written in the same compare-and-swap (for example review evidence).
-   * Hold keys (`holdKeys` on the store) are refused here; change them only via `holder` / `replaces`.
+   * Hold keys are refused here; they change only through `holder` and `replaces`.
    */
   metadata?: Record<string, string>;
 };
@@ -111,10 +115,17 @@ export type HoldRequest = {
 /** Returns true while any MongoDB locator still points at the object. Called immediately before the change. */
 export type ReferenceCheck = () => Promise<boolean>;
 export type ReferenceGuard = { references: ReferenceCheck };
-export type RecoveryGuard = ReferenceGuard & {
-  /** A review hold that must be active with this token for at least `heldForMs` (the publication drain window). */
-  requireHold?: { holder: string; token: string; heldForMs?: number };
-};
+/** `reviewToken` names the namespace review hold this caller placed; required where the namespace defines one. */
+export type RecoveryGuard = ReferenceGuard & { reviewToken?: string };
+export type DeleteGuard = ReferenceGuard & { reviewToken: string };
+
+/**
+ * A namespace's release review: the holder whose hold must cover a generation, for at least
+ * `drainMs`, before its recovery clock starts or it is deleted. The window outlasts any
+ * publication that obtained the generation before the review began (Granot: 800 s, the server's
+ * maximum invocation lifetime).
+ */
+export type ReviewPolicy = { holder: string; drainMs: number };
 
 export type LifecycleRule = {
   action: { type: string; storageClass?: string };
@@ -131,9 +142,9 @@ export type LifecycleRule = {
  * - `rehold`: a released or under-review generation is protected again by `holder` (cancelling
  *   `cancels`) before it acquires a new reader. A released generation under a hold the store
  *   cannot attribute is refused. This is the Granot history rule.
- * - `refuse_released`: a generation whose recovery clock has started is refused, unless this `put`
- *   itself stamps `customTime` (a sealed catalog born on the clock). That retry path is today's
- *   Sales Intelligence `seal()` 412 handling. A pack put without `customTime` still refuses.
+ * - `refuse_released`: a generation whose recovery clock has started is refused, unless the put
+ *   itself starts the clock at creation (`customTime`, a sealed catalog), which accepts the
+ *   existing generation as production does. This is the Sales Intelligence rollback-pack rule.
  */
 export type ReusePolicy =
   | { mode: "rehold"; holder: string; cancels: string[] }
@@ -149,7 +160,8 @@ export type CloudStorageErrorCode =
   | "independent_hold"
   | "referenced"
   | "hold_not_drained"
-  | "released";
+  | "released"
+  | "not_permitted";
 
 export class CloudStorageError extends Error {
   readonly code: CloudStorageErrorCode;

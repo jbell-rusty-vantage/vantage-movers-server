@@ -16,6 +16,8 @@ export {
   salesIntelligencePackObjectName,
   storeForNamespace,
   type CloudStorageNamespace,
+  type OpenOptions,
+  type StoreCapability,
   type ResolvedNamespace,
 } from "./namespaces";
 export { createObjectStore, type ObjectStoreOptions } from "./objectStore";

@@ -9,7 +9,7 @@ import { createGcsDriver } from "./gcsDriver";
  *   node --import tsx --import ./ops/test-setup.ts --test src/services/cloudStorage/gcsDriver.contract.test.ts
  *
  * The bucket must be a throwaway bucket with no retention policy, no default event-based hold and
- * no object versioning. Every object is written under `contract/<uuid>/` and deleted at the end.
+ * no object versioning. TEST_MODE=true is required so the test credential is used. Every object is written under `contract/<uuid>/` and deleted at the end.
  * Production buckets are refused by name. See docs/knowledge/services/cloud-storage.md.
  */
 const env = process.env;
@@ -19,6 +19,8 @@ const PRODUCTION_BUCKETS = new Set(["vantage-mongodb-backups-496816", "vantage-s
 function skipReason(): string | false {
   if (env.CLOUD_STORAGE_CONTRACT_TESTS !== "true") return "real-bucket contract test is opt-in (CLOUD_STORAGE_CONTRACT_TESTS=true)";
   if (!bucket) return "CLOUD_STORAGE_CONTRACT_BUCKET is required";
+  // TEST_MODE selects the test service account (GOOGLE_SERVICE_ACCOUNT_TEST_JSON*), never the production key.
+  if (env.TEST_MODE !== "true") throw new Error("The real-bucket contract test requires TEST_MODE=true");
   if (PRODUCTION_BUCKETS.has(bucket) || !/(^|[-_.])(test|disposable|scratch)([-_.]|$)/.test(bucket)) {
     throw new Error(`Refusing ${bucket}: use a disposable bucket whose name contains test, disposable or scratch`);
   }

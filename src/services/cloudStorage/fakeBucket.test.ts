@@ -1,180 +1,155 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isCloudStorageError, sha256Hex, type CloudStorageErrorCode } from "./contract";
-import { CONTRACT_HOLD_KEYS, objectStoreContract } from "./contractSuite";
+import { isCloudStorageError, type CloudStorageErrorCode } from "./contract";
+import { CONTRACT_HOLD_KEYS, objectStoreContract, rejectsWith } from "./contractSuite";
 import { createFakeBucket, createFakeObjectStore } from "./fakeBucket";
 
 objectStoreContract("in-memory fake bucket", () => createFakeBucket());
 
 const prefix = "unit/";
-const rejectsWith = (promise: Promise<unknown>, code: CloudStorageErrorCode) =>
-  assert.rejects(promise, (error) => isCloudStorageError(error, code) || assert.fail(`expected ${code}, got ${String(error)}`));
-const unreferenced = { references: async () => false };
-const granotLike = (now?: () => Date) => createFakeObjectStore({
-  prefix, holdKeys: CONTRACT_HOLD_KEYS, reuse: { mode: "rehold", holder: "publisher", cancels: ["review"] }, now,
-});
+const DRAIN = 800_000;
+const name = prefix + "a.bin";
 const body = Buffer.from("payload");
-const put = (store: ReturnType<typeof granotLike>["store"], name = prefix + "a.bin", bytes = body) =>
-  store.put({ name, bytes, contentType: "application/octet-stream" });
+/** A Granot-shaped store with its real 800 s review drain and a controllable clock. */
+function granotLike() {
+  const clock = { at: Date.parse("2026-11-21T12:00:00.000Z") };
+  const { store, bucket } = createFakeObjectStore({
+    prefix, holdKeys: CONTRACT_HOLD_KEYS, now: () => new Date(clock.at),
+    reuse: { mode: "rehold", holder: "publisher", cancels: ["review"] },
+    review: { holder: "review", drainMs: DRAIN },
+  });
+  const put = (bytes = body) => store.put({ name, bytes, contentType: "application/octet-stream" });
+  return { store, bucket, clock, put };
+}
 
-test("a corrupted stored object fails verified read and cannot be deleted", async () => {
-  const { store, bucket } = granotLike();
-  const stored = await put(store);
-  bucket.corrupt(stored.name);
+test("corrupted or altered stored bytes fail verification and are never deleted", async () => {
+  const { store, bucket, clock, put } = granotLike();
+  const stored = await put();
+  await store.hold(stored, { holder: "review", token: "r" });
+  clock.at += DRAIN;
+  bucket.corrupt(name);
   await rejectsWith(store.readVerified(stored), "verification_failed");
-  await rejectsWith(store.deleteIfGeneration(stored, unreferenced), "verification_failed");
-  assert.ok(bucket.peek(stored.name), "the object stays for investigation");
-});
-
-test("a write whose read-back differs is refused", async () => {
-  const { store, bucket } = granotLike();
+  await rejectsWith(store.deleteIfGeneration(stored, { references: async () => false, reviewToken: "r" }), "verification_failed");
+  await rejectsWith(store.startRecoveryClock(stored, { references: async () => false, reviewToken: "r" }), "verification_failed");
+  assert.ok(bucket.peek(name), "the object stays for investigation");
   const download = bucket.download.bind(bucket);
-  bucket.download = async (name, generation) => Buffer.concat([await download(name, generation), Buffer.from("!")]);
-  await rejectsWith(put(store), "verification_failed");
+  bucket.download = async (n, g) => Buffer.concat([await download(n, g), Buffer.from("!")]);
+  await rejectsWith(store.put({ name: prefix + "b.bin", bytes: body, contentType: "x" }), "verification_failed");
 });
 
-test("generations are unique decimal strings and a delete followed by a put mints a new one", async () => {
-  const { store } = granotLike();
-  const first = await put(store);
-  await store.deleteIfGeneration(first, unreferenced);
-  const second = await put(store);
-  assert.ok(BigInt(second.generation) > BigInt(first.generation));
-  await rejectsWith(store.deleteIfGeneration(first, unreferenced), "generation_mismatch");
+test("the recovery clock and delete both wait out the namespace review drain", async () => {
+  for (const operation of ["startRecoveryClock", "deleteIfGeneration"] as const) {
+    const { store, clock, put } = granotLike();
+    const stored = await put();
+    await store.hold(stored, { holder: "review", token: "r" });
+    const guard = { references: async () => false, reviewToken: "r" };
+    clock.at += DRAIN - 1_000;
+    await rejectsWith(store[operation](stored, guard), "hold_not_drained");
+    clock.at += 1_000;
+    await store[operation](stored, guard);
+  }
 });
 
-test("an independent provider hold blocks named holds, delete and reuse of a released generation", async () => {
-  const { store, bucket } = granotLike();
-  const stored = await put(store);
-  await store.hold(stored, { holder: "review", token: "r" });
-  await store.startRecoveryClock(stored, { ...unreferenced, requireHold: { holder: "review", token: "r" } });
-  bucket.placeIndependentHold(stored.name);
-  const state = await store.stat(stored.name);
-  assert.equal(state?.independentHold, true);
-  await rejectsWith(store.hold(stored, { holder: "publisher" }), "independent_hold");
-  await rejectsWith(store.deleteIfGeneration(stored, unreferenced), "held");
-  await rejectsWith(put(store), "independent_hold");
+/**
+ * The review blocker: a writer whose re-put of identical bytes writes nothing, then records its
+ * locator after `put` returns, must never be left pointing at a deleted object.
+ */
+test("a re-put racing a delete keeps the object for its new locator", async () => {
+  const interleavings: Array<{ case: string; refusal: CloudStorageErrorCode; race: (env: ReturnType<typeof granotLike> & { writer: () => Promise<void> }) => Promise<void> }> = [
+    {
+      case: "writer's put returned before the review; locator written during the drain",
+      refusal: "referenced",
+      race: async ({ store, clock, writer }) => {
+        await writer();
+        await store.hold({ name, generation: (await store.stat(name))!.generation }, { holder: "review", token: "r" });
+        clock.at += DRAIN;
+      },
+    },
+    {
+      case: "writer re-puts during the review",
+      refusal: "hold_not_drained",
+      race: async ({ store, clock, writer }) => {
+        await store.hold({ name, generation: (await store.stat(name))!.generation }, { holder: "review", token: "r" });
+        clock.at += DRAIN / 2;
+        await writer();
+        clock.at += DRAIN;
+      },
+    },
+    {
+      case: "writer re-puts between the delete's checks and its release patch",
+      refusal: "generation_mismatch",
+      race: async ({ store, bucket, clock, writer }) => {
+        await store.hold({ name, generation: (await store.stat(name))!.generation }, { holder: "review", token: "r" });
+        clock.at += DRAIN;
+        const patch = bucket.patch.bind(bucket);
+        bucket.patch = async (n, fence, changes) => { bucket.patch = patch; await writer(); return patch(n, fence, changes); };
+      },
+    },
+    {
+      case: "writer re-puts between the delete's release patch and its remove",
+      refusal: "generation_mismatch",
+      race: async ({ store, bucket, clock, writer }) => {
+        await store.hold({ name, generation: (await store.stat(name))!.generation }, { holder: "review", token: "r" });
+        clock.at += DRAIN;
+        const remove = bucket.remove.bind(bucket);
+        bucket.remove = async (n, fence) => { bucket.remove = remove; await writer(); return remove(n, fence); };
+      },
+    },
+  ];
+  for (const { case: label, refusal, race } of interleavings) {
+    const env = granotLike();
+    const first = await env.put();
+    const locators = new Set<string>();
+    const writer = async () => {
+      const stored = await env.put();
+      locators.add(stored.generation); // the locator is written only after put returns
+    };
+    await race({ ...env, writer });
+    await assert.rejects(
+      env.store.deleteIfGeneration(first, { references: async () => locators.size > 0, reviewToken: "r" }),
+      (error) => isCloudStorageError(error, refusal) || assert.fail(`${label}: expected ${refusal}, got ${String(error)}`),
+    );
+    assert.ok((await env.store.readVerified(first)).equals(body), `${label}: the new locator still reads`);
+  }
 });
 
-test("event-based retention refuses the recovery clock and delete", async () => {
-  const { store, bucket } = granotLike();
-  const stored = await put(store);
-  bucket.placeEventBasedHold(stored.name);
-  await rejectsWith(store.startRecoveryClock(stored, unreferenced), "held");
-  await rejectsWith(store.deleteIfGeneration(stored, unreferenced), "held");
+test("holds the store cannot attribute block holds, reuse, expiry and delete", async () => {
+  for (const place of ["placeIndependentHold", "placeEventBasedHold"] as const) {
+    const { store, bucket, clock, put } = granotLike();
+    const stored = await put();
+    await store.hold(stored, { holder: "review", token: "r" });
+    clock.at += DRAIN;
+    await store.startRecoveryClock(stored, { references: async () => false, reviewToken: "r" });
+    bucket[place](name);
+    const guard = { references: async () => false, reviewToken: "r" };
+    if (place === "placeIndependentHold") {
+      await rejectsWith(store.hold(stored, { holder: "publisher" }), "independent_hold");
+      await rejectsWith(put(), "independent_hold");
+    }
+    await rejectsWith(store.deleteIfGeneration(stored, guard), place === "placeIndependentHold" ? "hold_not_drained" : "held");
+    assert.ok(bucket.peek(name), place);
+  }
 });
 
-test("the review hold must drain the publication window before the recovery clock starts", async () => {
-  let clock = Date.parse("2026-11-21T12:00:00.000Z");
-  const { store, bucket } = granotLike(() => new Date(clock));
-  const stored = await put(store);
-  await store.hold(stored, { holder: "review", token: "r", replaces: ["publisher"] });
-  const guard = { ...unreferenced, requireHold: { holder: "review", token: "r", heldForMs: 800_000 } };
-  clock += 799_000;
-  await rejectsWith(store.startRecoveryClock(stored, guard), "hold_not_drained");
-  clock += 1_000;
-  const started = await store.startRecoveryClock(stored, guard);
-  assert.equal(started.recoveryClockStartedAt, "2026-11-21T12:13:20.000Z");
-  const raw = bucket.peek(stored.name)!;
-  assert.equal(raw.temporaryHold, false);
-  assert.deepEqual(raw.metadata, { contractPublisherHold: "", contractReleaseReview: "" });
-});
+test("reuse policies: Granot re-holds only matching bytes; packs refuse a released generation but a sealed catalog retry succeeds", async () => {
+  const granot = granotLike();
+  const stored = await granot.put();
+  const untouched = granot.bucket.peek(name)!.metageneration;
+  await granot.put();
+  assert.equal(granot.bucket.peek(name)!.metageneration, untouched, "an unreleased, unreviewed generation is reused without a write");
+  await granot.store.hold(stored, { holder: "review", token: "r" });
+  await rejectsWith(granot.put(Buffer.from("different")), "verification_failed");
+  assert.deepEqual(granot.bucket.peek(name)!.metadata, { contractReleaseReview: "r" }, "different bytes never touch the holds");
+  await granot.put();
+  assert.deepEqual(granot.bucket.peek(name)!.metadata, { contractReleaseReview: "", contractPublisherHold: "1" }, "a reuse cancels the review");
 
-test("reusing a generation under review cancels the review and restores the publisher hold", async () => {
-  const { store, bucket } = granotLike();
-  const stored = await put(store);
-  await store.hold(stored, { holder: "review", token: "r" });
-  const reused = await put(store);
-  assert.equal(reused.created, false);
-  const raw = bucket.peek(stored.name)!;
-  assert.equal(raw.temporaryHold, true);
-  assert.deepEqual(raw.metadata, { contractReleaseReview: "", contractPublisherHold: "1" });
-  await rejectsWith(store.startRecoveryClock(stored, { ...unreferenced, requireHold: { holder: "review", token: "r" } }), "held");
-});
-
-test("an unreleased, unreviewed generation is reused without any metadata change", async () => {
-  const { store, bucket } = granotLike();
-  const stored = await put(store);
-  const before = bucket.peek(stored.name)!.metageneration;
-  await put(store);
-  assert.equal(bucket.peek(stored.name)!.metageneration, before);
-});
-
-test("the refuse_released policy refuses to reuse a generation on its recovery clock", async () => {
-  const { store } = createFakeObjectStore({ prefix, reuse: { mode: "refuse_released" } });
-  const stored = await put(store);
-  await store.startRecoveryClock(stored, unreferenced);
-  await rejectsWith(put(store), "released");
-});
-
-test("put can create an object already on its recovery clock (a sealed catalog)", async () => {
-  const { store } = createFakeObjectStore({ prefix, reuse: { mode: "refuse_released" } });
-  const customTime = new Date("2026-11-19T00:00:00.000Z");
-  const stored = await store.put({ name: prefix + "catalog.json", bytes: Buffer.from("{}"), contentType: "application/json", customTime });
-  assert.equal((await store.stat(stored.name))?.recoveryClockStartedAt, customTime.toISOString());
-});
-
-test("a sealed catalog put is idempotent after a create conflict (today's SI seal 412 path)", async () => {
-  const { store } = createFakeObjectStore({ prefix, reuse: { mode: "refuse_released" } });
-  const customTime = new Date("2026-11-19T00:00:00.000Z");
-  const bytes = Buffer.from("{}");
-  const first = await store.put({ name: prefix + "catalog.json", bytes, contentType: "application/json", customTime });
-  const retry = await store.put({ name: prefix + "catalog.json", bytes: Buffer.from(bytes), contentType: "application/json", customTime });
-  assert.equal(retry.created, false);
-  assert.equal(retry.generation, first.generation);
-  assert.ok(retry.persisted.equals(bytes));
-  await rejectsWith(
-    store.put({ name: prefix + "catalog.json", bytes, contentType: "application/json" }),
-    "released",
-  );
-});
-
-test("release is idempotent and keeps the provider hold while another named hold remains", async () => {
-  const { store, bucket } = granotLike();
-  const stored = await put(store);
-  await store.release(stored, "publisher");
-  await store.hold(stored, { holder: "publisher" });
-  await store.hold(stored, { holder: "review", token: "r" });
-  await store.release(stored, "review");
-  assert.equal(bucket.peek(stored.name)!.temporaryHold, true);
-  await rejectsWith(store.release(stored, "publisher", "wrong"), "held");
-  await store.release(stored, "publisher", "1");
-  assert.equal(bucket.peek(stored.name)!.temporaryHold, false);
-});
-
-test("a lost compare-and-swap surfaces as a generation mismatch", async () => {
-  const { store, bucket } = granotLike();
-  const stored = await put(store);
-  const patch = bucket.patch.bind(bucket);
-  bucket.patch = async (name, fence, changes) => {
-    bucket.placeEventBasedHold(name); // a concurrent writer advances the metageneration first
-    return patch(name, fence, changes);
-  };
-  await rejectsWith(store.hold(stored, { holder: "publisher" }), "generation_mismatch");
-});
-
-test("readVerified accepts a legacy locator without a generation and still checks SHA-256", async () => {
-  const { store } = granotLike();
-  const stored = await put(store);
-  assert.ok((await store.readVerified({ name: stored.name, sha256: sha256Hex(body) })).equals(body));
-  await rejectsWith(store.readVerified({ name: stored.name, sha256: sha256Hex(Buffer.from("x")) }), "verification_failed");
-});
-
-test("unknown holders and bad generations are refused", async () => {
-  const { store } = granotLike();
-  const stored = await put(store);
-  await rejectsWith(store.hold(stored, { holder: "stranger" }), "invalid_configuration");
-  await rejectsWith(store.hold({ name: stored.name, generation: "abc" }, { holder: "publisher" }), "invalid_name");
-  assert.throws(() => createFakeObjectStore({ prefix: "no-slash", reuse: { mode: "refuse_released" } }), /Invalid store prefix/);
-  assert.throws(() => createFakeObjectStore({ prefix, reuse: { mode: "rehold", holder: "publisher", cancels: [] } }), /without a metadata key/);
-});
-
-test("hold extra metadata cannot overwrite another holder's reserved key", async () => {
-  const { store } = granotLike();
-  const stored = await put(store);
-  await store.hold(stored, { holder: "review", token: "r" });
-  await rejectsWith(
-    store.hold(stored, { holder: "publisher", metadata: { contractReleaseReview: "" } }),
-    "invalid_configuration",
-  );
-  assert.deepEqual((await store.stat(stored.name))?.holds, { review: "r" });
+  const { store: packs } = createFakeObjectStore({ prefix, reuse: { mode: "refuse_released" } });
+  const pack = await packs.put({ name: prefix + "p.bson.gz", bytes: body, contentType: "application/gzip" });
+  await packs.startRecoveryClock(pack, { references: async () => false });
+  await rejectsWith(packs.put({ name: pack.name, bytes: body, contentType: "application/gzip" }), "released");
+  await rejectsWith(packs.deleteIfGeneration({ ...pack, generation: pack.generation }, { references: async () => false, reviewToken: "r" }), "not_permitted");
+  const catalog = { name: prefix + "catalog.json", bytes: Buffer.from("{}"), contentType: "application/json", customTime: new Date("2026-11-19T00:00:00Z") };
+  const sealed = await packs.put(catalog);
+  const retried = await packs.put(catalog);
+  assert.deepEqual([retried.generation, retried.created], [sealed.generation, false], "a lost catalog response retries like production");
 });

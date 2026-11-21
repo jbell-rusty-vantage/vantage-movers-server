@@ -1,5 +1,5 @@
 import type { Db } from "mongodb";
-import { CloudStorageError, type LifecycleRule, type ObjectStore, type ReusePolicy } from "./contract";
+import { CloudStorageError, type LifecycleRule, type ObjectStore, type ReusePolicy, type ReviewPolicy } from "./contract";
 import type { BucketDriver } from "./driver";
 import { createGcsDriver } from "./gcsDriver";
 import { createObjectStore } from "./objectStore";
@@ -10,6 +10,10 @@ import { createObjectStore } from "./objectStore";
  * A missing document or missing field means the code default below, which is today's production
  * value, so adopting the module changes nothing until the Owner writes a document. A present but
  * invalid value fails closed. Credentials stay in env (`googleAuth/serviceAccount.ts`).
+ *
+ * Until the Owner decides how a namespace may move (locators record neither bucket nor prefix),
+ * `bucket` and `prefix` may only restate the built-in values; any other value is refused. A prefix
+ * under another lifecycle rule (the 8-day backup rule) would otherwise expire live objects.
  */
 export const CLOUD_STORAGE_CONTROL_COLLECTION = "cloud_storage_control";
 
@@ -23,6 +27,8 @@ type NamespaceDefinition = {
   recoveryDays: number;
   holdKeys: Record<string, string>;
   reuse: ReusePolicy;
+  /** The release review every recovery clock and delete must pass. Absent: no direct delete. */
+  review?: ReviewPolicy;
   timeouts: { readMs: number; writeMs: number };
 };
 
@@ -36,6 +42,8 @@ export const CLOUD_STORAGE_NAMESPACES: Record<CloudStorageNamespace, NamespaceDe
     recoveryDays: 30,
     holdKeys: { publisher: "granotPublisherHold", review: "granotReleaseReview" },
     reuse: { mode: "rehold", holder: "publisher", cancels: ["review"] },
+    /** 800 s: the server's maximum invocation lifetime, so any publication already in flight has finished. */
+    review: { holder: "review", drainMs: 800_000 },
     timeouts: { readMs: 15_000, writeMs: 30_000 },
   },
   /** Sales Intelligence job rollback packs and their sealed range catalogs. */
@@ -74,11 +82,11 @@ export async function readCloudStorageConfig(db: Db, namespace: CloudStorageName
   const resolved: ResolvedNamespace = { ...definition, namespace, source: "mongo" };
   if (row.bucket !== undefined) {
     if (typeof row.bucket !== "string" || !BUCKET.test(row.bucket)) invalid(`${namespace}: invalid bucket`);
-    resolved.bucket = row.bucket;
+    if (row.bucket !== definition.bucket) invalid(`${namespace}: moving the bucket is not supported until the Owner decides namespace moves`);
   }
   if (row.prefix !== undefined) {
     if (typeof row.prefix !== "string" || !PREFIX.test(row.prefix)) invalid(`${namespace}: invalid prefix`);
-    resolved.prefix = row.prefix;
+    if (row.prefix !== definition.prefix) invalid(`${namespace}: moving the prefix is not supported until the Owner decides namespace moves`);
   }
   if (row.recovery_days !== undefined) {
     if (!Number.isInteger(row.recovery_days) || (row.recovery_days as number) < 1 || (row.recovery_days as number) > 3650) {
@@ -89,18 +97,41 @@ export async function readCloudStorageConfig(db: Db, namespace: CloudStorageName
   return resolved;
 }
 
-/** Builds a store for an already resolved namespace. `driver` is the test seam (a fake bucket). */
-export function storeForNamespace(config: ResolvedNamespace, driver?: BucketDriver): ObjectStore {
-  return createObjectStore(driver ?? createGcsDriver({ bucket: config.bucket, timeouts: config.timeouts }), {
-    prefix: config.prefix,
-    holdKeys: config.holdKeys,
-    reuse: config.reuse,
+export type StoreCapability = "write" | "release";
+export type OpenOptions = {
+  /** `write` (default): put, read, list and holds. `release` also starts recovery clocks and deletes. */
+  capability?: StoreCapability;
+  /** Test seam (a fake bucket). */
+  driver?: BucketDriver;
+  now?: () => Date;
+};
+
+function build(config: ResolvedNamespace, driver: BucketDriver, canRelease: boolean, now?: () => Date): ObjectStore {
+  return createObjectStore(driver, {
+    prefix: config.prefix, holdKeys: config.holdKeys, reuse: config.reuse, review: config.review, canRelease, now,
   });
 }
+const driverFor = (config: ResolvedNamespace, driver?: BucketDriver) =>
+  driver ?? createGcsDriver({ bucket: config.bucket, timeouts: config.timeouts });
 
-export async function openObjectStore(db: Db, namespace: CloudStorageNamespace, driver?: BucketDriver) {
+/** A write-capable store for an already resolved namespace. It can never start a recovery clock or delete. */
+export function storeForNamespace(config: ResolvedNamespace, driver?: BucketDriver, now?: () => Date): ObjectStore {
+  return build(config, driverFor(config, driver), false, now);
+}
+
+/**
+ * Resolves the namespace from Mongo and opens its store. A `release` store is returned only after
+ * the bucket lifecycle rule for `<prefix><database>/` has been read and matches the namespace's
+ * recovery days (`checkRecoveryPolicy`), so nothing is released into an unexpected expiry rule.
+ */
+export async function openObjectStore(db: Db, namespace: CloudStorageNamespace, options: OpenOptions = {}) {
   const config = await readCloudStorageConfig(db, namespace);
-  return { config, store: storeForNamespace(config, driver) };
+  const driver = driverFor(config, options.driver);
+  if (options.capability !== "release") return { config, store: build(config, driver, false, options.now) };
+  const scope = `${config.prefix}${db.databaseName}/`;
+  const policy = checkRecoveryPolicy(await driver.lifecycle(), scope, config.recoveryDays);
+  if (!policy.ok) invalid(`${namespace}: lifecycle rule check failed: ${policy.reason}`);
+  return { config, store: build(config, driver, true, options.now) };
 }
 
 /** Today's Granot address: `history/granot/v1/<database>/<hh>/<sha256>.bson.gz`, content-addressed. */
