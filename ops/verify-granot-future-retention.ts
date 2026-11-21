@@ -135,11 +135,13 @@ async function main() {
     await db.collection(collections[0]).updateMany({ _id: { $in: receipts } }, { $set: { "processing.retention_review_at": now } });
     const skipped = await runFutureRetention(db, now, async (_bound, ref) => ref.id !== String(retiredLead));
     assert.equal(skipped.status, "shadow");
+    assert.equal(skipped.stamped, 0);
     const afterSkip = await db
       .collection<{ _id: string; read_comparisons: number; read_comparisons_skipped_retired_chain: number; failures?: number; last_pool_cursor: ObjectId }>("granot_retention_days")
       .findOne({ _id: now.toISOString().slice(0, 10) });
     assert.equal(afterSkip?.read_comparisons, 1);
     assert.equal(afterSkip?.read_comparisons_skipped_retired_chain, 1);
+    assert.deepEqual((afterSkip as { read_comparisons_skipped_samples?: { id: string }[] } | null)?.read_comparisons_skipped_samples?.map((x) => x.id), [String(retiredLead)]);
     assert.equal(afterSkip?.failures, undefined);
     const retiredWork = await db.collection("sales_outreach_pool_work").findOne({ lead_id: retiredLead });
     assert.equal(String(afterSkip?.last_pool_cursor), String(retiredWork?._id), "the cursor moves past the retired sample");
