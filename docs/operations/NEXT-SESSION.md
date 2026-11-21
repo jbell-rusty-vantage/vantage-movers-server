@@ -2,6 +2,14 @@
 
 ## Start here — next session (Owner, November 20)
 
+**November 21 status (16:30 New York).**
+- **Program started locally.** The Owner chose to start the program on the workstation rather than wait for the cloud environment. Two agents work in parallel, each in its own worktree with a real install, and each opens a PR:
+  - workstream 5: the Sheet Sync agent profile plus `pnpm vantage -- sheet-sync reconcile`;
+  - workstream 1: the GCS contract and module, with fake-bucket tests.
+  - Cloud setup (#254 and its first-session checklist) remains a separate track.
+- **Carry-overs 1 and 2 are closed.** Details are below.
+- **#255 and #256 are merged and deployed.** Details are in item 8.
+
 The next session starts the Owner's [next program](NEXT-PROGRAM-2026-11-20.md). It has five workstreams:
 
 1. A Google Cloud Storage service.
@@ -47,10 +55,14 @@ Evidence is in the main checkout's untracked `.tmp/bad-form-cleanup-2026-11-20/`
 
 ### Carry-overs to close first
 
-1. **Hidden-index drop (22:17 New York, November 20).** Read its result on [PR #249](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/249).
-   - If it ran, confirm the task is unregistered, then merge #249 with Owner approval.
-   - If it did not run, dropping now needs Owner approval.
-2. **Booking job-number shadow review.** Run `node --env-file=.env --import tsx ops/booking-job-number/control.ts status`. Report the would-reject records by reason and the drift result. The Owner decides on `enforce` only after this review.
+1. **~~Hidden-index drop~~ DONE.**
+   - The drop ran at 22:17 New York on November 20 and exited 0.
+   - On November 21: all 13 indexes are absent, `call_leads.source_granularity_id_1` is present, the covering compounds are visible, and the task is unregistered.
+   - The result is recorded on [PR #249](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/249). The Owner approved its merge on November 21.
+   - Still open: the Atlas slow-query check, which is blocked from this workstation.
+2. **~~Booking job-number shadow review~~ DONE (November 21, 16:16 New York).**
+   - After about 20 hours in shadow: **0 would-reject records** and drift 0.
+   - **The `enforce` decision is the Owner's.**
    - The rule rejects these spellings, which never appeared in the replay: `P5556759-1`, `P5556759 (2nd)`, `5,556,759`, `5556759A` and a Cyrillic `Р` prefix.
 3. **Booked Deals row 541.** Booking `6a7a47dfc78f1e03f807d970` (August 10) has the customer's name in its Job Number field. The Owner does not know the job. A read-only search of the Lead link and every other stored record ran on November 20; see the private evidence folder for its result.
    - Without a definitive Granot job, leave it as is (Owner, November 20). It still reports as a booking, and its Lead stays out of the Pool through `lead_ref`.
@@ -79,12 +91,21 @@ Evidence is in the main checkout's untracked `.tmp/bad-form-cleanup-2026-11-20/`
 7. **Earlier clocks.** See "Clocks still open" in the record below: November 21 17:33, November 22 16:27, November 23 21:06, November 26 00:00 UTC, November 27 20:04 and December 19.
 
 8. **Late November 20 stability pass (21:40 New York).**
-   - **PR #255** is reviewed and green, waiting for the Owner's merge. On a MongoDB credential rejection (code 18), the five queue consumers now acknowledge the wake-up, and the current deployment's cron drains the work. Before this, the superseded November 19 deployment `5137f06f` retried Sales Intelligence and Granot lifecycle wake-ups about 176 times an hour from 10:00 to 16:30 UTC. Live production was unaffected. [Rule](README.md)
+   - **PR #255** was merged and deployed at 16:03 New York on November 21 (`549cf45b`). The 16:00 slot's 25 runs completed with no failures. On a MongoDB credential rejection (code 18), the five queue consumers now acknowledge the wake-up, and the current deployment's cron drains the work. Before this, the superseded November 19 deployment `5137f06f` retried Sales Intelligence and Granot lifecycle wake-ups about 176 times an hour from 10:00 to 16:30 UTC. Live production was unaffected. [Rule](README.md)
    - **Repository cleanup.**
      - Six merged worktrees were removed: `booking-jobno`, `pr245-review`, `-lifecycle`, `-ops`, `-ops2` and `-tracka`. Their `.tmp` evidence was copied, verified identical, to the main checkout's `.tmp/bad-form-cleanup-2026-11-20/from-worktree-*`.
      - Every merged branch was deleted, locally and on GitHub. Only `main` and the open PRs #222, #249, #253, #254 and #255 remain.
      - The main checkout is on `main`.
      - The root's ignored scratch files (`.owner-*.log`, `.cleanup-*`, `.storage-*`) moved to `.tmp/root-scratch-archive-2026-11-20/`.
+   - **PR #256** was merged and deployed at 16:21 New York on November 21 (`76cbfb53`).
+     - **The failure.** From 17:06 UTC every `granot-storage-retention` run threw `Granot shadow Pool mismatch` (107 by 21:20). The sampled Call Lead `6a690a4fdd2ddd5892879876` holds its v2 proof, but its accepted Observation, Decision and receipt had already left MongoDB. The history read could only refuse it, and the aborted transaction kept the cursor on it.
+     - **Impact.** Shadow mode never deletes, so nothing was at risk. Pool admission uses the current read and was unaffected.
+     - **The fix.** Such samples are counted in `read_comparisons_skipped_retired_chain`, the last 20 go to `read_comparisons_skipped_samples`, they are logged as `granot_retention.shadow_comparison_skipped`, and the cursor advances. The first run after deploy recorded the skip and failures stopped at 107.
+     - **Promotion.** The seven-day promotion window restarts, because November 21 has failures.
+     - **Open.**
+       - Which retention path removed that chain? It has no `granot_archived_receipts` locator.
+       - How many active-Pool v2 Leads are in the same state?
+       - Owner decision: should the promotion gate bound the share of skipped samples?
 
 ### Working rules learned on November 20
 
