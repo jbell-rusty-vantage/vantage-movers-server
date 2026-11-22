@@ -2,6 +2,17 @@
 
 ## Start here — next session (Owner, November 20)
 
+**November 21 close (20:50 New York): `main` serves production.**
+- **Granot retire-on-use is ON** (#257). The backlog run retired 6,057 receipts with 0 failures, and read-back by ID from GCS is proven. The TTL indexes and the old trial records are gone. Compaction is deferred to after the November 26 rerun. [Release record and next steps](GRANOT-RETIRE-ON-USE-RELEASE-2026-11-21.md)
+- **Booking Job Number enforcement is ON (18:14).** It blocks only a missing Job Number, and Granot-created Bookings are never blocked (#260). Rollback: `control.ts set --mode=shadow`.
+- **Also live:**
+  - #258: the Sheet Sync profile and `pnpm vantage -- sheet-sync reconcile`.
+  - #259: the lean-test Owner directive.
+  - #261: no import-time `.env` load; tests refuse a non-loopback `MONGO_URI`.
+- **Next storage targets:**
+  - Granot decision 2, relaxing the Observation and Decision reference holds.
+  - Then `daily_operations_events` (190 MB), `sales_intelligence_jobs` (176 MB), `entity_changes` and `domain_command_executions` (about 65 MB each, no expiry) and the Sheet Sync logs (about 113 MB).
+
 **November 21 status (16:30 New York).**
 - **Program started locally.** The Owner chose to start the program on the workstation rather than wait for the cloud environment. Two agents work in parallel, each in its own worktree with a real install, and each opens a PR:
   - workstream 5: the Sheet Sync agent profile plus `pnpm vantage -- sheet-sync reconcile`;
