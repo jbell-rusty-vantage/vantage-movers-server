@@ -2,6 +2,8 @@
 
 ## Start here — next session (Owner, November 20)
 
+**Next session: start with [the Sales Intelligence job volume brief](SI-JOBS-VOLUME-BRIEF-2026-11-22.md).** It is the largest daily inflow, about 21,900 jobs and 15.5 MB per day, mostly 14-day `outreach_evaluate` and `capture_projection` jobs.
+
 **November 21 close (20:50 New York): `main` serves production.**
 - **Granot retire-on-use is ON** (#257). The backlog run retired 6,057 receipts with 0 failures, and read-back by ID from GCS is proven. The TTL indexes and the old trial records are gone. Compaction is deferred to after the November 26 rerun. [Release record and next steps](GRANOT-RETIRE-ON-USE-RELEASE-2026-11-21.md)
 - **Booking Job Number enforcement is ON (18:14).** It blocks only a missing Job Number, and Granot-created Bookings are never blocked (#260). Rollback: `control.ts set --mode=shadow`.
