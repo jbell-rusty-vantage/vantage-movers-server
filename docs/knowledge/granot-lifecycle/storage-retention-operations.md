@@ -16,7 +16,7 @@ node --env-file=.env --import tsx ops/granot-release-archive-generation.ts relea
 
 Both commands check live MongoDB references. The release checks the original evidence digest and review hold before updating the exact GCS generation and metageneration. Reuse invalidates the review or holds a released generation before publishing a new pointer. A later review starts a fresh recovery window once those obligations end.
 
-The main server owns retention. A completed scheduled Estimates run is due for archive review at completion. Any other scheduled run is reviewed at its original action deadline and stays hot. Fulfilled inbound `lead_created` and `priority_updated` receipts, and fulfilled Lead Observations and Decisions, move to Cloud Storage through their own passes. Superseded completed Lead snapshots enter archive review after one day. Historical cleanup uses a separate operator-reviewed manifest.
+The main server owns retention. A completed scheduled Estimates run is due for archive review at completion. Any other scheduled run is reviewed at its original action deadline and stays hot. Receipts in every channel retire on use: once used, each one moves to Cloud Storage and leaves a compact locator ([retire on use](#retire-on-use)). Their Observations and Decisions follow through the Lead evidence pass once nothing references them. The older backlog goes through the [backlog command](#backlog-command).
 
 ## Online processing
 
@@ -24,16 +24,85 @@ The authenticated `/api/cron/granot-storage-retention` job runs every two minute
 
 | Pass | Code | Budget per invocation |
 | --- | --- | --- |
-| Receipt shadow/future retention | [`futureRetention.ts`](../../../src/services/granotHistory/futureRetention.ts) | 64 due receipts |
+| Retire on use (all channels) | [`retireOnUse.ts`](../../../src/services/granotHistory/retireOnUse.ts) | 32 due receipts, only once enabled |
 | Fulfilled scheduled runs | [`scheduledRunArchive.ts`](../../../src/services/granotHistory/scheduledRunArchive.ts) | 16 runs, four at a time |
 | Fulfilled inbound Lead webhooks | [`completedWebhooks.ts`](../../../src/services/granotHistory/completedWebhooks.ts) | 8 receipts per route (`lead_created`, `priority_updated`) |
 | Fulfilled Lead Observations and Decisions | [`retireLeadEvidence.ts`](../../../src/services/granotHistory/retireLeadEvidence.ts) | one page of 192 Observations, GCS object at most 7 MiB |
 
-The route returns HTTP 503 when the run or webhook pass records a failure. Receipt review requires completion, capture and decision times all older than 24 hours. Only receipts both created and captured on or after the original policy cutover enter automatic expiry. Active leases, pending matches, dead letters, booking actions, unresolved or ambiguous outcomes, Priority 5 and invalid priorities remain available to their operators. Each declined candidate has another review date.
+The route returns HTTP 503 when the run, webhook or retire-on-use pass records a failure.
 
-The reviewer requires a valid Lead snapshot, one live terminal decision, a newer accepted winner, no protected holders and exact historical reconstruction. A stale result must identify an older temporal winner. An HTTP action also needs a matching closed-run replay record. A true webhook must have the transactional day-count acknowledgment and a materialized or finalized Daily Operations day. A browser extension operation must have the exact terminal result for its unique operation key. The publication transaction rereads current sources, holders, day evidence and the newer winner. Future mode stamps the established routine HTTP cohort for TTL. It retires qualifying webhook and effect-bearing detail within the transaction. Extension receipts keep a compact unique key, kind, payload hash, original result and archive pointer for redelivery and conflict detection. Daily counters separately report verified chains, direct retirements and TTL stamps.
+## Retire on use
 
-Cloud Storage holds checksummed BSON under `history/granot/v1` in the private Mongo backup bucket. This prefix lies outside the daily and weekly backup expiry rules. Month catalog rows point at immutable verified objects and use compare-and-swap when more history arrives. Diagnostic readers verify stored contents against their hash and use the recorded generation when present. Closed-run lookup rows preserve operation ID, kind, payload hash and original result after the hot run is deleted.
+Owner direction, November 21: once a receipt, Observation or Decision has done its job, it leaves MongoDB for verified GCS and can be read back by original ID. Keeping storage low is a priority.
+
+### What "used" means per channel
+
+At completion, the drainer stamps `processing.retention_review_at` only on a candidate: an inbound `lead_created` or `priority_updated` webhook, or a `lead_snapshot_apply` channel operation (`isRetirementCandidate`). The pass reads the index range from `enabled_from` to now, so the older backlog is never scanned, and it reviews due receipts oldest first. It claims each one for 30 minutes before any network I/O. A receipt that is not yet used gets another review a day later, and `processing.retention_reason` records why. A permanent reason, such as a booking route, removes the receipt from the queue. Code: `usedReason` in [`retireOnUse.ts`](../../../src/services/granotHistory/retireOnUse.ts).
+
+| Channel | Used when | Kept in MongoDB |
+| --- | --- | --- |
+| Inbound webhook, `lead_created` / `priority_updated` | All of these hold:<br>• it is completed;<br>• it is counted in its Daily Operations day (`webhook_day_counted`, and the day carries `webhook_counts_version: 1`, so a rebuild never recounts receipts);<br>• its Observation and one live Decision exist.<br>The outcome must also be one of:<br>• a committed Lead effect: `applied` with `lead_updated`, or `created` with `lead_created` on a Form Lead whose origin is `granot_lead_created`, and the Lead exists;<br>• a terminal no-change: `already_current` (`desired_state_already_current`), `linked` (`record_link_established`) or `stale` (`older_than_temporal_winner`);<br>• creation-policy-final: `policy_blocked` or `unmatched` with `creation_policy_observation_only` or `match_window_expired`, checked against the source's policy version. | Pending matches, retries, dead letters, conflicts, ambiguous and deferred outcomes, and any day without transactional counts. |
+| Inbound webhook, `booking_status_changed` | Never. Owner decision pending (see the PR). | All of them. Booking and Release cases pin their own copies. |
+| Browser extension | All of these hold:<br>• it is completed;<br>• its latest Decision is live and found by ID, hot or archived;<br>• the Observation belongs to this receipt;<br>• the saved replay agrees with the Decision.<br>The outcome must be a committed Lead effect or terminal no-change (as above), or policy-final: `unmatched`, `policy_blocked`, `invalid`, `unsupported` or `insufficient_creation_data`. | Pending matches, conflicts, ambiguous and deferred outcomes, a missing Lead or a replay that differs. |
+| Browser extension or HTTP `booking_action_apply` (any other kind) | Never (Owner decision pending), like the Lead evidence pass. | All of them. |
+| HTTP automation (legacy, pre-cutover) | As for the extension. Its exact row must also be in the run's verified closed-run replay: operation, receipt, payload hash, kind, Decision, Observation and outcome. The pass publishes a missing closed run when `prepareClosedRun` allows it: the run is gone and every action completed more than seven days ago. | Every receipt of a run that cannot close yet. |
+
+Downstream handoffs are durable before completion:
+- The Sheet Sync intent is written in the Lead command's transaction.
+- The lead-link wake-up and the Form sibling update run before the receipt completes, and their own scans back them up.
+- Outreach reads the Lead's certified proof or the current winning Observation, and reference holds keep that Observation hot.
+
+### How a receipt leaves
+
+`retireReceipt` works in two steps:
+1. It gzips the receipt's exact BSON, minus the review bookkeeping (`retention_review_at`, `retention_reason`, `webhook_archive_review_at`), so a retry after a claim uploads the same content-addressed object, and writes it as a create-only, content-addressed object through the [Cloud Storage module](../services/cloud-storage.md). It reads the object back from the pinned generation, checks the SHA-256, then restores the BSON and compares it byte for byte.
+2. One snapshot transaction rereads the receipt and the "used" proof, inserts the locator and deletes the receipt.
+
+If the work is interrupted before the transaction, the receipt stays hot. A retry finds the same content-addressed generation, so nothing is duplicated. If the receipt changed in between, the call returns `changed` and the receipt stays hot. The locator formats and the duplicate-delivery rule are in [capture](./capture.md#retirement-of-completed-receipts-retire-on-use).
+
+Observations and Decisions leave through the [Lead evidence pass](./capture.md#retirement-of-lead-observations-and-decisions). That happens once their receipt has a locator (any channel) and the reference and newer-winner checks pass. A current winner stays hot. So does anything referenced from a Lead, case, Record Link, Pool work, Outreach subject, message or EntityChange.
+
+### Reader inventory
+
+| Reader | Needs after use | How it reads now |
+| --- | --- | --- |
+| Drainer `defaultLoadReceipt`, poll and replay (`drainer.ts`) | Receipt by ID and its latest Decision | The receipt: hot, else `readRetiredReceipt`. The Decision: `readCaseDecision`, which tries the case copy, then `readGranotDecision`. |
+| Owner requeue `defaultFindReceipt` (`operations.ts`) | Receipt by ID | Hot, else `readRetiredReceipt`. A retired receipt is completed, so requeue refuses it as before. |
+| Case evidence (`caseEvidence.ts`) | Observation, statement and Decision by ID | The case copy, else `readGranotObservation`, `readRetiredReceipt` or `readGranotDecision`. |
+| Decision repointing (`receiptDecisionPointer.ts`) | Receipt pointer and certified Lead | Hot, else the locator. Both formats carry the pointer. |
+| Channel capture (`capture.ts`) and `resumeCapturedAutomationAction` | Operation identity | The hot unique key, else `readRetiredOperation` on the locator's unique key. |
+| `applyAutomationPlanAction` | Operation result | The closed-run replay (unchanged). |
+| Pool admission (`admission.ts`) | Whether the accepted Observation's receipt completed | Hot receipt, else a `completed-webhook-bson-v1` or `channel-receipt-bson-v1` locator (before this change: the webhook format only; the channel format is new, so existing data reads the same). Reference holds keep the accepted Observation and Decision hot, because they are current winners. |
+| Job timeline (`mongo-evidence-loader.ts`) | Receipt capture facts | Hot, else the locator projection (both formats). |
+| Lead evidence pass (`retireLeadEvidence.ts`) | Retired receipt body | `readRetiredReceipt`. |
+| Closed-run preparation (`prepareClosedRun.ts`) | Every receipt of the run | Hot only. An HTTP receipt leaves only after its run has closed. |
+| Processing path (`processor.ts`, `normalization.ts`, `createLeadFromGranot.ts`, `acceptedLeadEvidence.ts`) | Receipt, Observation and Decision while processing | Hot only. These run before completion, and nothing incomplete retires. |
+| Daily Operations backfill (`dailyOperations/rebuild.ts`) | Webhook receipts by capture day | Hot only. It runs only for a day without `webhook_counts_version: 1`, and no webhook of such a day retires. |
+| Call move-date repair, Estimates sibling catch-up, Operations Health groups | Observations or Decisions by field | Hot only. They read current winners or the last 24 hours. Older rows already left through the evidence pass before this change. |
+| Diagnostics (`ops/granot-read-archived-evidence.ts`) | Full chain | `readGranotChain`. |
+
+### Enabling, rollback and recovery
+
+- **Merge alone is inert.** Until `--install` creates `granot_archived_receipt_operation_unique`, no channel operation can retire (`locator_operation_index_missing`, also enforced inside `retireReceipt`), so channel capture keeps its plain insert with no transaction and no locator read. Until `--enable`, the online pass returns `not_configured`. The live webhook and evidence passes run as before.
+- **Install.** Idempotent; adds `granot_archived_receipt_operation_unique` and records its first install time in `granot_retention_control` `{ _id: "receipts-on-use-index", installed_at }`: `node --env-file=.env --import tsx ops/granot-retention-install.ts --install`. From then on, channel capture checks the retired operation key in a transaction.
+- **Settle window.** A process may still hold a cached "no index" answer for up to 60 seconds after install, and would capture without the retired-key check. So no channel operation retires until `installed_at + 2 minutes` (`INDEX_SETTLE_MS`), in the online pass and backlog `--apply` alike: they hold with `locator_operation_index_settling`. `--enable` may run straight after `--install`. The index check fails closed: only a missing collection (NamespaceNotFound) reads as "no index", and any other `listIndexes` error fails the capture, which the caller retries.
+- **Enable (Owner).** `ops/granot-retention-install.ts --enable <ISO instant>` writes `granot_retention_control` `{ _id: "receipts-on-use-v1", enabled_from }`. Only receipts completed (stamped) at or after `enabled_from` are reviewed online. Deploying alone changes nothing.
+- **Rollback.** `--disable` deletes the control document, and the pass returns `not_configured`. Retired records stay readable by ID, and duplicates keep replaying from their locators. To return one receipt to MongoDB:
+  1. Restore it with the diagnostics command below.
+  2. In a reviewed transaction, insert it unchanged and delete its locator.
+  No tool does this automatically.
+- **Fetch a retired record by ID.** `node --env-file=.env --import tsx ops/granot-read-archived-evidence.ts --receipt <receipt ID> <new private BSON file>` writes the receipt, Observation and Decisions as one BSON document. In code, use `readGranotReceipt`, `readGranotObservation` or `readGranotDecision` from [`retiredRecords.ts`](../../../src/services/granotHistory/retiredRecords.ts).
+
+### Backlog command
+
+`ops/granot-retire-used-receipts.ts` reviews every completed receipt still in MongoDB through the same `retireReceipt` path.
+
+- **Dry run** (the default): `node --env-file=.env --import tsx ops/granot-retire-used-receipts.ts <new private JSON file>`. It reads MongoDB only and makes no GCS request. A check that needs a verified archive read is reported as `pending_gcs_verification`. The report gives, per channel:
+  - the receipts that can retire now;
+  - the bytes that leave MongoDB, and the locator bytes;
+  - each hold reason, with its count;
+  - the hot Observations and Decisions that would follow through the evidence pass.
+- **Apply** (needs Owner approval): add `--apply --limit N`; the limit is required (start with 200). It refuses until `--install` has created the operation index. It runs one receipt per transaction, eight at a time, and publishes the closed runs that can close. To resume, rerun with a new output file. A held receipt is left untouched.
 
 ## Scheduled run closure and recovery
 
@@ -43,7 +112,7 @@ The cron returns `scheduled_runs.oldest_due_at`, held and failure counts. A held
 
 On November 19 release `7c5a0490` retired all 862 scheduled runs present at 12:54 New York and 130 later arrivals, with zero holds and zero failures. Per-run archive time was 0.89 s median and 1.42 s p95. The original cohort fell from 78,843,420 logical bytes to 270,668 lookup bytes and 482,458 coverage bytes ([roadmap entry](../../operations/SERVICE-OPTIMIZATION-ROADMAP.md)).
 
-Install the sparse scheduled-review index with the idempotent `ops/granot-retention-install.ts --install-shadow`. For an existing completed scheduled run with a legacy TTL, use `ops/granot-enroll-scheduled-archives.ts --preview <past UTC cutoff> [page size]`, then `--apply` with the same arguments. Enrollment schedules review and clears the legacy TTL on one bounded page. The worker still checks each run before compaction. With the server environment loaded, execute these commands with `node --import tsx`.
+Install the sparse scheduled-review index with the idempotent `ops/granot-retention-install.ts --install`. For an existing completed scheduled run with a legacy TTL, use `ops/granot-enroll-scheduled-archives.ts --preview <past UTC cutoff> [page size]`, then `--apply` with the same arguments. Enrollment schedules review and clears the legacy TTL on one bounded page. The worker still checks each run before compaction. With the server environment loaded, execute these commands with `node --import tsx`.
 
 For an on-demand restore, run `ops/granot-read-archived-evidence.ts --run <run ID> <new private BSON file>` for the original run. Use `--receipt <receipt ID> <new private BSON file>` for a retired webhook, extension operation or effect-bearing HTTP receipt. Routine HTTP history is indexed by job and month. Its original operation result is indexed by run/action.
 
@@ -51,17 +120,15 @@ Enroll the legacy tail with `ops/granot-enroll-scheduled-archives.ts --migrate <
 
 ## Rollout and historical review
 
-Run ops/granot-retention-install.ts --install-shadow using the main server environment. It first proves the sparse purge indexes have no pre-existing date to activate before converting them to TTL. Reinstallation preserves the original cutoff and mode. Shadow archives eligible future chains and records observations without issuing purge dates. Future mode stamps eligible new chains. Require archive restoration, replay/freshness parity, protected-record exclusions and shadow evidence before promotion. Keep the original cutoff fixed.
-
-After the live deployment, backfills, history restoration and Pool comparison have been verified, the operator can arm future-only retention with `ops/granot-retention-install.ts --arm-future <existing new_data_from ISO timestamp>`. Arming preserves shadow mode. Promotion requires seven consecutive complete UTC days after both arming and working-set maturity. Each day must include at least 100 chains that passed the final reference/replay checks, three live comparisons of certified and historical Pool reads, no mismatches or failed batches, and zero TTL stamps. Every subsequent future-mode chain still passes the individual transactional checks. Missing evidence keeps the policy in shadow. The cutoff excludes the historical deletion manifest throughout. To disarm before promotion, remove only the armed_at field while mode is shadow.
+On November 21, retire on use replaced four mechanisms: shadow mode, the seven-day promotion, TTL stamping of routine HTTP receipts and the 24-hour review delay. Nothing writes `retention_purge_at` now. The three `granot_retention_purge_v1` TTL indexes in production are inert. Dropping them is an index change that needs Owner approval. `granot_retention_control` `v1` and `granot_retention_days` are no longer read.
 
 The historical pilot is prepared with ops/granot-history-archive.ts, ops/granot-archive-run-closure.ts and ops/granot-targeted-deletion-dry-run.ts. The last command requires a new private JSON output file. It compares hot evidence with its archive, verifies closed-run replay, fresh production deployment ancestry, current winning Lead and references, and reports logical bytes and per-chain exclusions. A manifest represents a point in time. Recheck it immediately before any separately authorized deletion. These commands do not delete historical records.
 
-Use ops/verify-granot-future-retention.ts with a disposable loopback replica on port 27961 to exercise shadow, future, archive, replay, TTL selection and historical cutoff behavior. This verifier also writes synthetic test archive objects. The four-year runway requires the future working set and durable growth to be measured over time. Compare daily capacity snapshots, review throughput, unresolved backlog and archive catalog growth.
+The four-year runway requires the working set and durable growth to be measured over time. Compare daily capacity snapshots, review throughput, unresolved backlog, locator growth and archive catalog growth.
 
 ### Routine HTTP replay and archive publication
 
-A completed effect-free HTTP automation result for an already-current or stale Form Lead or Call Lead stores the decision, observation and target IDs as BSON ObjectIds in its replay cache. The reader expands either cache format into the original result, including the empty effects array, and falls back to the latest Synchronization Decision when the cache belongs to an earlier decision. Other outcomes retain the full result. Reverting the writer should preserve the mixed-format reader so a compact receipt can still replay during a TTL deletion interval. Archived history and closed runs use their existing format. New history pages and run closures decode the same Cloud Storage bytes that passed checksum verification before publishing a Mongo pointer.
+A completed effect-free HTTP automation result for an already-current or stale Form Lead or Call Lead stores the decision, observation and target IDs as BSON ObjectIds in its replay cache. The reader expands either cache format into the original result, including the empty effects array, and falls back to the latest Synchronization Decision when the cache belongs to an earlier decision. Other outcomes retain the full result. Reverting the writer should preserve the mixed-format reader so a retired receipt can still replay. Archived history and closed runs use their existing format. New history pages and run closures decode the same Cloud Storage bytes that passed checksum verification before publishing a Mongo pointer.
 
 ## Storage, indexes and read paths
 
@@ -78,7 +145,7 @@ Model: [`GranotObservationReceipt.ts`](../../../src/models/GranotObservationRece
 | `granot_observation_receipt_processing_due` | `processing.state, processing.next_attempt_at, captured_at` | model | 396 |
 | `granot_observation_receipt_leased_until` | `processing.leased_until` | model | 362 |
 | `granot_observation_receipt_route_event_captured` | `route_event_class, captured_at: -1` | model | 602 |
-| `granot_retention_purge_v1` | `retention_purge_at`; sparse; TTL 0 after `collMod` | ops | 1 |
+| `granot_retention_purge_v1` | `retention_purge_at`; sparse; TTL 0 after `collMod`. No writer since November 21; drop pending Owner approval | ops (historical) | 1 |
 | `granot_retention_review_v1` | `processing.retention_review_at`; sparse | ops | 1,029 |
 
 `granot_observation_receipt_payload_sha256_diag` (`payload_sha256, captured_at: -1`) was removed from the model in `0b2ac446` and dropped in production on November 19 ([next-session record](../../operations/NEXT-SESSION.md)).
@@ -87,18 +154,18 @@ Query shapes:
 
 - **Drainer claim.** Due `pending` or `retry_scheduled` work and expired claims, by `processing.state`, `processing.next_attempt_at` and `processing.leased_until` ([`drainer.ts`](../../../src/services/granotLifecycle/drainer.ts)).
 - **Per-item `_id` reads.** Drainer receipt load, requeue, case statements and every retention pass.
-- **Receipt retention review.** `processing.retention_review_at <= now`, `createdAt >= cutoff`, `captured_at >= cutoff`. Hint `granot_retention_review_v1`, sorted by review date, limit 64. The drainer sets the review date to completion plus 24 hours and one minute for accepted Form Lead and Call Lead outcomes.
+- **Retire-on-use review.** `processing.retention_review_at` between `enabled_from` and now. Hint `granot_retention_review_v1`, sorted by review date, limit 32. The drainer sets the review date to the completion time for retirement candidates only.
 - **Completed webhook scan.** Per route: `route_event_class`, `observation_channel: "granot_webhook"`, `webhook_day_counted: true`, `processing.state: "completed"` and a due or absent `processing.webhook_archive_review_at`. Hint `granot_observation_receipt_route_event_captured`, newest first, limit 8. Only the route class and capture time bound the index scan. The other predicates are filtered per document.
 - **Closed-run replay.** `observation_channel: "granot_http_automation"`, `channel_operation_id: {$type: "string", $gte: "<run>:", $lt: "<run>;"}`. Hint on the unique operation index, limit 5,001 ([`prepareClosedRun.ts`](../../../src/services/granotHistory/prepareClosedRun.ts)).
 - **Replay by channel and operation ID.** `{observation_channel, channel_operation_id}` equality with no `$type` predicate and no hint. Two callers remain. The duplicate-key reload in `captureChannelOperationReceipt` ([`capture.ts`](../../../src/services/granotLifecycle/capture.ts)) serves extension and pre-cutover automation capture. `resumeCapturedAutomationAction` ([`automationApply.ts`](../../../src/services/granotLifecycle/automationApply.ts)) serves actions of runs below schema version 3 that have no saved receipt ID. New scheduled actions no longer reach this lookup.
 
-Hot copy required by: every unfinished receipt (pending, retry, claimed, dead letter), every `booking_status_changed` receipt, extension receipts (compacted in place to the unique key, kind, payload hash, result and archive pointer), and inbound Lead webhooks until their retirement checks pass. Retired webhooks leave this collection. See `granot_archived_receipts`.
+Hot copy required by: every unfinished receipt (pending, retry, claimed, dead letter), every `booking_status_changed` receipt, and every completed receipt until it is [used](#what-used-means-per-channel). Used receipts in all three channels leave this collection; see `granot_archived_receipts`.
 
 Baseline: 13,032 documents, 28.6 MiB logical, 1,127.3 MiB allocated, of which 1,119.6 MiB is reusable, and 24.7 MiB of indexes. The unique operation index is 20.37 MiB of that.
 
 ### `granot_archived_receipts` (retired receipt locators)
 
-Only `_id_` exists (790 reads). [`completedWebhooks.ts`](../../../src/services/granotHistory/completedWebhooks.ts) writes webhook locators: format `completed-webhook-bson-v1`, hash, generation, route, capture time, `processing.latest_decision_id` and `certified_lead`. The Lead evidence and receipt retention passes write `evidence_archive` or month-archive locators. Readers use `_id` or `{_id: {$in}, format}`. `readRetiredLifecycleReceipt` serves the drainer, Owner requeue and case statement readers by original receipt ID. There is no TTL. Each row requires its pinned GCS object. Baseline: 22,864 documents, 6.07 MiB logical.
+`_id_` (790 reads) and, from November 21, `granot_archived_receipt_operation_unique` (`observation_channel, channel_operation_id`; unique; partial `channel_operation_id: {$type: "string"}`; ops). [`retireOnUse.ts`](../../../src/services/granotHistory/retireOnUse.ts) writes `completed-webhook-bson-v1` locators (hash, generation, route, capture time, `processing.latest_decision_id`, `certified_lead`) and `channel-receipt-bson-v1` locators (which add the operation key, kind, payload hash, completion time and saved replay). The Lead evidence pass adds `evidence_archive`. The November 19 cleanup wrote `{ _id, evidence_archive }` rows, and the month-archive path wrote `{ job, hash, generation }` rows; both are still read. Readers use `_id`, `{_id: {$in}}`, `{_id: {$in}, format}` or the operation key. `readRetiredReceipt` serves every original-ID reader ([reader inventory](#reader-inventory)). There is no TTL. Each row requires its pinned GCS object. Baseline: 22,864 documents, 6.07 MiB logical.
 
 ### `granot_observations` (Granot Observations)
 
@@ -113,7 +180,7 @@ Model: [`GranotObservation.ts`](../../../src/models/GranotObservation.ts). No pa
 | `granot_observation_source_route_captured` | `normalized_source_label, route_event_class, captured_at: -1` | model | 0 | 22.77 |
 | `granot_observation_normalized_form_ref_captured` | `identity.normalized_form_ref, captured_at: -1` | model | 0 | 27.61 |
 | `granot_observation_normalized_phone_captured` | `contact.normalized_phone, captured_at: -1` | model | 0 | 66.04 |
-| `granot_retention_purge_v1` | `retention_purge_at`; sparse; TTL 0 | ops | 1 | 0.01 |
+| `granot_retention_purge_v1` | `retention_purge_at`; sparse; TTL 0; no writer since November 21 | ops (historical) | 1 | 0.01 |
 
 Query shapes: `_id` and `_id: {$in}` reads from case evidence, Pool admission, Call Lead move-date repair and closed-run preparation. `receipt_id` reads come from receipt evidence. The Lead evidence pass reads `_id > cursor`, sorted by `_id`, 192 per page, and keeps its cursor in `granot_retention_control` (`_id: "lead-evidence-v1"`). `identity.normalized_job_no` is read only by the job timeline loader when `includeTransportEvidence` is set, by the read-fact fallback before its backfill completes ([`observationReadFacts.ts`](../../../src/services/granotLifecycle/observationReadFacts.ts)) and by `ops/pool-production/inspect.ts`. Only [`ops/verify-granot-history-archive.ts`](../../../ops/verify-granot-history-archive.ts) sets `includeTransportEvidence`. `kind` is read only by the same pre-backfill fallback.
 
@@ -132,7 +199,7 @@ Model: [`SynchronizationDecision.ts`](../../../src/models/SynchronizationDecisio
 | `synchronization_decision_outcome_decided` | `outcome, decided_at: -1` | model | 41 |
 | `synchronization_decision_target_decided` | `target.model, target.id, decided_at: -1` | model | 20 |
 | `synchronization_decision_source_decided` | `source_scope.granot_crm_source_id, decided_at: -1` | model | 0 |
-| `granot_retention_purge_v1` | `retention_purge_at`; sparse; TTL 0 | ops | 1 |
+| `granot_retention_purge_v1` | `retention_purge_at`; sparse; TTL 0; no writer since November 21 | ops (historical) | 1 |
 
 Query shapes: `observation_id` (`$in`, sorted by `attempt`) from Pool admission, the job timeline loader, receipt evidence and retention. `_id` reads come from drainer replay and case readers. The Operations Health 24-hour groups match `outcome` and `decided_at` ([`projections.ts`](../../../src/services/granotLifecycle/projections.ts)). Baseline: 6,218 documents, 7.33 MiB logical, 3.77 MiB of indexes.
 
@@ -176,11 +243,11 @@ Query shapes: the worker claim matches the scheduled-run filter (operation, work
 
 ### Retention control and other Granot collections
 
-`granot_retention_control` holds the `v1` policy and lease and the `lead-evidence-v1` cursor and lease. `granot_retention_days` holds daily shadow counters. Both are `_id`-only. `granot_record_links` keeps `granot_record_link_active_job_unique` (`provider, normalized_job_no`; unique; partial `state: "active"`; 477,920 reads), `granot_record_link_lead_state` and `granot_record_link_booking_state` (0 reads) ([`GranotRecordLink.ts`](../../../src/models/GranotRecordLink.ts)). `granot_lifecycle_health_state` is described in [observability](./observability.md).
+`granot_retention_control` holds the `receipts-on-use-v1` switch and the `lead-evidence-v1` cursor and lease. Its old `v1` policy document and `granot_retention_days` (daily shadow counters) are no longer read. Both are `_id`-only. `granot_record_links` keeps `granot_record_link_active_job_unique` (`provider, normalized_job_no`; unique; partial `state: "active"`; 477,920 reads), `granot_record_link_lead_state` and `granot_record_link_booking_state` (0 reads) ([`GranotRecordLink.ts`](../../../src/models/GranotRecordLink.ts)). `granot_lifecycle_health_state` is described in [observability](./observability.md).
 
 ### GCS obligations
 
-Archive objects live under `history/granot/v1/vantagemovers/` in the private backup bucket. Every locator, catalog row and closed-run row names a hash and generation. Readers verify the checksum and identity before use. Bucket lifecycle deletes only objects with a release marker, 30 days after `customTime`. A publisher that reuses a generation under review or release first sets a temporary hold ([`archiveObjects.ts`](../../../src/services/granotHistory/archiveObjects.ts)). Releasing a generation follows the procedure at the top of this page.
+Archive objects live under `history/granot/v1/vantagemovers/` in the private backup bucket. Every locator, catalog row and closed-run row names a hash and generation. Readers verify the checksum and identity before use. Bucket lifecycle deletes only objects with a release marker, 30 days after `customTime`. A publisher that reuses a generation under review or release first sets a temporary hold ([`archiveObjects.ts`](../../../src/services/granotHistory/archiveObjects.ts), over the [Cloud Storage module](../services/cloud-storage.md)). The reference set for any release is `archiveObjectReferenced` ([`archiveReferences.ts`](../../../src/services/granotHistory/archiveReferences.ts)). Releasing a generation follows the procedure at the top of this page.
 
 ### Observations for the index and read phase
 

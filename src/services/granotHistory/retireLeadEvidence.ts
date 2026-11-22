@@ -8,8 +8,8 @@ import {
 import { isDeepStrictEqual } from "node:util";
 import { archiveJobKey, digest, type ArchivedChain } from "./archiveCodec";
 import { archiveCatalog } from "./archiveReads";
-import { storeArchiveObject } from "./archiveObjects";
-import { readRetiredWebhook, webhookReceiptFormat } from "./completedWebhooks";
+import { readArchiveObject, storeArchiveObject, type ArchiveRead } from "./archiveObjects";
+import { readRetiredReceipt, RETIRED_CHANNELS, RETIRED_RECEIPT_FORMATS } from "./retiredRecords";
 import { evidenceFormat, packEvidence, unpackEvidence } from "./evidencePage";
 import { referencedChains } from "./retentionReferences";
 import { supersededObservations } from "./supersededObservations";
@@ -50,11 +50,14 @@ function eligible(c: ArchivedChain, cold: boolean) {
       String(d.observation_id) !== String(o._id))
   )
     return false;
+  // A retired receipt (any channel) no longer needs its Observation and Decision in MongoDB.
   if (cold)
     return (
       !!d &&
-      r.observation_channel === "granot_webhook" &&
-      ["lead_created", "priority_updated"].includes(r.route_event_class) &&
+      ((r.observation_channel === "granot_webhook" &&
+        ["lead_created", "priority_updated"].includes(r.route_event_class)) ||
+        ((RETIRED_CHANNELS as readonly string[]).includes(r.observation_channel) &&
+          r.channel_operation_kind === "lead_snapshot_apply")) &&
       ["created", "applied", "linked", "already_current", "stale"].includes(
         d.outcome,
       ) &&
@@ -94,6 +97,7 @@ async function loadPage(
   observations: Document[],
   previous?: Map<string, Work>,
   session?: ClientSession,
+  read: ArchiveRead = readArchiveObject,
 ) {
   const opts = { session, maxTimeMS: 5000 };
   const ids = observations.map((o) => o.receipt_id);
@@ -108,7 +112,7 @@ async function loadPage(
     missing.length
       ? await db
           .collection("granot_archived_receipts")
-          .find({ _id: { $in: missing }, format: webhookReceiptFormat }, opts)
+          .find({ _id: { $in: missing }, format: { $in: [...RETIRED_RECEIPT_FORMATS] } }, opts)
           .toArray()
       : [],
   );
@@ -135,7 +139,7 @@ async function loadPage(
       if (previous && (!old || !isDeepStrictEqual(old.header, header)))
         continue;
       const original =
-        old?.chain.receipt ?? (await readRetiredWebhook(db, o.receipt_id));
+        old?.chain.receipt ?? (await readRetiredReceipt(db, o.receipt_id, { read }));
       if (!original) continue;
       receipt = original;
     }
@@ -164,11 +168,11 @@ async function releasable(db: Db, rows: Work[], session?: ClientSession) {
   );
 }
 
-export async function selectLeadEvidence(db: Db, page: Document[]) {
-  return releasable(db, await loadPage(db, page));
+export async function selectLeadEvidence(db: Db, page: Document[], read: ArchiveRead = readArchiveObject) {
+  return releasable(db, await loadPage(db, page, undefined, undefined, read));
 }
 
-export async function retireLeadEvidence(db: Db, store = storeArchiveObject) {
+export async function retireLeadEvidence(db: Db, store = storeArchiveObject, read: ArchiveRead = readArchiveObject) {
   const control = boundary(db),
     now = new Date(),
     owner = crypto.randomUUID();
@@ -198,7 +202,7 @@ export async function retireLeadEvidence(db: Db, store = storeArchiveObject) {
       .limit(pageSize)
       .maxTimeMS(5000)
       .toArray();
-    const selected = await selectLeadEvidence(db, page);
+    const selected = await selectLeadEvidence(db, page, read);
     // Bound the GCS object size independently of the Mongo page. Continue at the last row actually considered.
     let stop = page.at(-1)?._id,
       size = 0;

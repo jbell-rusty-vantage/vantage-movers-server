@@ -15,6 +15,7 @@ import {
 import { claimAndProcessOrPoll, type SyncClaimResult } from "./drainer";
 import type { SynchronizationOutcome } from "./types";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
+import { readRetiredOperation } from "../granotHistory/retiredRecords";
 
 export type AutomationReplayState = { terminal: boolean; ready: boolean };
 
@@ -109,8 +110,10 @@ export async function applyAutomationPlanAction(
 export async function resumeCapturedAutomationAction(input: ApplyAutomationActionInput): Promise<GranotAutomationActionReceipt | null> {
   let id = input.existing_receipt?.lifecycle_receipt_id;
   if (!id) {
-    const row = await getGranotObservationReceiptModel().findOne({ observation_channel: "granot_http_automation",
-      channel_operation_id: input.lifecycle_apply.operation_id }).select("_id channel_operation_kind payload_sha256").lean();
+    const model = getGranotObservationReceiptModel();
+    const row = await model.findOne({ observation_channel: "granot_http_automation",
+      channel_operation_id: input.lifecycle_apply.operation_id }).select("_id channel_operation_kind payload_sha256").lean()
+      ?? await readRetiredOperation(model.db.db!, "granot_http_automation", input.lifecycle_apply.operation_id);
     if (!row) return null;
     if (row.channel_operation_kind !== input.lifecycle_apply.operation_kind ||
         row.payload_sha256 !== hashCredentialRedactedPayload(input.lifecycle_apply).payload_sha256)

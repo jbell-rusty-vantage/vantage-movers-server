@@ -2,9 +2,9 @@ import dns from "node:dns";
 import { writeFile } from "node:fs/promises";
 import { BSON, MongoClient, ObjectId } from "mongodb";
 import { readArchivedScheduledRun } from "../src/services/granotHistory/scheduledRunArchive";
-import { readArchivedReceipt } from "../src/services/granotHistory/settledLeadEvidence";
+import { readGranotChain } from "../src/services/granotHistory/retiredRecords";
 
-/** Recover a verified archived object to a new private BSON file for operator diagnostics. */
+/** Recover a run, or a receipt with its Observation and Decisions (hot or retired), to a new private BSON file for operator diagnostics. */
 async function main() {
   const [kind, id, file] = process.argv.slice(2);
   if (!["--run", "--receipt"].includes(kind) || !/^[a-f0-9]{24}$/i.test(id ?? "") || !file)
@@ -16,7 +16,7 @@ async function main() {
     let bytes: Uint8Array | null;
     if (kind === "--run") bytes = await readArchivedScheduledRun(db, id.toLowerCase());
     else {
-      const chain = await readArchivedReceipt(db, new ObjectId(id));
+      const chain = await readGranotChain(db, new ObjectId(id));
       bytes = chain ? BSON.serialize(chain) : null;
     }
     if (!bytes) throw new Error("Archived evidence has no point locator");

@@ -96,6 +96,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [release-reconciliation.md](knowledge/granot-lifecycle/release-reconciliation.md) | Separate Release cases and gated Owner cancellation/update commands. |
 | [projections.md](knowledge/granot-lifecycle/projections.md) | Masked Admin case/job/lead reads plus Owner-only creating-observation; reads never invoke mutations. |
 | [observability.md](knowledge/granot-lifecycle/observability.md) | Lifecycle events as structured logs, closed metric labels, bounded `granot_lifecycle_health_state` counters and the health projection. |
+| [cloud-storage.md](knowledge/services/cloud-storage.md) | One contract for every Google Cloud Storage interaction: create-only `put` with read-back (generation plus SHA-256), `readVerified`, named holds, conditional expiry, `deleteIfGeneration`, `list`; Mongo runtime configuration; call-site inventory and migration order. Module only, no caller migrated yet. |
 | [mongodb-backup.md](knowledge/services/mongodb-backup.md) | Daily logical mongodump of `vantagemovers` to GCS in project `vantage-sheets-496816`. |
 
 ## Retired Service

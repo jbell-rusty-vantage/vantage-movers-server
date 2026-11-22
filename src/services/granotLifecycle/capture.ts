@@ -21,6 +21,7 @@ import {
 } from "./receiptEvidence";
 import { incrementGranotLifecycleReceiptsTotal } from "./metrics";
 import { incrementWebhookDay } from "../dailyOperations/webhookDay";
+import { readRetiredOperation, retiredOperationIndexReady } from "../granotHistory/retiredRecords";
 
 export const GRANOT_WEBHOOK_STORED_HEADER_ALLOWLIST = [
   "content-type",
@@ -320,12 +321,34 @@ export async function captureChannelOperationReceipt(
   }
 }
 
-async function persistGranotChannelReceipt(
+/**
+ * A retired operation keeps its unique key in its archive locator, not in the hot unique index.
+ * Once that locator index exists, the insert runs in a transaction that first checks the locator:
+ * a retirement committing concurrently either conflicts with this insert (the transaction retries
+ * and sees the locator) or leaves the hot key in place (duplicate key). Either way the caller
+ * replays the original receipt. Without the index no operation can have been retired, and the
+ * insert is the plain create it always was (no transaction, no locator read).
+ * `afterRetiredCheck` is a test seam that runs between the check and the insert.
+ */
+export async function persistGranotChannelReceipt(
   document: GranotChannelReceiptInsert,
+  hooks: { afterRetiredCheck?: () => Promise<void> } = {},
 ): Promise<{ receipt_id: string }> {
   await connectMongo();
-  const receipt = await getGranotObservationReceiptModel().create(document);
-  return { receipt_id: receipt._id.toString() };
+  const model = getGranotObservationReceiptModel();
+  const db = model.db.db!;
+  if (!(await retiredOperationIndexReady(db))) {
+    const receipt = await model.create(document);
+    return { receipt_id: receipt._id.toString() };
+  }
+  return withTransaction(async (session) => {
+    if (await readRetiredOperation(db, document.observation_channel, document.channel_operation_id, session)) {
+      throw Object.assign(new Error("Channel operation already retired"), { code: 11000 });
+    }
+    await hooks.afterRetiredCheck?.();
+    const [receipt] = await model.create([document], { session });
+    return { receipt_id: receipt!._id.toString() };
+  });
 }
 
 async function loadChannelReceiptByOperation(input: {
@@ -336,13 +359,16 @@ async function loadChannelReceiptByOperation(input: {
   "_id" | "payload_sha256" | "channel_operation_kind"
 > | null> {
   await connectMongo();
-  return getGranotObservationReceiptModel()
+  const model = getGranotObservationReceiptModel();
+  const hot = await model
     .findOne({
       observation_channel: input.observation_channel,
       channel_operation_id: input.channel_operation_id,
     })
     .select({ _id: 1, payload_sha256: 1, channel_operation_kind: 1 })
     .lean();
+  return hot ?? (await readRetiredOperation(model.db.db!, input.observation_channel, input.channel_operation_id) as Pick<
+    GranotObservationReceiptDocument, "_id" | "payload_sha256" | "channel_operation_kind"> | null);
 }
 
 function isDuplicateKeyError(error: unknown): boolean {

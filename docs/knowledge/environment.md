@@ -168,6 +168,8 @@ Other Sales Intelligence settings:
 
 Sheet container ids are required through `getRequiredEnv` (`runtime.ts`, names in `sheets.ts`); in `TEST_MODE` the same names are read with a `TEST_` prefix. Not secrets: `MASTER_LEADS_SHEET_ID`, `MASTER_BOOKED_SHEET_ID`, `TBM_LEADS_SHEET_ID`, `TBM_PRIME_LEADS_SHEET_ID`, `TOP10_LEADS_SHEET_ID`, `BEST_RELOCATION_LEADS_SHEET_ID`, `GETMOVERS_LEADS_SHEET_ID`, `MAINSITE_LEADS_SHEET_ID`. `TARIFF_SHEET_ID` (`tariff.ts`) is the tariff adjustment workbook.
 
+The Cloud Storage service ([cloud-storage.md](services/cloud-storage.md), 2026-11-21) reuses the service-account credential above and adds no runtime names. Its bucket, prefix and recovery days are runtime configuration in Mongo: `cloud_storage_control` `{ _id: "<namespace>", bucket?, prefix?, recovery_days? }`; a missing document or field means today's code default.
+
 The Systems tab ([systems-capacity.md](services/systems-capacity.md), 2026-10-07) adds **no names**: its locations list is a Mongo document (`systems_locations`), its Master Sheet links reuse `MASTER_LEADS_SHEET_ID` / `MASTER_BOOKED_SHEET_ID`, its capacity reads use the existing Mongo user and Sheets service account, and its cron uses `CRON_SECRET`.
 
 | Name | Default | Secret | Owner and purpose |
@@ -177,6 +179,7 @@ The Systems tab ([systems-capacity.md](services/systems-capacity.md), 2026-10-07
 | `GOOGLE_SERVICE_ACCOUNT_TEST_JSON` / `GOOGLE_SERVICE_ACCOUNT_TEST_JSON_BASE64` | none | yes | Test-mode credential. |
 | `SERVICE_ACCOUNT_LOCAL_FILE` / `SERVICE_ACCOUNT_LOCAL_FILE_JSON` | none | yes | Local credential fallback (`googleAuth/serviceAccount.ts`, Best Relocation ingest). |
 | `GOOGLE_CLOUD_PROJECT` / `GCLOUD_PROJECT` | none | no | Project id fallback. |
+| `CLOUD_STORAGE_CONTRACT_TESTS` / `CLOUD_STORAGE_CONTRACT_BUCKET` | off / none | no | Test-only opt-in for the real-bucket Cloud Storage contract suite (`src/services/cloudStorage/gcsDriver.contract.test.ts`). Never set in Vercel. |
 | `SHEET_SYNC_MODE` | `legacy` | no | `sheetSync.ts`: `queued`, `legacy` or `disabled`. |
 | `SHEET_SYNC_QUEUE_TOPIC` / `SHEET_SYNC_CONSUMER_GROUP` | `sheet-sync-events` in Vercel production, else `-dev` / `sheet-sync-drainer` | no | Queue wiring. |
 | `SHEET_SYNC_READS_PER_MINUTE_BUDGET` / `_WRITES_` / `_PROJECT_READS_` / `_PROJECT_WRITES_` | `45` / `45` / `250` / `250` | no | Google quota budgets. |

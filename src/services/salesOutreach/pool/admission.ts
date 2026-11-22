@@ -140,8 +140,9 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
   const companyById = rowsById(companies), granularityById = rowsById(granularities);
   const observationById = rowsById(observations), receiptById = rowsById(receipts), sourceById = rowsById(sources);
   const missingReceipts = observations.filter(o => !o.scheduled_run_id && !receiptById.has(String(o.receipt_id))).map(o => o.receipt_id);
+  // A retired-receipt locator (inbound webhook or, with retire on use, channel operation) proves completion.
   const archived = missingReceipts.length ? await getGranotObservationModel().db.collection("granot_archived_receipts")
-    .find({ _id: { $in: missingReceipts }, format: "completed-webhook-bson-v1" }, { session: session ?? undefined, projection: { _id: 1 } }).toArray() : [];
+    .find({ _id: { $in: missingReceipts }, format: { $in: ["completed-webhook-bson-v1", "channel-receipt-bson-v1"] } }, { session: session ?? undefined, projection: { _id: 1 } }).toArray() : [];
   const archivedIds = new Set(archived.map(row => String(row._id)));
   // Decisions are newest-attempt-first. Preserve that winner without scanning the batch per Lead.
   const decisionByObservation = new Map<string, typeof decisions[number]>();

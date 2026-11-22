@@ -1,6 +1,6 @@
 import { readEvidenceIds } from "../granotHistory/evidencePage";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
-import { readRetiredLifecycleReceipt } from "../granotHistory/completedWebhooks";
+import { readGranotDecision, readGranotObservation, readRetiredReceipt } from "../granotHistory/retiredRecords";
 import type { ClientSession, Types } from "mongoose";
 import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel, type GranotObservationReceiptDocument } from "../../models/GranotObservationReceipt";
@@ -31,22 +31,20 @@ export async function preserveCaseEvidence(observationId: Types.ObjectId, decisi
 
 export async function readCaseObservation(id: Types.ObjectId, session?: ClientSession) {
   return await observations().findOne({ _id: id }, { session })
-    ?? await getGranotObservationModel().findById(id).session(session ?? null).lean()
-    ?? ((await readEvidenceIds(getGranotObservationModel().db.db!,[id],"observation",session))[0] as GranotObservationDocument | undefined) ?? null;
+    ?? (await readGranotObservation(getGranotObservationModel().db.db!, id, { session }) as GranotObservationDocument | null);
 }
 
 export async function readCaseStatement(id: Types.ObjectId, session?: ClientSession) {
   const hot = await statements().findOne({ _id: id }, { session })
     ?? await getGranotObservationReceiptModel().findById(id).select("_id observation_channel payload").session(session ?? null).lean();
   if (hot) return hot;
-  const cold = await readRetiredLifecycleReceipt(getGranotObservationModel().db.db!, id, session);
+  const cold = await readRetiredReceipt(getGranotObservationModel().db.db!, id, { session });
   return cold && { _id: id, observation_channel: cold.observation_channel, payload: cold.payload };
 }
 
 export async function readCaseDecision(id: Types.ObjectId, session?: ClientSession) {
   return await decisions().findOne({ _id: id }, { session })
-    ?? await getSynchronizationDecisionModel().findById(id).session(session ?? null).lean()
-    ?? ((await readEvidenceIds(getSynchronizationDecisionModel().db.db!,[id],"decision",session))[0] as SynchronizationDecisionDocument | undefined) ?? null;
+    ?? (await readGranotDecision(getSynchronizationDecisionModel().db.db!, id, { session }) as SynchronizationDecisionDocument | null);
 }
 
 export async function readCaseObservations(ids: Types.ObjectId[]) {
