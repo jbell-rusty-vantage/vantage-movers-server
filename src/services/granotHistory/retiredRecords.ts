@@ -92,19 +92,32 @@ export const RETIRED_OPERATION_INDEX = {
 } as const;
 
 const indexSeen = new Map<string, { ready: boolean; at: number }>();
+/** How long an absent index answer is cached. Retirement waits longer than this after install. */
+export const INDEX_CHECK_TTL_MS = 60_000;
+
 /**
  * Whether `granot_archived_receipt_operation_unique` exists. Retirement of a channel operation
  * refuses until it does, so without it no retired operation can exist and lookups are skipped
  * (no locator scan on the capture path). A seen index is cached for the process; an absent one is
- * rechecked at most once a minute. `fresh` bypasses the cache (the online pass, backlog --apply).
+ * rechecked at most once per `INDEX_CHECK_TTL_MS`. `fresh` bypasses the cache.
+ * Fails closed: only a missing collection (NamespaceNotFound, code 26) means "no index"; any other
+ * error propagates, so capture fails and retries rather than skipping the duplicate check.
  */
 export async function retiredOperationIndexReady(db: Db, fresh = false) {
   const key = db.databaseName, cached = indexSeen.get(key);
-  if (!fresh && cached && (cached.ready || Date.now() - cached.at < 60_000)) return cached.ready;
-  const indexes = await archivedReceipts(db).listIndexes().toArray().catch(() => []);
+  if (!fresh && cached && (cached.ready || Date.now() - cached.at < INDEX_CHECK_TTL_MS)) return cached.ready;
+  const indexes = await archivedReceipts(db).listIndexes().toArray().catch((error: { code?: number }) => {
+    if (error?.code === 26) return [];
+    throw error;
+  });
   const ready = indexes.some((index) => index.name === RETIRED_OPERATION_INDEX.options.name && index.unique === true);
   indexSeen.set(key, { ready, at: Date.now() });
   return ready;
+}
+
+/** Test only: forget cached index answers, as a cold process would. */
+export function resetRetiredOperationIndexCacheForTests() {
+  indexSeen.clear();
 }
 
 /**

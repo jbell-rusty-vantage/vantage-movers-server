@@ -21,7 +21,7 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
       { observation_channel: 1, channel_operation_id: 1 },
       { name: "granot_observation_receipt_channel_operation_id_unique" },
     );
-    await installRetiredOperationIndex(db);
+    await installRetiredOperationIndex(db, new Date(0)); // installed long ago, past the settle window
     const run = String(new ObjectId()),
       at = new Date(Date.now() - 2 * 86400000);
     async function seed(orphan = false, priority = "1", winner = false) {

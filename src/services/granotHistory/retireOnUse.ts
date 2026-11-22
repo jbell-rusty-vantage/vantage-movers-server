@@ -13,6 +13,7 @@ import {
   readGranotObservation,
   restoreRetiredReceipt,
   RETIRED_CHANNELS,
+  INDEX_CHECK_TTL_MS,
   RETIRED_OPERATION_INDEX,
   retiredOperationIndexReady,
   webhookReceiptFormat,
@@ -46,6 +47,7 @@ export type RetireContext = {
   closeRuns?: boolean;
   now?: Date;
   runs?: Map<string, Promise<string>>;
+  indexState?: Promise<string | null>;
   rows?: Map<string, ClosedOperation[]>;
 };
 export type RetireResult =
@@ -237,9 +239,12 @@ export async function retireReceipt(db: Db, id: ObjectId, storage: RetireStorage
   const r = BSON.deserialize(original);
   const channel = String(r.observation_channel);
   if (options.channels && !options.channels.includes(channel)) return { status: "held", channel, reason: "channel_not_retired" };
-  // Capture skips the locator lookup while this index is absent, so no channel operation may retire without it
-  // (a dry run reports what --apply would do after --install).
-  if (!options.dryRun && channel !== "granot_webhook" && !(await retiredOperationIndexReady(db))) return { status: "held", channel, reason: "locator_operation_index_missing" };
+  // Capture skips the locator lookup while this index is absent (or a process still caches that), so no
+  // channel operation retires until the index has settled. A dry run reports what --apply would do after --install.
+  if (!options.dryRun && channel !== "granot_webhook") {
+    const unsettled = await operationIndexUnsettled(db, ctx);
+    if (unsettled) return { status: "held", channel, reason: unsettled };
+  }
   const reason = await usedReason(db, r, ctx);
   if (reason) return { status: "held", channel, reason };
   if (options.dryRun) return { status: "retirable", channel, bytes: original.length, locator_bytes: locatorBytes(r) };
@@ -265,8 +270,28 @@ export async function retireReceipt(db: Db, id: ObjectId, storage: RetireStorage
   }
 }
 
-export const installRetiredOperationIndex = (db: Db) =>
-  archivedReceipts(db).createIndex(RETIRED_OPERATION_INDEX.key, RETIRED_OPERATION_INDEX.options);
+/** Where `--install` records when the operation index was first created. */
+export const RETIRED_OPERATION_INDEX_CONTROL = "receipts-on-use-index";
+/**
+ * A process may still hold a cached "no index" answer for `INDEX_CHECK_TTL_MS` after install, and
+ * would then capture without the retired-key check. No channel operation retires inside this window.
+ */
+export const INDEX_SETTLE_MS = INDEX_CHECK_TTL_MS + 60_000;
+
+/** Creates the operation index, then records its install time (kept on reinstall). */
+export async function installRetiredOperationIndex(db: Db, now = new Date()) {
+  await archivedReceipts(db).createIndex(RETIRED_OPERATION_INDEX.key, RETIRED_OPERATION_INDEX.options);
+  await control(db).updateOne({ _id: RETIRED_OPERATION_INDEX_CONTROL }, { $setOnInsert: { installed_at: now } }, { upsert: true });
+}
+
+/** `null` once the index exists and has been installed longer than `INDEX_SETTLE_MS`; otherwise the hold reason. */
+async function operationIndexUnsettled(db: Db, ctx: RetireContext) {
+  return (ctx.indexState ??= (async () => {
+    if (!(await retiredOperationIndexReady(db, true))) return "locator_operation_index_missing";
+    const installed = (await control(db).findOne({ _id: RETIRED_OPERATION_INDEX_CONTROL }) as { installed_at?: Date } | null)?.installed_at;
+    return installed instanceof Date && +(ctx.now ?? new Date()) - +installed >= INDEX_SETTLE_MS ? null : "locator_operation_index_settling";
+  })());
+}
 
 /**
  * The online pass, every two minutes from the storage cron. Drives the review queue the drainer
@@ -279,7 +304,6 @@ export async function retireUsedReceipts(db: Db, now = new Date(), storage: Reti
   const config = await control(db).findOne({ _id: RETIRE_ON_USE_CONTROL });
   if (!(config?.enabled_from instanceof Date)) return { status: "not_configured" as const };
   const counts = { status: "processed" as const, examined: 0, retired: 0, held: 0, failures: 0, bytes_removed: 0, locator_bytes: 0, holds: {} as Record<string, number> };
-  await retiredOperationIndexReady(db, true); // refresh the cached index check once per pass
   const due = await receiptsOf(db).find(
     // The index range starts at `enabled_from`: receipts completed earlier (the backlog) are never read
     // by this pass, and everything inside the range is a candidate, so each pass stays bounded.

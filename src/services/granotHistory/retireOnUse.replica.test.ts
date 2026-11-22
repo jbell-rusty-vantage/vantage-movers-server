@@ -27,8 +27,8 @@ import { archiveObjectReferenced } from "./archiveReferences";
 import { fakeGranotArchive, historyReplica } from "./archiveTestSupport";
 import { closedRuns, packClosedRun } from "./closedAutomationRun";
 import { retireLeadEvidence } from "./retireLeadEvidence";
-import { installRetiredOperationIndex, retireReceipt, retireUsedReceipts, RETIRE_ON_USE_CONTROL } from "./retireOnUse";
-import { archivedReceipts, readGranotDecision, readGranotObservation, readGranotReceipt, readRetiredOperation } from "./retiredRecords";
+import { installRetiredOperationIndex, retireReceipt, retireUsedReceipts, RETIRE_ON_USE_CONTROL, RETIRED_OPERATION_INDEX_CONTROL } from "./retireOnUse";
+import { archivedReceipts, readGranotDecision, readGranotObservation, readGranotReceipt, readRetiredOperation, resetRetiredOperationIndexCacheForTests } from "./retiredRecords";
 
 const clock = { at: Date.now() };
 const archive = fakeGranotArchive(() => new Date(clock.at));
@@ -51,6 +51,8 @@ before(async () => {
   await getGranotObservationReceiptModel().syncIndexes();
   await db.collection("granot_webhook_receipts").createIndex({ "processing.retention_review_at": 1 }, { sparse: true, name: "granot_retention_review_v1" });
   await installRetiredOperationIndex(db);
+  // Installed long ago: past the post-install settle window.
+  await db.collection("granot_retention_control").updateOne({ _id: RETIRED_OPERATION_INDEX_CONTROL as never }, { $set: { installed_at: new Date(0) } });
   useGranotArchiveStoreForTests(archive.store);
   ready = true;
 });
@@ -161,10 +163,35 @@ test("retire on use refuses an unused record in every channel, and the online pa
     assert.equal(await bare.collection("granot_webhook_receipts").countDocuments({ _id: used.receipt }), 1);
     await archivedReceipts(bare).insertOne({ _id: new ObjectId(), observation_channel: "browser_extension", channel_operation_id: used.operation });
     assert.equal(await readRetiredOperation(bare, "browser_extension", used.operation), null);
+    // Just installed: a process may still cache "no index", so nothing retires inside the settle window.
+    await installRetiredOperationIndex(bare);
+    await bare.collection("granot_webhook_receipts").updateOne({ _id: used.receipt }, { $set: { "processing.retention_review_at": new Date("2001-01-01T00:00:00Z") } });
+    const settling = await retireUsedReceipts(bare, new Date(), storage);
+    assert.deepEqual(settling.status === "processed" && [settling.retired, settling.holds], [0, { locator_operation_index_settling: 1 }]);
   } finally {
     await replica.db.dropDatabase();
     await replica.client.close();
   }
+
+  // Fails closed: a cold process whose index check errors (other than a missing collection) refuses
+  // the capture instead of inserting without the retired-key check.
+  const locators = db.collection("granot_archived_receipts");
+  const prototype = Object.getPrototypeOf(locators) as { listIndexes: (...args: unknown[]) => unknown };
+  const listIndexes = prototype.listIndexes;
+  resetRetiredOperationIndexCacheForTests();
+  prototype.listIndexes = () => ({ toArray: async () => { throw Object.assign(new Error("not authorized"), { code: 13 }); } });
+  const operation = randomUUID();
+  try {
+    await assert.rejects(captureChannelOperationReceipt({
+      observation_channel: "browser_extension", authentication_method: "extension_session", channel_operation_kind: "lead_snapshot_apply",
+      channel_operation_id: operation, captured_at: new Date(), headers: {}, initiator,
+      payload: { operation_id: operation, operation_kind: "lead_snapshot_apply", granot_statement: { priority: "2" } },
+    }));
+  } finally {
+    prototype.listIndexes = listIndexes;
+    resetRetiredOperationIndexCacheForTests();
+  }
+  assert.equal(await db.collection("granot_webhook_receipts").countDocuments({ channel_operation_id: operation }), 0, "no plain insert");
 });
 
 test("a used receipt leaves MongoDB per channel, reads back by ID, and keeps duplicate and changed-input detection", async (t) => {
