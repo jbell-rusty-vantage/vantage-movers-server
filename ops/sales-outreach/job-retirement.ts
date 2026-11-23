@@ -139,9 +139,9 @@ async function main() {
       runs.push(run);
       if (run.status !== "ran" || run.batches === 0) break;
     }
-    const sum = (k: "rows" | "retire" | "hold" | "keep" | "compacted" | "packs" | "raw_bytes" | "packed_bytes") => runs.reduce((s, r) => s + r[k], 0);
+    const sum = (k: "rows" | "retire" | "hold" | "keep" | "compacted" | "purge_only" | "packs" | "raw_bytes" | "packed_bytes") => runs.reduce((s, r) => s + r[k], 0);
     out = { ...out, passes: runs.length, last_status: runs.at(-1)?.status, rows: sum("rows"), retire: sum("retire"), hold: sum("hold"), keep: sum("keep"),
-      compacted: sum("compacted"), packs: sum("packs"), raw_bytes: sum("raw_bytes"), packed_bytes: sum("packed_bytes"),
+      compacted: sum("compacted"), purge_only: sum("purge_only"), packs: sum("packs"), raw_bytes: sum("raw_bytes"), packed_bytes: sum("packed_bytes"),
       held_reasons: runs.reduce<Record<string, number>>((a, r) => { for (const [k, n] of Object.entries(r.held_reasons)) a[k] = (a[k] ?? 0) + n; return a; }, {}),
       cursor: runs.at(-1)?.cursor, lag_seconds: runs.at(-1)?.lag_seconds };
   } else {

@@ -39,12 +39,12 @@ type Control = { _id: string; enabled_at?: Date; cursor?: Cursor | null; lease_o
 export type RetirementRun = {
   status: "disabled" | "lease_held" | "ran";
   batches: number; rows: number; retire: number; hold: number; keep: number;
-  held_reasons: Record<string, number>; packs: number; raw_bytes: number; packed_bytes: number; compacted: number;
+  held_reasons: Record<string, number>; packs: number; raw_bytes: number; packed_bytes: number; compacted: number; purge_only: number;
   cursor: string | null; lag_seconds: number | null; error?: string;
 };
 
 const empty = (status: RetirementRun["status"]): RetirementRun => ({ status, batches: 0, rows: 0, retire: 0, hold: 0, keep: 0,
-  held_reasons: {}, packs: 0, raw_bytes: 0, packed_bytes: 0, compacted: 0, cursor: null, lag_seconds: null });
+  held_reasons: {}, packs: 0, raw_bytes: 0, packed_bytes: 0, compacted: 0, purge_only: 0, cursor: null, lag_seconds: null });
 
 /** Raw bytes per pack; well under the 32 MiB decode cap. */
 export const RETIREMENT_BATCH_BYTES = 8 * 1024 * 1024;
@@ -148,9 +148,14 @@ export async function retireCompletedJobs(db: Db, options: {
         const update = v.compact
           ? { $set: { record_kind: "completion_receipt", routine_purge_at: v.purge_at, updatedAt: now }, $unset: finishedExecutionFields(String(doc.stage)) }
           : { $set: { routine_purge_at: v.purge_at } };
-        return [{ updateOne: { filter, update } }];
+        return [{ compact: v.compact, op: { updateOne: { filter, update } } }];
       });
-      if (compactions.length) run.compacted += (await db.collection("sales_intelligence_jobs").bulkWrite(compactions, { ordered: false })).modifiedCount;
+      for (const compact of [true, false]) {
+        const ops = compactions.filter((c) => c.compact === compact).map((c) => c.op);
+        if (!ops.length) continue;
+        const modified = (await jobsOf(db).bulkWrite(ops, { ordered: false })).modifiedCount;
+        if (compact) run.compacted += modified; else run.purge_only += modified;
+      }
       cursor = next;
       const moved = await controls.updateOne({ _id: RETIREMENT_CONTROL_ID, lease_owner: owner },
         { $set: { cursor, lease_until: new Date(clock() + LEASE_MS) } });
