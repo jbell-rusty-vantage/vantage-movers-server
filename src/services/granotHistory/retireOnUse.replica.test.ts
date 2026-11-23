@@ -332,7 +332,6 @@ test("end of life: a fully retired object starts its 90-day clock after the revi
   const expiresAt = (await archivedReceipts(db).findOne({ _id: done.receipt }))!.expires_at as Date;
   assert.ok(object.recoveryClockStartedAt && !Object.keys(object.holds).length, "on its clock, unheld");
   assert.ok(+expiresAt <= Date.parse(object.recoveryClockStartedAt!) + 89 * DAY, "the locator expires at least a day before the bucket deletes");
-  assert.ok(+expiresAt >= +doneLocator.captured_at + 7 * DAY, "the extension duplicate fence outlives its 7-day replay window");
   assert.equal((await state.findOne({ _id: page }))?.queued_at instanceof Date, true, "the evidence page the locator also points at is queued");
 
   // A re-put of identical bytes during review cancels it; the page's rows stay unmarked.
@@ -341,6 +340,23 @@ test("end of life: a fully retired object starts its 90-day clock after the revi
   clock.at += 800_000;
   assert.equal((await finishReview(db, archive.store, (await state.findOne({ _id: page }))!, at(), 90)).outcome, "review_cancelled");
   assert.equal(await db.collection("granot_history_archive_chunks").countDocuments({ hash: page, expires_at: { $exists: true } }), 0);
+
+  // Regression (review of #270): an abandoned review of an object an earlier release had clocked must leave it held,
+  // or the bucket deletes it on that old clock while a live reader points at it.
+  const t0 = object.recoveryClockStartedAt;
+  await storage.store(db.databaseName, archive.bucket.peek(nameOf(doneLocator.hash))!.bytes); // a new reader re-holds it
+  assert.equal((await startReview(db, archive.store, doneLocator.hash, "receipt", at(), 90)).outcome, "review_started");
+  const reader = new ObjectId();
+  await db.collection("granot_webhook_receipts").insertOne({ _id: reader, history_archive: { hash: doneLocator.hash } });
+  clock.at += 800_000;
+  assert.equal((await finishReview(db, archive.store, (await state.findOne({ _id: doneLocator.hash }))!, at(), 90)).outcome, "hot_receipt");
+  const abandoned = (await archive.store.stat(nameOf(doneLocator.hash)))!;
+  assert.deepEqual([abandoned.recoveryClockStartedAt, abandoned.holds], [t0, { publisher: "1" }], "held again, not released");
+  await db.collection("granot_webhook_receipts").deleteOne({ _id: reader });
+
+  // Marked rows assume the window recorded at enable: a pass without it (or with fewer days) refuses to run.
+  await db.collection("granot_retention_control").insertOne({ _id: END_OF_LIFE_CONTROL as never, enabled_at: at(), kinds: ["receipt"], recovery_days: 120 });
+  assert.equal((await endOfLifePass(db, { store: archive.store, days: 90, now: at() })).status, "failed");
 
   // Past its end of life a locator reads as absent; the fence still answers until the TTL removes it.
   await archivedReceipts(db).updateOne({ _id: done.receipt }, { $set: { expires_at: new Date(Date.now() - 1000) } });

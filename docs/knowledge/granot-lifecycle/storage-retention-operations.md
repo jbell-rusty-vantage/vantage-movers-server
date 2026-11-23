@@ -126,9 +126,9 @@ Owner decision 2 (2026-11-23): each retired Granot object starts its 90-day GCS 
 2. At least 800 seconds later, measured from the hold's provider `updated` time, it marks the rows.
 3. It calls `startRecoveryClock`, whose guard refuses while any row that would outlive the object still points at it.
 
-A re-put of identical bytes during the review cancels it (`rehold`), and the object is reviewed again on a later lap. When a release marks a row that also points at another object, that object is queued, so it is never left in GCS without rows.
+A re-put of identical bytes during the review cancels it (`rehold`), and the object is reviewed again on a later lap. A review that is abandoned (a blocker appears, or the clock is refused) puts the publisher hold back in place of the review hold, never no hold. Otherwise an object whose clock an earlier release had started would be deleted on that old clock while rows still point at it. The same applies when an already-clocked object turns out to have a live reader. When a release marks a row that also points at another object, that object is queued, so it is never left in GCS without rows. An object that is already gone from GCS has its rows expired at once (`object_missing_rows_expired`), unless a live chain or a channel locator inside its 7-day replay window still holds them.
 
-**Switch and passes.** End of life is off on merge. `granot_retention_control` `{ _id: "end-of-life-v1", enabled_at, kinds }` turns on the online pass in `/api/cron/granot-storage-retention`. Each step handles up to 12 objects: drained reviews first, then queued objects, then a wrapping scan of each enabled kind. The pass opens a release store only while the bucket rule deletes `history/granot/v1/<db>/` after 90 days. Otherwise it reports `failed` and the route returns 503.
+**Switch and passes.** End of life is off on merge. `granot_retention_control` `{ _id: "end-of-life-v1", enabled_at, kinds, recovery_days }` turns on the online pass in `/api/cron/granot-storage-retention`. Each invocation handles up to 36 objects, 12 per step: drained reviews first, then queued objects, then a wrapping scan of each enabled kind. The pass opens a release store only while the bucket rule deletes `history/granot/v1/<db>/` after the configured recovery days. It also refuses a window shorter than the `recovery_days` that `enable` recorded, because marked rows assume it. Either refusal reports `failed`, and the route returns 503. Every reference read is indexed: the sparse hash indexes on the locator, catalog, hot receipt, closed-run and run-summary collections.
 
 **Rollout (Owner).**
 1. Change the bucket rule for `history/granot/v1/vantagemovers/` and `history/granot/released/vantagemovers/` to `daysSinceCustomTime: 90`. Do the same for the November 19 packs' `history/sales-intelligence/v1/vantagemovers/` rule. [`lifecycle.json`](../../../ops/cloud/mongodb-backup/lifecycle.json) mirrors the target. No Granot object is on its clock today, so this shortens nothing.
@@ -136,7 +136,7 @@ A re-put of identical bytes during the review cancels it (`rehold`), and the obj
 3. Run `node --env-file=.env --import tsx ops/granot-history-end-of-life.ts dry-run <new private JSON file>`, then `install`, then `enable --kinds receipt,evidence`. Add `history` for the November 18–19 chunks.
 4. `run --passes N` drains the backlog. `status` reports reviews, queued objects, expiring rows and the bucket-rule check.
 
-**Rollback.** Run `disable`. Rows already marked keep their `expires_at`. Objects already on their clock keep it, and a re-put re-holds an object.
+**Rollback.** Run `disable`. Rows already marked keep their `expires_at`. Objects already on their clock keep it, and a re-put re-holds an object. **Never shorten the bucket rule or `recovery_days`.** A marked row's `expires_at` is fixed when it is marked, so a shorter window would delete objects while their rows still point at them. Lengthening is safe.
 
 **Measured (2026-11-23, read-only).**
 - **GCS:** 291,348 objects (1.96 GB) under the Granot prefix, none on a clock. MongoDB rows name 23,717 of them, plus 19,970 closed-run objects.

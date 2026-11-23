@@ -38,18 +38,23 @@ export const REVIEW_TOKEN = "end-of-life-v1";
 /**
  * Hard bound of the extension-operation duplicate fence: the browser extension retries a pending
  * operation ID for at most 7 days (`PENDING_OPERATION_MAX_AGE_MS`, granot_sync_extensions_and_services
- * src/lifecycle/ledger.ts). A channel locator is never set to expire before `captured_at` plus this.
+ * src/lifecycle/ledger.ts). A normal release marks a locator 89 days ahead, so the real protection is
+ * that window; this bound only matters when a missing object's rows are expired at once (`object_missing`),
+ * where a channel locator still inside its replay window is left in place.
  * HTTP automation IDs are deterministic per run and action, and closed runs (kept) fence those.
  */
 export const EXTENSION_REPLAY_DAYS = 7;
 const DAY_MS = 86_400_000;
-const LEASE_MS = 3 * 60_000;
+/** The pass's lease. Every budget (cron 30 s, the operator's `run` 90 s) plus one object's work stays below it. */
+export const LEASE_MS = 3 * 60_000;
 /** Margin over the review drain for clock skew between this process and the provider's `updated`. */
 const SKEW_MS = 60_000;
 const DRAIN_MS = CLOUD_STORAGE_NAMESPACES["granot-history"].review!.drainMs;
 
 type Control = {
   _id: string; enabled_at?: Date; kinds?: EndOfLifeKind[]; cursors?: Partial<Record<EndOfLifeKind, unknown>>;
+  /** The recovery days at enable time. Marked rows assume at least this window; a shorter one is refused. */
+  recovery_days?: number;
   lease_owner?: string | null; lease_until?: Date | null;
 };
 type StateRow = { _id: string; kind: EndOfLifeKind; generation?: string; review_at?: Date; due_at?: Date; queued_at?: Date };
@@ -70,6 +75,9 @@ export const END_OF_LIFE_INDEXES: [string, Document, Document][] = [
   ["granot_webhook_receipts", { "evidence_archive.hash": 1 }, { name: "granot_receipt_evidence_hash", sparse: true }],
   ["granot_webhook_receipts", { "history_archive.hash": 1 }, { name: "granot_receipt_history_hash", sparse: true }],
   ["granot_history_archive_chunks", { hash: 1 }, { name: "granot_archive_chunk_hash", sparse: true }],
+  ["granot_closed_automation_runs", { hash: 1 }, { name: "granot_closed_run_hash", sparse: true }],
+  ["granot_closed_automation_runs", { "run_archive.hash": 1 }, { name: "granot_closed_run_archive_hash", sparse: true }],
+  ["granot_automation_runs", { "archive_summary.hash": 1 }, { name: "granot_run_summary_hash", sparse: true }],
   ["granot_history_archive_chunks", { expires_at: 1 }, { name: "granot_archive_chunk_expiry", expireAfterSeconds: 0 }],
   [END_OF_LIFE_STATE, { due_at: 1 }, { name: "granot_end_of_life_due", sparse: true }],
   [END_OF_LIFE_STATE, { queued_at: 1 }, { name: "granot_end_of_life_queued", sparse: true }],
@@ -174,6 +182,14 @@ async function markRows(db: Db, hash: string, expiresAt: Date, now: Date): Promi
   return { rows: result.rows };
 }
 
+/**
+ * Abandons a review without leaving the object unprotected: the publisher hold replaces the review hold.
+ * Releasing instead would leave no hold, and an object whose clock was started by an earlier release
+ * (then re-held by a re-put) would be deleted on that old clock while rows still point at it.
+ */
+const protect = (store: ObjectStore, ref: { name: string; generation: string }) =>
+  store.hold(ref, { holder: "publisher", replaces: ["review"] });
+
 export type EndOfLifeOutcome = "review_started" | "released" | "draining" | "already_released" | string;
 
 /** Step 1: classify, then place the review hold. Blocked objects are left as they are. */
@@ -182,20 +198,28 @@ export async function startReview(db: Db, store: ObjectStore, hash: string, kind
   const object = await store.stat(name);
   // A queued object that cannot be reviewed leaves the queue; it keeps its bytes and its other holds.
   const skip = async (outcome: string) => { await stateOf(db).deleteOne({ _id: hash, queued_at: { $exists: true } }); return { outcome }; };
-  if (!object) return skip("object_missing");
+  if (!object) {
+    // The object is already gone: its rows can only fail a read. Expire them now (unless a live chain still needs them).
+    const marked = await markRows(db, hash, now, now);
+    await stateOf(db).deleteOne({ _id: hash });
+    return "blocked" in marked ? { outcome: `object_missing:${marked.blocked}` } : { outcome: "object_missing_rows_expired", rows: marked.rows };
+  }
   if (object.independentHold || object.retentionLocked) return skip("independent_hold");
   if (object.recoveryClockStartedAt && !Object.keys(object.holds).length) {
     // Already released (a manual review): its rows must expire before the bucket deletes it.
     const until = Math.max(+now, Date.parse(object.recoveryClockStartedAt) + (days - 1) * DAY_MS);
     const marked = await markRows(db, hash, new Date(until), now);
     await stateOf(db).deleteOne({ _id: hash });
-    return "blocked" in marked ? { outcome: marked.blocked } : { outcome: "already_released", rows: marked.rows };
+    if (!("blocked" in marked)) return { outcome: "already_released", rows: marked.rows };
+    // A live reader still needs a clocked object: hold it, so the old clock cannot delete it.
+    await store.hold({ name, generation: object.generation }, { holder: "publisher" });
+    return { outcome: marked.blocked };
   }
   const review = object.holds.review;
   if (review && review !== REVIEW_TOKEN) return skip("review_in_progress");
   const refs = (await referencesOf(db, [hash])).get(hash)!;
   if (refs.blocked) {
-    if (review === REVIEW_TOKEN) await store.release({ name, generation: object.generation }, "review", REVIEW_TOKEN);
+    if (review === REVIEW_TOKEN) await protect(store, { name, generation: object.generation });
     await stateOf(db).deleteOne({ _id: hash });
     return { outcome: refs.blocked };
   }
@@ -223,7 +247,7 @@ export async function finishReview(db: Db, store: ObjectStore, row: StateRow, no
   const expiresAt = new Date(+now + (days - 1) * DAY_MS);
   const marked = await markRows(db, row._id, expiresAt, now);
   if ("blocked" in marked) {
-    await store.release(ref, "review", REVIEW_TOKEN);
+    await protect(store, ref);
     return done(marked.blocked);
   }
   try {
@@ -236,9 +260,11 @@ export async function finishReview(db: Db, store: ObjectStore, row: StateRow, no
       await stateOf(db).updateOne({ _id: row._id }, { $set: { due_at: new Date(+now + 5 * 60_000) } });
       return { outcome: "draining" };
     }
+    // A re-put raced the clock patch (metageneration fence): the publisher hold it set protects the object.
+    if (isCloudStorageError(error, "generation_mismatch")) return done("review_cancelled");
     if (isCloudStorageError(error, "referenced") || isCloudStorageError(error, "held")) {
       // A new row arrived after marking: the object keeps serving it, and the marked rows still expire first.
-      await store.release(ref, "review", REVIEW_TOKEN).catch(() => undefined);
+      await protect(store, ref).catch(() => undefined);
       return done(`clock_refused_${(error as { code: string }).code}`);
     }
     throw error;
@@ -294,8 +320,11 @@ export async function endOfLifePass(db: Db, options: { now?: Date; store?: Objec
     if (outcome === "review_started") run.reviews_started++;
     if (outcome === "draining") run.draining++;
   };
-  const attempt = async (work: () => Promise<{ outcome: string; rows?: number }>) => {
-    try { const r = await work(); note(r.outcome, r.rows); } catch { run.failures++; }
+  const attempt = async (hash: string, work: () => Promise<{ outcome: string; rows?: number }>) => {
+    try { const r = await work(); note(r.outcome, r.rows); } catch (error) {
+      run.failures++;
+      logger.warn({ msg: "granot_history.end_of_life.object_failed", hash, error: error instanceof Error ? error.message.slice(0, 200) : "unknown" });
+    }
   };
   const cursors = { ...(config.cursors ?? {}) };
   try {
@@ -303,14 +332,18 @@ export async function endOfLifePass(db: Db, options: { now?: Date; store?: Objec
     const opened = options.store ? null : await openObjectStore(db, "granot-history", { capability: "release" });
     const store = options.store ?? opened!.store;
     const days = options.days ?? opened!.config.recoveryDays;
+    // Marked rows assume the window recorded at enable; a shorter one would let the bucket delete objects first.
+    if (!(typeof config.recovery_days === "number" && days >= config.recovery_days)) {
+      throw new Error(`recovery_days ${days} is below the ${config.recovery_days ?? "unrecorded"} days recorded at enable`);
+    }
     for (const row of await stateOf(db).find({ due_at: { $lte: now } }, { sort: { due_at: 1 }, limit }).toArray()) {
       if (!inBudget()) break;
-      await attempt(() => finishReview(db, store, row, now, days));
+      await attempt(row._id, () => finishReview(db, store, row, now, days));
     }
     // Objects whose last unmarked row another release just marked; only kinds the Owner enabled.
     for (const row of await stateOf(db).find({ queued_at: { $exists: true }, kind: { $in: config.kinds ?? [] } }, { sort: { queued_at: 1 }, limit }).toArray()) {
       if (!inBudget()) break;
-      await attempt(() => startReview(db, store, row._id, row.kind, now, days));
+      await attempt(row._id, () => startReview(db, store, row._id, row.kind, now, days));
     }
     let reviews = 0;
     for (const kind of config.kinds ?? []) {
@@ -329,7 +362,7 @@ export async function endOfLifePass(db: Db, options: { now?: Date; store?: Objec
         refs.delete(row.hash);
         if (r.blocked) { note(r.blocked); continue; }
         reviews++;
-        await attempt(() => startReview(db, store, row.hash, kind, now, days));
+        await attempt(row.hash, () => startReview(db, store, row.hash, kind, now, days));
       }
       // Wrap once the scan reaches the end, so rows that were blocked are rechecked next lap.
       cursors[kind] = !page.length || (page.length < (options.page ?? 200) && last === page.at(-1)!.cursor) ? null : last;

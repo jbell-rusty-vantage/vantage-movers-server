@@ -30,7 +30,7 @@ import {
 } from "../src/services/granotHistory/endOfLife";
 
 const arg = (name: string) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : undefined; };
-const control = (db: Db) => db.collection<{ _id: string; enabled_at?: Date; kinds?: EndOfLifeKind[] }>("granot_retention_control");
+const control = (db: Db) => db.collection<{ _id: string; enabled_at?: Date; kinds?: EndOfLifeKind[]; recovery_days?: number }>("granot_retention_control");
 
 function kindsArg(value: string | undefined): EndOfLifeKind[] {
   const kinds = (value ?? "").split(",").map((k) => k.trim()).filter(Boolean);
@@ -107,8 +107,10 @@ async function main() {
     } else if (mode === "install") { await installEndOfLife(db); out = { installed: true }; }
     else if (mode === "enable") {
       const kinds = kindsArg(arg("--kinds"));
+      // Marked rows assume this window; the pass refuses to run if the configured days later fall below it.
+      const { recoveryDays } = await readCloudStorageConfig(db, "granot-history");
       await installEndOfLife(db);
-      await control(db).updateOne({ _id: END_OF_LIFE_CONTROL }, { $set: { enabled_at: new Date(), kinds } }, { upsert: true });
+      await control(db).updateOne({ _id: END_OF_LIFE_CONTROL }, { $set: { enabled_at: new Date(), kinds, recovery_days: recoveryDays } }, { upsert: true });
       out = await control(db).findOne({ _id: END_OF_LIFE_CONTROL });
     } else if (mode === "disable") {
       await control(db).updateOne({ _id: END_OF_LIFE_CONTROL }, { $unset: { enabled_at: "" } });
@@ -118,7 +120,7 @@ async function main() {
       if (!Number.isInteger(passes) || passes < 1 || passes > 500 || !Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error("Expected --passes 1..500 [--limit 1..500]");
       const runs = [];
       for (let i = 0; i < passes; i++) {
-        const run = await endOfLifePass(db, { limit, page: 1000, budgetMs: 120_000 });
+        const run = await endOfLifePass(db, { limit, page: 1000, budgetMs: 90_000 }); // below LEASE_MS with one object's work
         runs.push(run);
         console.error(JSON.stringify({ pass: i + 1, ...run }));
         if (run.status !== "ran") break;

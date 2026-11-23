@@ -122,7 +122,9 @@ export function resetRetiredOperationIndexCacheForTests() {
 
 /**
  * The retired operation, by its unique channel key, for duplicate delivery and changed-input
- * detection. `null` without a query while the operation index is absent.
+ * detection. `null` without a query while the operation index is absent. Unlike the record readers
+ * it ignores `expires_at` (end of life): the fence keeps answering until the TTL removes the row,
+ * which only ever lengthens the duplicate window.
  */
 export async function readRetiredOperation(db: Db, channel: string, operation: string, session?: ClientSession) {
   if (!(await retiredOperationIndexReady(db))) return null;
