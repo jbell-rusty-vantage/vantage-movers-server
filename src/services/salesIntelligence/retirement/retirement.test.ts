@@ -10,12 +10,12 @@ const subject = "a".repeat(24), call = "c".repeat(24), receipt = "d".repeat(24);
 const completed = new Date("2026-11-20T01:00:00.000Z");
 function job(stage: string, dedupe_key: string, subject_key: string, ref: string, result: unknown) {
   const input = { stage, subject_key, input_revision: 1, input_refs: [ref] };
-  return { _id: new ObjectId(), ...dataset, ...input, dedupe_key, result, status: "completed", completed_at: completed,
+  return { _id: new ObjectId(), ...dataset, ...input, dedupe_key, result, status: "completed", completed_at: completed, lease_epoch: 1, reason: null as string | null,
     payload_hash: payloadHash({ ...dataset, ...input }) };
 }
-const effects = (projection: number, callRevision: number): Effects => ({
+const effects = (projection: number, callRevision: number, extra: Partial<Effects> = {}): Effects => ({
   projections: new Map([[subject, { publication_revision: projection, computed_as_of: completed }]]),
-  repDays: new Map(), calls: new Map([[call, callRevision]]), contactEvents: new Set(), subjectLeads: new Map(),
+  repDays: new Map(), calls: new Map([[call, callRevision]]), contactEvents: new Set(), subjectLeads: new Map(), ...extra,
 });
 const evaluation = { outcome: "updated", subject_id: subject, publication_revision: 5, next_evaluation_at: null };
 const capture = { receipt_id: receipt, receipt_uuid: null, sessions: 1, ok: 1, failed: 0, call_log_refresh: [],
@@ -28,10 +28,23 @@ test("a job retires only when its routine result's lifecycle effect is in the bu
   const day = job("outreach_rep_day", `sod:rep-day:${subject}:2026-11-19:0123456789abcdef`, `outreach-rep-day:${subject}:2026-11-19`, subject,
     { outcome: "written", publication_revision: 2 });
   const forged = { ...due, payload_hash: "0".repeat(64) };
+  const contact = job("outreach_contact_change", `sod:contact_change:call:${call}:r3`, `call:${call}`, call,
+    { derived: 1, missing: 0, changed: 1, evaluations: 1, rep_days: 1 });
+  const lead = `outreach-lead:FormLead:${"e".repeat(24)}`;
+  const estimates = job("outreach_lead_change", `sod:lead-change:FormLead:${"e".repeat(24)}:estimates-refresh:${"f".repeat(24)}`, lead, "e".repeat(24),
+    { outcome: "unchanged", subject_id: subject, reason: null, admission: null, status: "active" });
+  const later = (subjectLead: string) => effects(5, 3, { subjectLeads: new Map([[subject, subjectLead]]),
+    projections: new Map([[subject, { publication_revision: 5, computed_as_of: new Date(+completed + 1000) }]]) });
   for (const [doc, facts, expected] of [
-    [due, effects(5, 3), { verdict: "retire", purge_at: new Date("2026-11-23T01:00:00.000Z") }],
+    [due, effects(5, 3), { verdict: "retire", purge_at: new Date("2026-11-23T01:00:00.000Z"), compact: true }],
+    [{ ...due, reason: "transient" }, effects(5, 3), { verdict: "retire", purge_at: new Date("2026-11-23T01:00:00.000Z"), compact: false }],
+    [{ ...due, lease_owner: "worker" }, effects(5, 3), { verdict: "hold", reason: "outreach_evaluate:lease_state" }],
+    [contact, effects(5, 3, { contactEvents: new Set([call]) }), { verdict: "retire", purge_at: new Date("2026-11-23T01:00:00.000Z"), compact: true }],
+    [contact, effects(5, 2, { contactEvents: new Set([call]) }), { verdict: "hold", reason: "outreach_contact_change:effect_missing" }],
+    [estimates, later(lead), { verdict: "retire", purge_at: new Date("2026-11-23T01:00:00.000Z"), compact: true }],
+    [estimates, later("outreach-lead:FormLead:other"), { verdict: "hold", reason: "outreach_lead_change:effect_missing" }],
     [due, effects(4, 3), { verdict: "hold", reason: "outreach_evaluate:effect_missing" }],
-    [cap, effects(5, 3), { verdict: "retire", purge_at: new Date("2026-11-27T01:00:00.000Z") }],
+    [cap, effects(5, 3), { verdict: "retire", purge_at: new Date("2026-11-27T01:00:00.000Z"), compact: true }],
     [cap, effects(5, 2), { verdict: "hold", reason: "capture_projection:effect_missing" }],
     [day, effects(5, 3), { verdict: "hold", reason: "outreach_rep_day:effect_missing" }],
     [policy, effects(9, 9), { verdict: "keep", reason: "ordinary_window" }],

@@ -103,6 +103,15 @@ async function main() {
     }
     const again = await retireCompletedJobs(db, { now: later, store });
     assert.equal(again.rows, 0, "the cursor moved past every archived row");
+
+    // 6. More rows share one completion instant than fit a batch: the group is walked by _id, nothing skipped or split.
+    const instant = new Date(Date.now() + 1000); // after the cursor, still settled for `later`
+    const tied = [0, 1, 2].map((n) => ({ ...row("outreach_evaluate", `sod:evaluate:${S}:due:${1763600400000 + n + 1}`, `outreach-subject:${S}`, S,
+      { outcome: "unchanged", subject_id: S, publication_revision: 5, next_evaluation_at: null }), completed_at: instant }));
+    await db.collection("sales_intelligence_jobs").insertMany(tied);
+    const grouped = await retireCompletedJobs(db, { now: later, store, batchSize: 2, maxBatches: 10 });
+    assert.equal(grouped.compacted, 3, "every tied row retired across batches");
+    assert.equal(await db.collection("sales_intelligence_jobs").countDocuments({ _id: { $in: tied.map((t) => t._id) }, record_kind: "completion_receipt" }), 3);
     console.log(JSON.stringify({ ok: true, database, run, pack: { rows: pack.rows, size: pack.size } }));
   } finally {
     await db.dropDatabase();

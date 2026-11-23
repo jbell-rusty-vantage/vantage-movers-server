@@ -120,6 +120,9 @@ async function main() {
       metageneration_after: after.metageneration, rule_check: checkRecoveryPolicy(after.rules as never, scope, config.recoveryDays), rules_after: after.rules };
   } else if (args.mode === "enable" || args.mode === "disable") {
     if (args.mode === "enable") {
+      const present = new Set((await db.collection(ARCHIVE_PACKS_COLLECTION).indexes().catch(() => [])).map((i) => i.name));
+      const absent = ARCHIVE_PACK_INDEXES.filter((i) => !present.has(i.name)).map((i) => i.name);
+      if (absent.length) throw new Error(`Refusing to enable: run install first (missing ${absent.join(", ")})`);
       const { rules } = await bucketRules(config.bucket);
       const check = checkRecoveryPolicy(rules as never, scope, config.recoveryDays);
       if (!check.ok) throw new Error(`Refusing to enable: ${check.reason}`);

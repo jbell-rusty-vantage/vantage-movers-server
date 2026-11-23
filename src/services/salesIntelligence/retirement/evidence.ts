@@ -13,7 +13,8 @@ import { routinePurgeAt } from "../jobs";
  * Every verdict is archived to GCS first.
  */
 export type RetirementVerdict =
-  | { verdict: "retire"; purge_at: Date }
+  /** `compact: false`: a routine job that succeeded after a retry keeps its full row until `purge_at`. */
+  | { verdict: "retire"; purge_at: Date; compact: boolean }
   | { verdict: "hold"; reason: string }
   | { verdict: "keep"; reason: "ordinary_window" };
 
@@ -108,5 +109,8 @@ export function verdictOf(doc: Document, effects: Effects): RetirementVerdict {
   const completed = asDate(doc.completed_at);
   const purge = completed && Array.isArray(doc.input_refs) ? routinePurgeAt(doc as never, doc.result, completed) : undefined;
   if (!purge) return { verdict: "keep", reason: "ordinary_window" };
-  return effectProven(doc, effects) ? { verdict: "retire", purge_at: purge } : { verdict: "hold", reason: `${doc.stage}:effect_missing` };
+  // A completed row still carrying a lease, or never leased, is not a settled completion.
+  if (doc.lease_owner || doc.leased_until || !(Number(doc.lease_epoch) >= 1)) return { verdict: "hold", reason: `${doc.stage}:lease_state` };
+  if (!effectProven(doc, effects)) return { verdict: "hold", reason: `${doc.stage}:effect_missing` };
+  return { verdict: "retire", purge_at: purge, compact: doc.reason == null };
 }
