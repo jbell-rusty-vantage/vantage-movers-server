@@ -1,5 +1,28 @@
 # Resume the server optimization sprint from main
 
+## Start here — next session (November 23 close)
+
+**Owner decisions 1, 2 and 5 are live in production.** `main` `1c2f23f0`; [release record](VALIDATED-RETIREMENT-RELEASE-2026-11-23.md).
+- **Decision 5 (RingCentral receipts):** proven receipts stay 1 day hot, then move to GCS (#269). The cron drains the about 35k-receipt backlog by about 07:00 New York.
+- **Decision 1:** Granot history and the Nov 19 packs keep 90 days in GCS (bucket metageneration 9).
+- **Decision 2 (Granot end of life):** enabled for receipts, evidence pages and history chunks (#270). 62,656 rows expire 89 days after release. The closed runs and receipts with a hot Observation stay.
+
+Next, in order:
+1. **Confirm the drains.**
+   - `pnpm ringcentral:receipt-retirement status --target=vantagemovers`: `reviewable_pending` near 0 and 0 unexpected holds.
+   - `node --env-file=.env --import tsx ops/granot-history-end-of-life.ts status`: `expiring_rows` growing, 0 failures.
+   - `pnpm outreach:job-retirement status --target=vantagemovers`: lag near zero.
+2. **Compact (decision 4)** once those backlogs are drained: batched, one member at a time, secondaries first.
+3. **Nov 26:** the Granot backlog rerun. **Nov 29:** drop `csi_job_due` if clean (decision 6; the same PR removes its declaration).
+4. **Proposals for the Owner (decisions 3, 7, 8), each with scenario math:**
+   - `daily_operations_events`;
+   - Sheet Sync attempts, runs and jobs;
+   - Granot booking webhooks;
+   - the decision 2 reader review, which releases most Granot receipts;
+   - `entity_changes` and `domain_command_executions` (after a full reader inventory).
+   - Also the 247,661 unreferenced older Granot objects (1.75 GB) that no pass reaches.
+5. **Real-bucket contract proof** of the Cloud Storage module. It needs the Owner's approval for a disposable bucket.
+
 ## Start here — next session (Owner, November 22)
 
 **November 23 close (01:10 New York): Sales Intelligence validated retirement is ON and draining the backlog.** [Release record and Owner decisions](SI-VALIDATED-RETIREMENT-RELEASE-2026-11-23.md). The Owner's eight decisions there set this session's scope.
