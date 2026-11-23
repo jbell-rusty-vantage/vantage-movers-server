@@ -10,6 +10,11 @@ import { digest, type ArchivedChain } from "./archiveCodec";
 import { readArchiveObject } from "./archiveObjects";
 
 export const evidenceFormat = "granot-lead-evidence-v1";
+/**
+ * End of life (`endOfLife.ts`): a locator or catalog row past its `expires_at` reads as absent. The
+ * TTL monitor may lag; the object itself leaves GCS at least a day later.
+ */
+export const liveRow = (now = new Date()) => ({ $or: [{ expires_at: { $exists: false } }, { expires_at: { $gt: now } }] });
 export type EvidenceLocator = {
   hash: string;
   generation: string;
@@ -82,7 +87,7 @@ export async function readEvidenceIds(
   if (!ids.length) return [];
   const entries = await db
     .collection("granot_history_archive_chunks")
-    .find({ format: evidenceFormat, evidence_ids: { $in: ids } }, { session })
+    .find({ format: evidenceFormat, evidence_ids: { $in: ids }, ...liveRow() }, { session })
     .toArray();
   const wanted = new Set(ids.map(String)),
     pages = new Map<string, ArchivedChain[]>(),

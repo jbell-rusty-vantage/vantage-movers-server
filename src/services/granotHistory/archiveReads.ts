@@ -1,4 +1,4 @@
-import { evidenceFormat, readEvidencePage } from "./evidencePage";
+import { evidenceFormat, liveRow, readEvidencePage } from "./evidencePage";
 import type { Db, Document } from "mongodb";
 import { archiveJobKey, decodeChains } from "./archiveCodec";
 
@@ -19,7 +19,7 @@ export async function readArchiveEntry(db: Db, entry: ArchiveEntry) {
 }
 
 export async function* archivedChains(db: Db, job: string, options: { exact?: boolean; since?: () => number } = {}) {
-  const cursor = archiveCatalog(db).find({ job_key: archiveJobKey(job), ...(options.exact ? { job } : {}) })
+  const cursor = archiveCatalog(db).find({ job_key: archiveJobKey(job), ...(options.exact ? { job } : {}), ...liveRow() })
     .sort({ newest: -1 }).batchSize(16).maxTimeMS(5000);
   try {
     for await (const entry of cursor) {

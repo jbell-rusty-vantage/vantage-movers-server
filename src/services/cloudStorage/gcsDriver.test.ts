@@ -105,7 +105,7 @@ objectStoreContract("GCS driver over an emulated JSON API", () => {
 
 const granot = CLOUD_STORAGE_NAMESPACES["granot-history"];
 const productionDb = { databaseName: "vantagemovers", collection: () => ({ findOne: async () => null }) } as unknown as Db;
-const granotRule = { action: { type: "Delete" }, condition: { daysSinceCustomTime: 30, matchesPrefix: ["history/granot/v1/vantagemovers/", "history/granot/released/vantagemovers/"] } };
+const granotRule = { action: { type: "Delete" }, condition: { daysSinceCustomTime: 90, matchesPrefix: ["history/granot/v1/vantagemovers/", "history/granot/released/vantagemovers/"] } };
 
 test("Granot requests reproduce today's archive writer: create-only insert, pinned read-back, fenced re-hold", async () => {
   let clock = Date.parse("2026-11-21T12:00:00.000Z");

@@ -3,7 +3,7 @@ import { gunzipSync } from "node:zlib";
 import type { GranotObservationReceiptDocument } from "../../models/GranotObservationReceipt";
 import { decodeChains, digest, type ArchivedChain } from "./archiveCodec";
 import { readArchiveObject, type ArchiveRead } from "./archiveObjects";
-import { evidenceForReceipt, readEvidenceIds, readEvidencePage, type EvidenceLocator } from "./evidencePage";
+import { evidenceForReceipt, liveRow, readEvidenceIds, readEvidencePage, type EvidenceLocator } from "./evidencePage";
 
 /**
  * Read-back by original ID for the three Granot record kinds. Each reader returns the MongoDB
@@ -39,10 +39,10 @@ export function restoreRetiredReceipt(bytes: Buffer, hash: string, id: ObjectId,
   return { raw, receipt };
 }
 
-/** A receipt that has left `granot_webhook_receipts`, by original ID. `null` when no locator exists. */
+/** A receipt that has left `granot_webhook_receipts`, by original ID. `null` when no live locator exists (none, or past its end of life). */
 export async function readRetiredReceipt(db: Db, id: ObjectId, options: ReadBackOptions = {}) {
   const { session, read = readArchiveObject } = options;
-  const locator = await archivedReceipts(db).findOne({ _id: id }, { session });
+  const locator = await archivedReceipts(db).findOne({ _id: id, ...liveRow() }, { session });
   if (!locator) return null;
   if ((RETIRED_RECEIPT_FORMATS as readonly string[]).includes(locator.format)) {
     if (!locator.generation) throw new Error("Retired receipt generation missing");
@@ -122,7 +122,9 @@ export function resetRetiredOperationIndexCacheForTests() {
 
 /**
  * The retired operation, by its unique channel key, for duplicate delivery and changed-input
- * detection. `null` without a query while the operation index is absent.
+ * detection. `null` without a query while the operation index is absent. Unlike the record readers
+ * it ignores `expires_at` (end of life): the fence keeps answering until the TTL removes the row,
+ * which only ever lengthens the duplicate window.
  */
 export async function readRetiredOperation(db: Db, channel: string, operation: string, session?: ClientSession) {
   if (!(await retiredOperationIndexReady(db))) return null;
@@ -144,7 +146,7 @@ export function isRetirementCandidate(r: { observation_channel?: string; route_e
 
 /** Receipt, Observation and Decisions of one original receipt ID, hot or retired (operator diagnostics). */
 export async function readGranotChain(db: Db, receiptId: ObjectId, read: ArchiveRead = readArchiveObject) {
-  const locator = await archivedReceipts(db).findOne({ _id: receiptId });
+  const locator = await archivedReceipts(db).findOne({ _id: receiptId, ...liveRow() });
   if (locator && !locator.format && !locator.evidence_archive && locator.job) return monthChain(db, receiptId, locator, read);
   const receipt = await readGranotReceipt(db, receiptId, { read });
   if (!receipt) return null;

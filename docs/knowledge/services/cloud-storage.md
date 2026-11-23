@@ -151,7 +151,7 @@ Namespaces and their defaults:
 | `granot-history` | `vantage-mongodb-backups-496816` | `history/granot/v1/` | `<prefix><database>/<hh>/<sha256>.bson.gz` | `publisher` → `granotPublisherHold`, `review` → `granotReleaseReview` (evidence in `granotReleaseEvidence`) | `rehold` | 15 s / 30 s |
 | `sales-intelligence-packs` | `vantage-mongodb-backups-496816` | `history/sales-intelligence/v1/` | `<prefix><database>/<run uuid>/<sha256>.bson.gz` or `catalog.json` | none | `refuse_released` | 30 s / 60 s |
 
-Both namespaces have a 30-day recovery window. Bucket soft delete adds seven days after lifecycle deletion.
+Every namespace has a 90-day recovery window (Owner decision 1, 2026-11-23; the two retirement namespaces, `sales-intelligence-retirement` and `ringcentral-webhook-receipts`, have had 90 days since they shipped). The bucket rule for each prefix must agree, or a release store refuses to open. Bucket soft delete adds seven days after lifecycle deletion.
 
 Scopes stay least-privilege, as today:
 - reads, stat, list and lifecycle use `devstorage.read_only`;

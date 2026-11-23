@@ -21,8 +21,8 @@ const dbWith = (row: Record<string, unknown> | null, databaseName = "vantagemove
   collection: (name: string) => ({ findOne: async () => (name === "cloud_storage_control" ? row : null) }),
 }) as unknown as Db;
 
-const granotRule = { action: { type: "Delete" }, condition: { daysSinceCustomTime: 30, matchesPrefix: ["history/granot/v1/vantagemovers/", "history/granot/released/vantagemovers/"] } };
-const packRule = { action: { type: "Delete" }, condition: { daysSinceCustomTime: 30, matchesPrefix: ["history/sales-intelligence/v1/vantagemovers/"] } };
+const granotRule = { action: { type: "Delete" }, condition: { daysSinceCustomTime: 90, matchesPrefix: ["history/granot/v1/vantagemovers/", "history/granot/released/vantagemovers/"] } };
+const packRule = { action: { type: "Delete" }, condition: { daysSinceCustomTime: 90, matchesPrefix: ["history/sales-intelligence/v1/vantagemovers/"] } };
 const backupRules = [
   { action: { type: "Delete" }, condition: { age: 8, matchesPrefix: ["backups/mongodb/vantagemovers/daily/", "backups/mongodb/vantagemovers/manifests/"] } },
   { action: { type: "Delete" }, condition: { age: 29, matchesPrefix: ["backups/mongodb/vantagemovers/weekly/"] } },
@@ -30,7 +30,7 @@ const backupRules = [
 
 test("runtime configuration: defaults are production, recovery days may change, bucket and prefix may not move", async () => {
   const defaults = await readCloudStorageConfig(dbWith(null), "granot-history");
-  assert.deepEqual([defaults.source, defaults.bucket, defaults.prefix, defaults.recoveryDays], ["default", ARCHIVE_BUCKET, "history/granot/v1/", 30]);
+  assert.deepEqual([defaults.source, defaults.bucket, defaults.prefix, defaults.recoveryDays], ["default", ARCHIVE_BUCKET, "history/granot/v1/", 90]);
   assert.deepEqual(defaults.review, { holder: "review", drainMs: 800_000 });
   const restated = await readCloudStorageConfig(dbWith({ bucket: ARCHIVE_BUCKET, prefix: "history/granot/v1/", recovery_days: 45 }), "granot-history");
   assert.deepEqual([restated.source, restated.recoveryDays], ["mongo", 45]);
@@ -90,12 +90,12 @@ test("object names are byte-identical to today's Granot and Sales Intelligence c
 test("the recovery policy check accepts today's rules and rejects drift", () => {
   const rules = [...backupRules, granotRule, packRule];
   for (const [candidate, scope, days, ok] of [
-    [rules, "history/granot/v1/vantagemovers/", 30, true],
-    [rules, "history/sales-intelligence/v1/vantagemovers/", 30, true],
+    [rules, "history/granot/v1/vantagemovers/", 90, true],
+    [rules, "history/sales-intelligence/v1/vantagemovers/", 90, true],
     [rules, "history/granot/v1/vantagemovers/", 45, false],
-    [backupRules, "history/granot/v1/vantagemovers/", 30, false],
-    [[...rules, { action: { type: "Delete" }, condition: { age: 1 } }], "history/granot/v1/vantagemovers/", 30, false],
-    [[{ ...packRule, condition: { ...packRule.condition, age: 1 } }], "history/sales-intelligence/v1/vantagemovers/", 30, false],
+    [backupRules, "history/granot/v1/vantagemovers/", 90, false],
+    [[...rules, { action: { type: "Delete" }, condition: { age: 1 } }], "history/granot/v1/vantagemovers/", 90, false],
+    [[{ ...packRule, condition: { ...packRule.condition, age: 1 } }], "history/sales-intelligence/v1/vantagemovers/", 90, false],
   ] as const) {
     assert.equal(checkRecoveryPolicy([...candidate], scope, days).ok, ok, `${scope} ${days} ${ok}`);
   }

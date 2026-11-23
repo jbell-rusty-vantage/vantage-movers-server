@@ -13,6 +13,7 @@ applies_to:
   - src/services/salesIntelligence/retirement/control.ts
   - src/services/cloudStorage/namespaces.ts
   - src/services/granotHistory/retireOnUse.ts
+  - src/services/granotHistory/endOfLife.ts
   - ops/sales-outreach/job-retirement.ts
 owners: [team:main-server]
 sources:
@@ -102,7 +103,7 @@ From the [audit](../operations/VALIDATED-RETIREMENT-AUDIT-2026-11-22.md). Verdic
 | Collection | Today | Verdict and gap |
 | --- | --- | --- |
 | `sales_intelligence_jobs` | This page's reference implementation | **Adopted** once enabled. Next: early receipts for proven ordinary stages; migrate the Nov 19 packs' bespoke client |
-| `granot_webhook_receipts`, Observations, Decisions, scheduled runs | Retire-on-use with verified GCS archive and lookup (#257) | **Adopted, with gaps:** objects never start a GCS clock (kept forever), locators are permanent, booking routes never retire, 5,755 chains held by references |
+| `granot_webhook_receipts`, Observations, Decisions, scheduled runs | Retire-on-use with verified GCS archive and lookup (#257); [end of life](granot-lifecycle/storage-retention-operations.md#end-of-life), off until enabled | **Adopted, with gaps:** booking routes never retire; 5,755 chains held by references (they also keep their receipt locators and objects); closed-run objects stay as the run-creation fence |
 | `ringcentral_webhook_events` | Validated retirement built 2026-11-23 (`numberActivity/receiptRetirement.ts`, off until enabled): proven telephony receipts 1 day hot, then GCS 90 days; 7-day TTL as backstop | **Adopted** once enabled. Proof: the receipt's own capture job completed and every touched call is at its revision (or the job retirement worker compacted it); the watermark has passed it; never the newest receipt |
 | `sheet_sync_attempts`, `sheet_sync_runs` | 90-day TTL, no archive; 155 MB live | **Should adopt.** Proof: the parent job is synced |
 | `daily_operations_events` | 400-day TTL; +660 MB projected | **Should adopt** after the Owner revisits the Nov 19 "keep in MongoDB" decision. Proof: the day is closed and frozen; keep a hot dedupe fence |
@@ -110,4 +111,4 @@ From the [audit](../operations/VALIDATED-RETIREMENT-AUDIT-2026-11-22.md). Verdic
 | `entity_changes`, `domain_command_executions` | Permanent | **Should adopt, last.** Many readers; idempotency fence must stay hot |
 | Sales Outreach business collections, `call_interactions` | Business records | **Not applicable**: they are the lifecycle effects |
 
-Cross-cutting: both older GCS namespaces use 30 days, not 60–90. The live bucket rules are not mirrored in the repo (`ops/cloud/mongodb-backup/lifecycle.json` lists only the backup rules). The real-bucket contract proof of the Cloud Storage module has not run.
+Cross-cutting: every namespace uses 90 days in code. The live bucket rules for Granot and the Nov 19 packs move from 30 to 90 days with the end-of-life rollout, and `ops/cloud/mongodb-backup/lifecycle.json` mirrors the target rules. The real-bucket contract proof of the Cloud Storage module has not run.

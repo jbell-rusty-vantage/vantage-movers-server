@@ -2,7 +2,7 @@
 
 ## Releasing a production archive generation
 
-The bucket deletes Granot objects under `history/granot/v1/vantagemovers/` and `history/granot/released/vantagemovers/` after 30 days measured from the object's release marker (`customTime`). Unmarked generations stay available. Bucket soft deletion adds seven days of recovery after lifecycle deletion.
+The bucket deletes Granot objects under `history/granot/v1/vantagemovers/` and `history/granot/released/vantagemovers/` after 90 days measured from the object's release marker (`customTime`) (Owner decision 1, 2026-11-23; 30 days before). Retired objects normally reach that marker through [end of life](#end-of-life). The manual procedure below remains for anything else. Unmarked generations stay available. Bucket soft deletion adds seven days of recovery after lifecycle deletion.
 
 For a content-addressed production archive, first establish that its last reader, replay and backup obligations have ended. Include historical catalog exports, standalone rollback packs and daily and weekly backups. Check that every external publisher has finished or uses the release-aware writer. A missing current MongoDB pointer alone cannot establish this.
 
@@ -103,6 +103,52 @@ Observations and Decisions leave through the [Lead evidence pass](./capture.md#r
   - each hold reason, with its count;
   - the hot Observations and Decisions that would follow through the evidence pass.
 - **Apply** (needs Owner approval): add `--apply --limit N`; the limit is required (start with 200). It refuses until `--install` has created the operation index. It runs one receipt per transaction, eight at a time, and publishes the closed runs that can close. To resume, rerun with a new output file. A held receipt is left untouched.
+
+## End of life
+
+Owner decision 2 (2026-11-23): each retired Granot object starts its 90-day GCS clock once it is retired, and the MongoDB rows that point at it expire one day earlier. Code: [`endOfLife.ts`](../../../src/services/granotHistory/endOfLife.ts). Operator: [`ops/granot-history-end-of-life.ts`](../../../ops/granot-history-end-of-life.ts).
+
+**Rule.** A row never outlives an object it points at. The pass marks every row first (`expires_at` = now + 89 days, and it only moves earlier), then starts the object's clock. If the clock does not start, the object outlives its rows, never the reverse. Readers treat a row past `expires_at` as absent (`liveRow`): `readRetiredReceipt`, `readGranotChain`, `readEvidenceIds` and `archivedChains` return nothing instead of reading GCS. Two TTL indexes remove the rows.
+
+**What gets an end of life.**
+
+| Kind | Object | Rows that expire with it | Kept while |
+| --- | --- | --- | --- |
+| `receipt` | One retired receipt (`completed-webhook-bson-v1`, `channel-receipt-bson-v1`) | Its `granot_archived_receipts` locator | Its Observation is still hot. Pool admission and the timeline prove completion from the locator, and reference holds keep current winners hot (decision 2 review). |
+| `evidence` | One Lead evidence page | Its `granot_history_archive_chunks` catalog rows, and every locator whose `evidence_archive` names it | A hot receipt still points at it (`evidence_archive`). |
+| `history` | One November 18–19 job/month chunk | Its catalog row | — |
+| — | Closed scheduled runs and their replays | — | Always. The closed-run row fences deterministic run creation (`createGranotRun`) and serves same-key replay to `applyAutomationPlanAction`, and no Owner-defined bound exists. |
+
+**Duplicate fence.** A channel locator carries the extension's unique operation key (`granot_archived_receipt_operation_unique`). The extension retries a pending operation ID for at most 7 days (`PENDING_OPERATION_MAX_AGE_MS` in the extension's `src/lifecycle/ledger.ts`). So a channel locator is never set to expire before `captured_at` plus 7 days (`operation_fence_window`). In practice it lives at least 89 days after retirement. Closed runs, which are kept, fence HTTP automation IDs.
+
+**Release.** It follows the namespace review:
+1. The pass places the review hold under the constant token `end-of-life-v1`, replacing any publisher hold, and records the object in `granot_history_end_of_life`.
+2. At least 800 seconds later, measured from the hold's provider `updated` time, it marks the rows.
+3. It calls `startRecoveryClock`, whose guard refuses while any row that would outlive the object still points at it.
+
+A re-put of identical bytes during the review cancels it (`rehold`), and the object is reviewed again on a later lap. A review that is abandoned (a blocker appears, or the clock is refused) puts the publisher hold back in place of the review hold, never no hold. Otherwise an object whose clock an earlier release had started would be deleted on that old clock while rows still point at it. The same applies when an already-clocked object turns out to have a live reader. When a release marks a row that also points at another object, that object is queued, so it is never left in GCS without rows. An object that is already gone from GCS has its rows expired at once (`object_missing_rows_expired`), unless a live chain or a channel locator inside its 7-day replay window still holds them.
+
+**Switch and passes.** End of life is off on merge. `granot_retention_control` `{ _id: "end-of-life-v1", enabled_at, kinds, recovery_days }` turns on the online pass in `/api/cron/granot-storage-retention`. Each invocation handles up to 36 objects, 12 per step: drained reviews first, then queued objects, then a wrapping scan of each enabled kind. The pass opens a release store only while the bucket rule deletes `history/granot/v1/<db>/` after the configured recovery days. It also refuses a window shorter than the `recovery_days` that `enable` recorded, because marked rows assume it. Either refusal reports `failed`, and the route returns 503. Every reference read is indexed: the sparse hash indexes on the locator, catalog, hot receipt, closed-run and run-summary collections.
+
+**Rollout (Owner).**
+1. Change the bucket rule for `history/granot/v1/vantagemovers/` and `history/granot/released/vantagemovers/` to `daysSinceCustomTime: 90`. Do the same for the November 19 packs' `history/sales-intelligence/v1/vantagemovers/` rule. [`lifecycle.json`](../../../ops/cloud/mongodb-backup/lifecycle.json) mirrors the target. No Granot object is on its clock today, so this shortens nothing.
+2. Deploy this release. Release stores now expect 90 days.
+3. Run `node --env-file=.env --import tsx ops/granot-history-end-of-life.ts dry-run <new private JSON file>`, then `install`, then `enable --kinds receipt,evidence`. Add `history` for the November 18–19 chunks.
+4. `run --passes N` drains the backlog. `status` reports reviews, queued objects, expiring rows and the bucket-rule check.
+
+**Rollback.** Run `disable`. Rows already marked keep their `expires_at`. Objects already on their clock keep it, and a re-put re-holds an object. **Never shorten the bucket rule or `recovery_days`.** A marked row's `expires_at` is fixed when it is marked, so a shorter window would delete objects while their rows still point at them. Lengthening is safe.
+
+**Measured (2026-11-23, read-only).**
+- **GCS:** 291,348 objects (1.96 GB) under the Granot prefix, none on a clock. MongoDB rows name 23,717 of them, plus 19,970 closed-run objects.
+- **Eligible now:**
+  - 109 receipts (0.14 MB);
+  - 243 evidence pages (10.8 MB);
+  - 17,049 history chunks (117.6 MB).
+- **Kept:**
+  - 6,279 receipts whose Observation is hot (6.8 MB);
+  - 37 pages a hot receipt points at (3.1 MB).
+- **Rows that would expire:** 62,656 (19.4 MB of BSON).
+- **Out of reach:** no MongoDB row names the other 247,661 objects (1.75 GB). They are earlier per-chain archives that only operator manifests reference, so this pass cannot reach them. Their end of life is a separate Owner decision.
 
 ## Scheduled run closure and recovery
 
@@ -247,7 +293,7 @@ Query shapes: the worker claim matches the scheduled-run filter (operation, work
 
 ### GCS obligations
 
-Archive objects live under `history/granot/v1/vantagemovers/` in the private backup bucket. Every locator, catalog row and closed-run row names a hash and generation. Readers verify the checksum and identity before use. Bucket lifecycle deletes only objects with a release marker, 30 days after `customTime`. A publisher that reuses a generation under review or release first sets a temporary hold ([`archiveObjects.ts`](../../../src/services/granotHistory/archiveObjects.ts), over the [Cloud Storage module](../services/cloud-storage.md)). The reference set for any release is `archiveObjectReferenced` ([`archiveReferences.ts`](../../../src/services/granotHistory/archiveReferences.ts)). Releasing a generation follows the procedure at the top of this page.
+Archive objects live under `history/granot/v1/vantagemovers/` in the private backup bucket. Every locator, catalog row and closed-run row names a hash and generation. Readers verify the checksum and identity before use. Bucket lifecycle deletes only objects with a release marker, 90 days after `customTime`. A publisher that reuses a generation under review or release first sets a temporary hold ([`archiveObjects.ts`](../../../src/services/granotHistory/archiveObjects.ts), over the [Cloud Storage module](../services/cloud-storage.md)). The reference set for any release is `archiveObjectReferenced` ([`archiveReferences.ts`](../../../src/services/granotHistory/archiveReferences.ts)). Releasing a generation follows the procedure at the top of this page.
 
 ### Observations for the index and read phase
 
