@@ -8,7 +8,7 @@ import { objectStoreContract } from "./contractSuite";
 import type { RawObject } from "./driver";
 import { createFakeBucket, type FakeBucket } from "./fakeBucket";
 import { createGcsDriver, type GcsApi, type GcsScope } from "./gcsDriver";
-import { CLOUD_STORAGE_NAMESPACES, CONTENT_TYPES, granotHistoryObjectName, openObjectStore, salesIntelligenceRetirementObjectName, storeForNamespace } from "./namespaces";
+import { CLOUD_STORAGE_NAMESPACES, CONTENT_TYPES, granotHistoryObjectName, openObjectStore, retirementPackObjectName, storeForNamespace } from "./namespaces";
 
 type Call = { scope: GcsScope; method: string; params: Record<string, unknown>; options: Record<string, unknown> };
 
@@ -149,7 +149,7 @@ test("a retirement pack (customTime and metadata) uploads as a multipart stream 
   const store = storeForNamespace({ ...ns, namespace: "sales-intelligence-retirement", source: "default" },
     createGcsDriver({ bucket: ns.bucket, timeouts: ns.timeouts, client: emulator(fake).client, sleep: async () => {} }));
   const bytes = Buffer.from("pack bytes");
-  const name = salesIntelligenceRetirementObjectName(ns.prefix, "vantagemovers", "2026-11-23", digest(bytes));
+  const name = retirementPackObjectName(ns.prefix, "vantagemovers", "2026-11-23", digest(bytes));
   const stored = await store.put({ name, bytes, contentType: CONTENT_TYPES.pack, customTime: new Date("2026-11-23T05:00:00.000Z"), metadata: { rows: "1" } });
   assert.ok(stored.persisted.equals(bytes) && fake.peek(name)?.customTime);
   assert.ok((await store.put({ name, bytes, contentType: CONTENT_TYPES.pack, customTime: new Date(), metadata: { rows: "1" } })).generation === stored.generation, "a retry reuses the pack");

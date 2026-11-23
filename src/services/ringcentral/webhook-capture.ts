@@ -25,6 +25,9 @@ export const WEBHOOK_EVENTS_TEST_COLLECTION =
  * recovery. Receipts expire after 7 days on `receivedAt`. A `capture_projection`
  * job still pending past that cannot load its body; the Call Log sync is the
  * backfill for that case. Never below 48 hours.
+ *
+ * Validated retirement (2026-11-23, `numberActivity/receiptRetirement.ts`): once enabled, a proven telephony receipt
+ * leaves after one day, archived to GCS; this TTL is then the backstop for held and non-telephony receipts.
  */
 export const WEBHOOK_EVENT_RETENTION_SECONDS = 7 * 24 * 60 * 60;
 export const WEBHOOK_EVENT_TTL_INDEX = {

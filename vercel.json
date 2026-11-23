@@ -71,6 +71,10 @@
       "schedule": "1-59/2 * * * *"
     },
     {
+      "path": "/api/cron/ringcentral-receipt-retirement",
+      "schedule": "7-59/10 * * * *"
+    },
+    {
       "path": "/api/cron/ringcentral-call-log-sync",
       "schedule": "*/30 * * * *"
     },
