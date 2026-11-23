@@ -41,7 +41,7 @@ export type RetirementRun = {
   status: "disabled" | "lease_held" | "ran";
   batches: number; rows: number; retire: number; hold: number; keep: number;
   held_reasons: Record<string, number>; packs: number; raw_bytes: number; packed_bytes: number; compacted: number; purge_only: number;
-  cursor: string | null; lag_seconds: number | null; error?: string;
+  cursor: string | null; lag_seconds: number | null; error?: string; error_at?: string;
 };
 
 const empty = (status: RetirementRun["status"]): RetirementRun => ({ status, batches: 0, rows: 0, retire: 0, hold: 0, keep: 0,
@@ -169,6 +169,9 @@ export async function retireCompletedJobs(db: Db, options: {
     }
   } catch (error) {
     run.error = error instanceof Error ? error.message.slice(0, 200) : "unknown";
+    // Where it failed: the first two stack frames, so a production-only failure is diagnosable from `status`.
+    if (error instanceof Error && error.stack) run.error_at = error.stack.split("
+").slice(1, 3).map((l) => l.trim()).join(" | ").slice(0, 300);
     throw error;
   } finally {
     run.cursor = cursor?.completed_at.toISOString() ?? null;
