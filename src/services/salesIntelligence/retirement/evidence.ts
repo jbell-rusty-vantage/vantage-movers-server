@@ -1,4 +1,5 @@
-import { ObjectId, type Db, type Document } from "mongodb";
+import type { Db, Document } from "mongodb";
+import { toObjectId } from "../../../utils/objectId";
 import { contactEventId } from "../../salesOutreach/contacts/derive";
 import { routinePurgeAt } from "../jobs";
 
@@ -33,7 +34,7 @@ export type Effects = {
 };
 
 const asDate = (v: unknown) => (v instanceof Date ? v : typeof v === "string" ? new Date(v) : null);
-const oid = (v: string) => new ObjectId(v);
+const oid = (v: string) => toObjectId(v);
 const isId = (v: unknown): v is string => typeof v === "string" && /^[a-f0-9]{24}$/.test(v);
 const ref0 = (doc: Document) => String(doc.input_refs?.[0] ?? "");
 

@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { BSON, ObjectId, type Db, type Document } from "mongodb";
+import type { Db, Document, ObjectId } from "mongodb";
+import { toObjectId } from "../../../utils/objectId";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
 import { logger } from "../../../logger";
 import { CONTENT_TYPES, isCloudStorageError, openObjectStore, salesIntelligenceRetirementObjectName, sha256Hex, type ObjectStore } from "../../cloudStorage";
 import { finishedExecutionFields } from "../routineJobExpiry";
 import { RETIREMENT_CONTROL_COLLECTION, RETIREMENT_CONTROL_ID } from "./control";
 import { loadEffects, verdictOf } from "./evidence";
-import { decodePack, encodePack, packHoldsExactly, type RawRow } from "./pack";
+import { bson, decodePack, encodePack, packHoldsExactly, type RawRow } from "./pack";
 
 /**
  * Validated retirement of completed `sales_intelligence_jobs` (Reference doc: docs/knowledge/validated-retirement.md).
@@ -40,7 +41,7 @@ export type RetirementRun = {
   status: "disabled" | "lease_held" | "ran";
   batches: number; rows: number; retire: number; hold: number; keep: number;
   held_reasons: Record<string, number>; packs: number; raw_bytes: number; packed_bytes: number; compacted: number; purge_only: number;
-  cursor: string | null; lag_seconds: number | null; error?: string;
+  cursor: string | null; lag_seconds: number | null; error?: string; error_at?: string;
 };
 
 const empty = (status: RetirementRun["status"]): RetirementRun => ({ status, batches: 0, rows: 0, retire: 0, hold: 0, keep: 0,
@@ -50,7 +51,7 @@ const empty = (status: RetirementRun["status"]): RetirementRun => ({ status, bat
 export const RETIREMENT_BATCH_BYTES = 8 * 1024 * 1024;
 type Row = { raw: Buffer; doc: Document };
 const jobsOf = (db: Db) => db.collection("sales_intelligence_jobs");
-const toRows = (raws: unknown[]) => (raws as Buffer[]).map((raw) => ({ raw: Buffer.from(raw), doc: BSON.deserialize(raw) as Document }));
+const toRows = (raws: unknown[]) => (raws as Buffer[]).map((raw) => ({ raw: Buffer.from(raw), doc: bson.deserialize(raw) as Document }));
 
 /** Rows up to the count and byte limits; returns the cut index (rows before it fit). */
 function cutAt(rows: readonly Row[], size: number, bytes: number) {
@@ -83,7 +84,7 @@ async function nextBatch(db: Db, cursor: Cursor | null, until: Date, size: numbe
   const kept = +rows[cut]!.doc.completed_at === boundary ? rows.slice(0, cut).filter((r) => +r.doc.completed_at !== boundary) : rows.slice(0, cut);
   if (kept.length) return { rows: kept, next: { completed_at: kept.at(-1)!.doc.completed_at as Date } };
   // The whole batch shares one instant: walk that group by `_id`, starting just before its first row.
-  return nextBatch(db, { completed_at: new Date(boundary), id: new ObjectId("000000000000000000000000") }, until, size, bytes);
+  return nextBatch(db, { completed_at: new Date(boundary), id: toObjectId("000000000000000000000000") as unknown as ObjectId }, until, size, bytes);
 }
 
 export async function retireCompletedJobs(db: Db, options: {
@@ -135,7 +136,7 @@ export async function retireCompletedJobs(db: Db, options: {
       const counts = { retire: verdicts.filter((v) => v.verdict === "retire").length, hold: verdicts.filter((v) => v.verdict === "hold").length };
       await packs.updateOne({ name }, { $setOnInsert: {
         name, generation: stored.generation, sha256: stored.sha256, size: stored.size, rows: rows.length,
-        first_id: new ObjectId(ids[0]), last_id: new ObjectId(ids.at(-1)), first_completed_at: first, last_completed_at: last,
+        first_id: toObjectId(ids[0]!), last_id: toObjectId(ids.at(-1)!), first_completed_at: first, last_completed_at: last,
         retire: counts.retire, hold: counts.hold, keep: rows.length - counts.retire - counts.hold, held_reasons: held,
         // One day before GCS can delete the object (the bucket counts whole days since its custom time).
         created_at: now, expires_at: new Date(+now + (recoveryDays - 1) * DAY_MS),
@@ -168,6 +169,8 @@ export async function retireCompletedJobs(db: Db, options: {
     }
   } catch (error) {
     run.error = error instanceof Error ? error.message.slice(0, 200) : "unknown";
+    // Where it failed: the first two stack frames, so a production-only failure is diagnosable from `status`.
+    if (error instanceof Error && error.stack) run.error_at = error.stack.split(/\r?\n/).slice(1, 3).map((l) => l.trim()).join(" | ").slice(0, 300);
     throw error;
   } finally {
     run.cursor = cursor?.completed_at.toISOString() ?? null;
@@ -181,10 +184,11 @@ export async function retireCompletedJobs(db: Db, options: {
 
 /** Restores an archived job by original `_id` from its verified pack, or `null` when no live pack holds it. */
 export async function lookupArchivedJob(db: Db, jobId: string, store?: ObjectStore) {
-  const id = new ObjectId(jobId);
+  const id = toObjectId(jobId);
+  const created = new Date(parseInt(jobId.slice(0, 8), 16) * 1000);
   const reader = store ?? (await openObjectStore(db, "sales-intelligence-retirement")).store;
   const candidates = db.collection(ARCHIVE_PACKS_COLLECTION).find(
-    { last_completed_at: { $gte: id.getTimestamp() }, first_id: { $lte: id }, last_id: { $gte: id } },
+    { last_completed_at: { $gte: created }, first_id: { $lte: id }, last_id: { $gte: id } },
     { sort: { last_completed_at: 1 } },
   );
   for await (const pack of candidates) {
@@ -196,7 +200,7 @@ export async function lookupArchivedJob(db: Db, jobId: string, store?: ObjectSto
       throw error;
     }
     const hit = decodePack(bytes).find((row) => row.id === jobId);
-    if (hit) return { pack: { name: pack.name as string, generation: pack.generation as string }, doc: BSON.deserialize(hit.raw) };
+    if (hit) return { pack: { name: pack.name as string, generation: pack.generation as string }, doc: bson.deserialize(hit.raw) };
   }
   return null;
 }
