@@ -4,6 +4,8 @@
 
 **Next session: start with [the Sales Intelligence job volume brief](SI-JOBS-VOLUME-BRIEF-2026-11-22.md).** It is the largest daily inflow, about 21,900 jobs and 15.5 MB per day, mostly 14-day `outreach_evaluate` and `capture_projection` jobs.
 
+**November 22 (evening, New York): the brief's PR #264 is open on `feat/si-jobs-volume`, not merged.** [Answers and scenario math](SI-JOBS-VOLUME-BRIEF-2026-11-22.md#answers-2026-11-22). It moves sweep evaluations (`due`, `coverage`) to three-day receipts and clean captures to seven-day receipts (the webhook receipt TTL), coalesces duplicate coverage repairs and fixes the Pool wake. Steady state for those classes falls from about 195,600 rows / 166 MiB to 70,800 / 35 MiB. Owner-gated after the merge and the final deploy: the backlog apply in chunks (`pnpm outreach:routine-expiry-backlog --target=vantagemovers --apply --limit=10000`, repeated; dry run 103,667 rows / 85.95 MiB). The apply is also what wakes the 87 frozen Pool rows, because their `due:` fences predate the fix. Then the `csi_job_due` hide-then-drop.
+
 **November 21 close (20:50 New York): `main` serves production.**
 - **Granot retire-on-use is ON** (#257). The backlog run retired 6,057 receipts with 0 failures, and read-back by ID from GCS is proven. The TTL indexes and the old trial records are gone. Compaction is deferred to after the November 26 rerun. [Release record and next steps](GRANOT-RETIRE-ON-USE-RELEASE-2026-11-21.md)
 - **Booking Job Number enforcement is ON (18:14).** It blocks only a missing Job Number, and Granot-created Bookings are never blocked (#260). Rollback: `control.ts set --mode=shadow`.

@@ -105,6 +105,22 @@ export async function enqueueCsiJob(
     throw new CsiError("IDEMPOTENCY_CONFLICT");
   return row;
 }
+type CompletedJobIdentity = {
+  stage: CsiJobStage; dedupe_key: string; subject_key: string; input_revision: number;
+  input_refs: readonly unknown[]; payload_hash: string; deployment: string; database: string;
+};
+/**
+ * The routine three-day purge instant for a job completing with `result`, or undefined for the ordinary window.
+ * The completion transaction and the `ops/sales-outreach/routine-expiry-backlog.ts` operator share it, so a backlog
+ * row qualifies exactly when the same row would qualify at completion today.
+ */
+export function routinePurgeAt(row: CompletedJobIdentity, result: unknown, completedAt: Date) {
+  const refs = row.input_refs.map(String);
+  const validInput = routineJobSubjectMatches(row.stage, row.dedupe_key, row.subject_key, refs) &&
+    row.payload_hash === jobPayloadHash({ stage: row.stage, dedupe_key: row.dedupe_key, subject_key: row.subject_key,
+      input_revision: row.input_revision, input_refs: refs }, { deployment: row.deployment, database: row.database });
+  return validInput ? routineJobExpiry(row.stage, row.dedupe_key, result, completedAt, row.subject_key) : undefined;
+}
 function fence(lease: JobLease, now = new Date()) {
   return {
     _id: lease.job_id,
@@ -296,12 +312,7 @@ export async function completeCsiJob<T>(
     const result = await mutation(session);
     const stored = options.resultFrom ? options.resultFrom(result) : options.result;
     const completed_at = new Date();
-    const refs = held.input_refs.map(String);
-    const validRoutineInput = routineJobSubjectMatches(held.stage, held.dedupe_key, held.subject_key, refs) &&
-      held.payload_hash === jobPayloadHash({ stage: held.stage, dedupe_key: held.dedupe_key,
-        subject_key: held.subject_key, input_revision: held.input_revision, input_refs: refs }, csiDataset());
-    const routine_purge_at = validRoutineInput
-      ? routineJobExpiry(held.stage, held.dedupe_key, stored, completed_at, held.subject_key) : undefined;
+    const routine_purge_at = routinePurgeAt(held, stored, completed_at);
     // A job that never failed compacts to a receipt. A routine job that succeeded after a retry keeps its full
     // row (its failure reason is evidence) but still leaves on the routine three-day purge, not the 14-day TTL.
     if (routine_purge_at && held.reason == null) {

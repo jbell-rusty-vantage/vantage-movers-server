@@ -115,11 +115,18 @@ export class MemoryEvaluationStore implements EvaluationStore {
   async existingJobKeys(keys: readonly string[]) {
     return new Set(keys.filter((key) => this.jobs.has(key)));
   }
+  /** Enqueued jobs not yet run; a test deletes a key to model its claim. */
+  pending = new Set<string>();
+  async pendingEvaluationSubjects(subjectIds: readonly string[]) {
+    const waiting = new Set([...this.pending].map((key) => this.jobs.get(key)?.input_refs?.[0]));
+    return new Set(subjectIds.filter((id) => waiting.has(id)));
+  }
   /** Every enqueue call, in order (olr A5: the sweep must not re-enqueue an existing nomination). */
   enqueueCalls: string[] = [];
   async enqueue(job: JobInput) {
     this.enqueueCalls.push(job.dedupe_key);
     this.jobs.set(job.dedupe_key, job);
+    this.pending.add(job.dedupe_key);
     return "enqueued" as const;
   }
 }
