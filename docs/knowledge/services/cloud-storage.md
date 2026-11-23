@@ -55,7 +55,7 @@ generated:
 - Implemented and tested offline: the contract, the GCS driver, the in-memory fake bucket and Mongo runtime configuration.
 - **Integrated (PR #257):** every Granot history write and read in `src/` goes through `granotArchiveStorage` in `archiveObjects.ts`, over the `granot-history` namespace. That covers chunks, month pages, evidence pages, closed runs, scheduled runs and retired receipts. Object names, bytes, content type and hold metadata are unchanged. The Granot unit and replica tests run on the fake bucket.
 - Still to migrate: `ops/granot-release-archive-generation.ts` (its reference check is now `archiveObjectReferenced` in `src/`), the Sales Intelligence packs and the operator readers under `ops/` that build their own client.
-- The real-bucket proof has not been run.
+- The real-bucket proof has not been run. **The Nov 23 attempt (Owner-approved) was blocked before any write.** Creating the disposable bucket in the test project `just-cosmos-437222-b7` returned 403 *"The billing account for the owning project is disabled"*. No bucket or object was created, and `vantage-sheets-496816` was not touched. See [running the proof](#running-the-real-bucket-proof-owner-or-operator).
 
 **`ringcentral-webhook-receipts` namespace (2026-11-23).** Prefix `history/ringcentral-webhook-receipts/v1/`, 90 recovery days, the same sealed pack shape as `sales-intelligence-retirement`. Used by validated retirement of RingCentral webhook receipts ([Number Activity capture](number-activity-capture.md#retention-and-what-stays-in-mongodb)); its catalog is `ringcentral_webhook_receipt_archive_packs`. The bucket rule is added by `pnpm ringcentral:receipt-retirement install`.
 
@@ -221,6 +221,11 @@ This writes to GCS. Run it only with a disposable bucket, after Owner approval.
    ```
 
 The suite also refuses to run without `TEST_MODE=true`, so it always uses the test credential. It writes only under `contract/<uuid>/` and deletes everything it wrote at the end. It covers write, read-back, holds, conditional delete, generation mismatch, the recovery clock and re-hold, and prefix listing. If a run is interrupted, delete `contract/` from the bucket by hand. Soft-deleted objects bill for seven days.
+
+**Prerequisite found on Nov 23.** The test project needs an active billing account. Without one, bucket creation fails with 403 before anything is written. The local `gcloud` CLI is unreliable on the operator laptop, so create and delete the bucket through `googleapis` in Node with `GOOGLE_SERVICE_ACCOUNT_TEST_JSON`, which holds `storage.buckets.create` and `storage.buckets.delete` in `just-cosmos-437222-b7`. Create the bucket with versioning off, uniform bucket-level access and a zero-day soft-delete policy. After the suite:
+1. list `contract/` with all versions and delete anything left;
+2. delete the bucket;
+3. confirm that a `get` on it returns 404.
 
 ## Open questions for the Owner
 

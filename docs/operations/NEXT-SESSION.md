@@ -1,6 +1,32 @@
 # Resume the server optimization sprint from main
 
-## Start here — next session (November 23 close)
+## Start here — next session (November 23 evening close)
+
+**State at 18:53 New York, Nov 23.** `main` is `8e6c107d`; this session changed only docs. [Release record, evening follow-up](VALIDATED-RETIREMENT-RELEASE-2026-11-23.md#evening-follow-up-nov-23-18371846-new-york).
+- **Drains.**
+  - RingCentral receipts: 35,993 retired, 0 held, 2 reviewable.
+  - SI jobs: 428 s behind live, 0 holds.
+  - Granot end of life: 0 failures, 50,248 of 62,656 rows marked, still releasing.
+  - All three crons ran after the failover.
+- **Compaction (decision 4) is done.** About 776 MB returned across the three members, disks 24.3–24.7% → 22.8–23.1%. 01 is now the primary. Use `--free-space-target-mb=1`: the default 20 MB skips small index files.
+- **The real-bucket proof is blocked.** The test project `just-cosmos-437222-b7` has no billing account (403 on bucket create). Nothing was created.
+- **Proposals delivered** (decisions 3, 7, 8): [proposals](VALIDATED-RETIREMENT-PROPOSALS-2026-11-23.md). Not implemented. The Owner's six answers set the next build.
+
+Next, in order:
+1. **Owner answers** to the six questions at the end of the [proposals](VALIDATED-RETIREMENT-PROPOSALS-2026-11-23.md#owner-decisions-requested). Build only what is approved, one PR per item, lean tests with the test delta stated.
+2. **Real-bucket contract proof**, once billing is linked to `just-cosmos-437222-b7` (or the Owner names another test project). Follow [Cloud Storage](../knowledge/services/cloud-storage.md#running-the-real-bucket-proof-owner-or-operator): create the bucket through `googleapis` with `GOOGLE_SERVICE_ACCOUNT_TEST_JSON`, then run the suite, then delete `contract/` and the bucket.
+3. **Date gate, Nov 26 (not earlier): the Granot backlog rerun.** The 6,959 HTTP receipts held as `closed_run:unfinished_or_recent` become eligible once their runs pass the seven-day rule.
+   - Dry run: `node --env-file=.env --import tsx ops/granot-retire-used-receipts.ts <new private JSON>`.
+   - Then `--apply --limit 13100 <new private JSON>`. `--limit` counts receipts examined, not retired.
+   - Read back a sample by ID with `ops/granot-read-archived-evidence.ts`.
+   - Compact again only if at least about 200 MB per member is reusable.
+   - [Procedure](GRANOT-RETIRE-ON-USE-RELEASE-2026-11-21.md#next).
+4. **Date gate, Nov 29 or later: drop `csi_job_due`** if it stayed clean (decision 6). It has been hidden since Nov 22 22:07.
+   - First, `explain` the undirected claim to confirm it plans on `csi_job_claim`, and check that claim latency is flat.
+   - The same PR drops the index and removes its declaration from `src/models/salesIntelligence/infrastructure.ts`. Rollback before the drop: unhide.
+5. **Granot end of life** keeps releasing. Its rows are TTL-deleted around Feb 20, 2027; expect an oplog bump that day.
+
+## November 23 close (record)
 
 **Owner decisions 1, 2 and 5 are live in production.** `main` `1c2f23f0`; [release record](VALIDATED-RETIREMENT-RELEASE-2026-11-23.md).
 - **Decision 5 (RingCentral receipts):** proven receipts stay 1 day hot, then move to GCS (#269). The cron drains the about 35k-receipt backlog by about 07:00 New York.
