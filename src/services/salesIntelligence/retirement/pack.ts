@@ -1,5 +1,11 @@
 import { gunzipSync, gzipSync } from "node:zlib";
-import { BSON } from "mongodb";
+import mongoose from "mongoose";
+
+/**
+ * The driver's BSON through Mongoose. A value import from "mongodb" in runtime code is dropped by the production
+ * build (`ReferenceError: mongodb_1 is not defined`, seen on the first cron run 2026-11-23); see src/utils/objectId.ts.
+ */
+export const bson = (mongoose.mongo as unknown as { BSON: typeof import("mongodb").BSON }).BSON;
 
 /**
  * Validated retirement, step 2: a pack is the exact stored BSON of each job, concatenated in `_id` order and gzipped.
@@ -20,7 +26,7 @@ export function decodePack(bytes: Buffer): RawRow[] {
     const length = body.readInt32LE(at);
     if (length < 5 || at + length > body.length) throw new Error("pack_corrupt");
     const raw = body.subarray(at, at + length);
-    rows.push({ raw, id: String(BSON.deserialize(raw)._id) });
+    rows.push({ raw, id: String(bson.deserialize(raw)._id) });
     at += length;
   }
   return rows;
