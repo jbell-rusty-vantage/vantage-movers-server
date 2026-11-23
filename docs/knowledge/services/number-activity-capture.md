@@ -188,7 +188,7 @@ Index declarations are the source of truth. The CSI collections declare theirs i
 | `telephonySessionId_1` | `{telephonySessionId: 1}` | No `src/` reader (observation) |
 | `sessionId_1` | `{sessionId: 1}` | No `src/` reader (observation) |
 | `provider_1_receivedAt_1__id_1` | `{provider: 1, receivedAt: 1, _id: 1}`, partial `{telephonySessionId: {$type: "string"}}` | Watermark recovery keyset scan (`listWebhookReceiptsBetween`); Desk newest telephony receipt (`readLastCallWebhookAt`, newest first, limit 1) |
-| `ringcentral_webhook_event_received_ttl` | `{receivedAt: 1}`, `expireAfterSeconds` 604,800 (7 days) | TTL; the bounded dev monitor (`find({})` newest first, limit 1–100) |
+| `ringcentral_webhook_event_received_ttl` | `{receivedAt: 1}`, `expireAfterSeconds` 604,800 (7 days) | TTL (backstop under validated retirement); the bounded dev monitor (`find({})` newest first, limit 1–100) |
 
 The capture job loads its receipt by `_id`. A stored receipt keeps `provider`, `receivedAt`, `validationTokenPresent`, sanitized `headers`, `rawBody` and the indexed identities `uuid`, `subscriptionId`, `event`, `timestamp`, `ownerId`, `telephonySessionId`, `sessionId`, `sequence`. It stores no `normalizedPreview` and no credential header (`WEBHOOK_CREDENTIAL_HEADERS`: `authorization`, `cookie`, `x-api-secret`, `verification-token`, `validation-token`, `x-vercel-oidc-token`, `x-vercel-proxy-signature`) since `477703d3` and `ed8db9b5`. The route verifies the delivery against the request before it stores. The monitor (`GET /api/dev/ringcentral/webhook-events`) rebuilds the preview from `rawBody` on read.
 
@@ -229,7 +229,10 @@ The capture job loads its receipt by `_id`. A stored receipt keeps `provider`, `
 
 ### Retention and what stays in MongoDB
 
-- Receipts: TTL 7 days on `receivedAt`. `rawBody` serves the capture job, the 12-hour watermark replay and debugging inside that window. A preview is reproducible from `rawBody`, so it is not stored.
+- Receipts: `rawBody` serves the capture job, the watermark replay and debugging. A preview is reproducible from `rawBody`, so it is not stored.
+  - **Validated retirement (Owner decision 5, 2026-11-23; off until enabled).** A telephony receipt leaves MongoDB one day after it arrived once its own `capture_projection` job completed with its effect proven (every touched call at its `projection_revision`, or a completion receipt compacted by the [job retirement worker](../validated-retirement.md)), the receipt watermark is an hour past it, and it is not the newest telephony receipt (the Desk header reads that one). Each batch is packed to GCS (`ringcentral-webhook-receipts`, 90 days) and read back byte for byte before the delete; the catalog is `ringcentral_webhook_receipt_archive_packs` (TTL 89 days). Held receipts stay for the TTL, already archived. Code: `numberActivity/receiptRetirement.ts`; cron `/api/cron/ringcentral-receipt-retirement` every 10 minutes; operator `pnpm ringcentral:receipt-retirement` (`status`, `dry-run`, `install`, `enable`, `disable`, `run`, `lookup --id=<receipt>`); replica proof `ops/ringcentral/receipt-retirement.replica.ts`.
+  - The capture job keeps its 7-day key fence, so a redelivered uuid after retirement is stored again but projects nothing.
+  - **Backstop:** TTL 7 days on `receivedAt`. Receipts without a telephony session (SMS message-store, validation) are not reviewed; nothing reads them after capture and the TTL removes them.
 - `call_interactions` and `call_interaction_aliases`: kept until retention. Retention (`salesIntelligence/retention.ts`) purges calls older than the active Owner policy's `retention.audit_days` (730 days on 2026-11-19, cutoff `2024-11-19T23:51:22Z`, zero eligible rows). A purged call keeps its provider identifiers and aliases so replay cannot resurrect it; parties, legs, recordings, `external_e164` and `provider_names` are cleared. Aliases are never deleted.
 - `contact_numbers`: a Number idle past the same cutoff becomes a `purged:<id>` tombstone with an empty summary and no Lead.
 - Sync state, directory snapshots and rate gates are small operational rows.

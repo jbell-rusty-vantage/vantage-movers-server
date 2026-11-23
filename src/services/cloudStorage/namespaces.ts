@@ -17,7 +17,8 @@ import { createObjectStore } from "./objectStore";
  */
 export const CLOUD_STORAGE_CONTROL_COLLECTION = "cloud_storage_control";
 
-export type CloudStorageNamespace = "granot-history" | "sales-intelligence-packs" | "sales-intelligence-retirement";
+export type CloudStorageNamespace =
+  | "granot-history" | "sales-intelligence-packs" | "sales-intelligence-retirement" | "ringcentral-webhook-receipts";
 
 type NamespaceDefinition = {
   bucket: string;
@@ -65,6 +66,19 @@ export const CLOUD_STORAGE_NAMESPACES: Record<CloudStorageNamespace, NamespaceDe
   "sales-intelligence-retirement": {
     bucket: PRIVATE_BACKUP_BUCKET,
     prefix: "history/sales-intelligence/v2/",
+    recoveryDays: 90,
+    holdKeys: {},
+    reuse: { mode: "refuse_released" },
+    sealedNames: /\/\d{4}-\d{2}-\d{2}\/[a-f0-9]{64}\.bson\.gz$/,
+    timeouts: { readMs: 30_000, writeMs: 60_000 },
+  },
+  /**
+   * Validated retirement of proven RingCentral webhook receipts (docs/knowledge/validated-retirement.md). Same shape
+   * as the Sales Intelligence retirement packs: disposable from birth, deleted by the bucket 90 days after creation.
+   */
+  "ringcentral-webhook-receipts": {
+    bucket: PRIVATE_BACKUP_BUCKET,
+    prefix: "history/ringcentral-webhook-receipts/v1/",
     recoveryDays: 90,
     holdKeys: {},
     reuse: { mode: "refuse_released" },
@@ -168,8 +182,11 @@ export function salesIntelligencePackObjectName(prefix: string, database: string
   return `${prefix}${database}/${run}/${file}`;
 }
 
-/** Retirement pack address: `history/sales-intelligence/v2/<database>/<YYYY-MM-DD>/<sha256>.bson.gz` (content-addressed). */
-export function salesIntelligenceRetirementObjectName(prefix: string, database: string, day: string, hash: string) {
+/**
+ * Validated-retirement pack address, content-addressed: `<prefix><database>/<YYYY-MM-DD>/<sha256>.bson.gz`, for the
+ * `sales-intelligence-retirement` (`history/sales-intelligence/v2/`) and `ringcentral-webhook-receipts` namespaces.
+ */
+export function retirementPackObjectName(prefix: string, database: string, day: string, hash: string) {
   if (database !== "vantagemovers" && !/^testvantagemovers(?:_[a-z0-9]+)?$/.test(database)) {
     throw new CloudStorageError("invalid_name", "Invalid pack database");
   }

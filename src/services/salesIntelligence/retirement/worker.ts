@@ -3,7 +3,7 @@ import type { Db, Document, ObjectId } from "mongodb";
 import { toObjectId } from "../../../utils/objectId";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
 import { logger } from "../../../logger";
-import { CONTENT_TYPES, isCloudStorageError, openObjectStore, salesIntelligenceRetirementObjectName, sha256Hex, type ObjectStore } from "../../cloudStorage";
+import { CONTENT_TYPES, isCloudStorageError, openObjectStore, retirementPackObjectName, sha256Hex, type ObjectStore } from "../../cloudStorage";
 import { finishedExecutionFields } from "../routineJobExpiry";
 import { RETIREMENT_CONTROL_COLLECTION, RETIREMENT_CONTROL_ID } from "./control";
 import { loadEffects, verdictOf } from "./evidence";
@@ -127,7 +127,7 @@ export async function retireCompletedJobs(db: Db, options: {
       const bytes = encodePack(raw);
       const sha = sha256Hex(bytes);
       const first = docs[0]!.completed_at as Date, last = docs.at(-1)!.completed_at as Date;
-      const name = salesIntelligenceRetirementObjectName(store.prefix, db.databaseName, first.toISOString().slice(0, 10), sha);
+      const name = retirementPackObjectName(store.prefix, db.databaseName, first.toISOString().slice(0, 10), sha);
       const stored = await store.put({ name, bytes, contentType: CONTENT_TYPES.pack, customTime: now, metadata: { rows: String(rows.length) } });
       if (stored.sha256 !== sha || !packHoldsExactly(stored.persisted, raw)) throw new Error("retirement_pack_verification_failed");
       const ids = raw.map((r) => r.id).sort();

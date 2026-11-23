@@ -57,6 +57,8 @@ generated:
 - Still to migrate: `ops/granot-release-archive-generation.ts` (its reference check is now `archiveObjectReferenced` in `src/`), the Sales Intelligence packs and the operator readers under `ops/` that build their own client.
 - The real-bucket proof has not been run.
 
+**`ringcentral-webhook-receipts` namespace (2026-11-23).** Prefix `history/ringcentral-webhook-receipts/v1/`, 90 recovery days, the same sealed pack shape as `sales-intelligence-retirement`. Used by validated retirement of RingCentral webhook receipts ([Number Activity capture](number-activity-capture.md#retention-and-what-stays-in-mongodb)); its catalog is `ringcentral_webhook_receipt_archive_packs`. The bucket rule is added by `pnpm ringcentral:receipt-retirement install`.
+
 **`sales-intelligence-retirement` namespace (2026-11-22).** Prefix `history/sales-intelligence/v2/`, 90 recovery days, every pack sealed at birth (`<db>/<YYYY-MM-DD>/<sha256>.bson.gz`, created with its recovery clock started), no holds. Used by [validated retirement](../validated-retirement.md) of Sales Intelligence jobs; its catalog is `sales_intelligence_job_archive_packs` in MongoDB. The bucket rule is added by `pnpm outreach:job-retirement install` under a metageneration precondition.
 
 ## Shape

@@ -103,7 +103,7 @@ From the [audit](../operations/VALIDATED-RETIREMENT-AUDIT-2026-11-22.md). Verdic
 | --- | --- | --- |
 | `sales_intelligence_jobs` | This page's reference implementation | **Adopted** once enabled. Next: early receipts for proven ordinary stages; migrate the Nov 19 packs' bespoke client |
 | `granot_webhook_receipts`, Observations, Decisions, scheduled runs | Retire-on-use with verified GCS archive and lookup (#257) | **Adopted, with gaps:** objects never start a GCS clock (kept forever), locators are permanent, booking routes never retire, 5,755 chains held by references |
-| `ringcentral_webhook_events` | 7-day TTL, no proof, no archive; 13.6–19.5 MB/day | **Should adopt, first.** Proof: the receipt's capture job completed and its call interactions are at that revision |
+| `ringcentral_webhook_events` | Validated retirement built 2026-11-23 (`numberActivity/receiptRetirement.ts`, off until enabled): proven telephony receipts 1 day hot, then GCS 90 days; 7-day TTL as backstop | **Adopted** once enabled. Proof: the receipt's own capture job completed and every touched call is at its revision (or the job retirement worker compacted it); the watermark has passed it; never the newest receipt |
 | `sheet_sync_attempts`, `sheet_sync_runs` | 90-day TTL, no archive; 155 MB live | **Should adopt.** Proof: the parent job is synced |
 | `daily_operations_events` | 400-day TTL; +660 MB projected | **Should adopt** after the Owner revisits the Nov 19 "keep in MongoDB" decision. Proof: the day is closed and frozen; keep a hot dedupe fence |
 | `sheet_sync_jobs` | Permanent | **Should adopt.** Proof: synced, the entity's sheet metadata records the row, nothing newer pending |

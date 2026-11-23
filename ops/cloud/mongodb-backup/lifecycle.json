@@ -56,6 +56,17 @@
           "history/sales-intelligence/v2/vantagemovers/"
         ]
       }
+    },
+    {
+      "action": {
+        "type": "Delete"
+      },
+      "condition": {
+        "daysSinceCustomTime": 90,
+        "matchesPrefix": [
+          "history/ringcentral-webhook-receipts/v1/vantagemovers/"
+        ]
+      }
     }
   ]
 }

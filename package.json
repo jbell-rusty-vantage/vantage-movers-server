@@ -89,6 +89,7 @@
     "outreach:subjects-without-numbers": "node --env-file=.env --import tsx ops/sales-outreach/subjects-without-numbers.ts",
     "outreach:recount-rep-days": "node --env-file=.env --import tsx ops/sales-outreach/recount-rep-days.ts",
     "outreach:job-retirement": "node --env-file=.env --import tsx ops/sales-outreach/job-retirement.ts",
+    "ringcentral:receipt-retirement": "node --env-file=.env --import tsx ops/ringcentral/receipt-retirement.ts",
     "granot:call-lead-form-siblings": "node --env-file=.env --import tsx ops/sales-outreach/call-lead-form-siblings.ts",
     "outreach:call-leads-without-job": "node --env-file=.env --import tsx ops/sales-outreach/call-leads-without-job.ts",
     "outreach:rederive-contact-events": "node --env-file=.env --import tsx ops/sales-outreach/rederive-contact-events.ts",
