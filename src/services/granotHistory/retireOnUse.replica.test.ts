@@ -26,6 +26,7 @@ import { useGranotArchiveStoreForTests } from "./archiveObjects";
 import { archiveObjectReferenced } from "./archiveReferences";
 import { fakeGranotArchive, historyReplica } from "./archiveTestSupport";
 import { closedRuns, packClosedRun } from "./closedAutomationRun";
+import { END_OF_LIFE_CONTROL, END_OF_LIFE_STATE, endOfLifePass, finishReview, referencesOf, startReview } from "./endOfLife";
 import { retireLeadEvidence } from "./retireLeadEvidence";
 import { installRetiredOperationIndex, retireReceipt, retireUsedReceipts, RETIRE_ON_USE_CONTROL, RETIRED_OPERATION_INDEX_CONTROL } from "./retireOnUse";
 import { archivedReceipts, readGranotDecision, readGranotObservation, readGranotReceipt, readRetiredOperation, resetRetiredOperationIndexCacheForTests } from "./retiredRecords";
@@ -286,4 +287,63 @@ test("a retired receipt's object is never deleted or expired while held or refer
   await archive.store.hold(ref, { holder: "publisher" });
   await assert.rejects(archive.store.deleteIfGeneration(ref, { references: async () => false, reviewToken: "r" }), (e) => isCloudStorageError(e, "held"));
   assert.equal(String((await readGranotReceipt(db, row.receipt))?._id), String(row.receipt), "the object still reads");
+});
+
+test("end of life: a fully retired object starts its 90-day clock after the review drain, its rows expire a day earlier, and kept objects stay", async (t) => {
+  if (skip(t)) return;
+  const DAY = 86_400_000;
+  const nameOf = (hash: string) => `history/granot/v1/${db.databaseName}/${hash.slice(0, 2)}/${hash}.bson.gz`;
+  const state = db.collection<{ _id: string; kind: "receipt" | "evidence" | "history"; generation?: string; queued_at?: Date }>(END_OF_LIFE_STATE);
+  // `done`: receipt and evidence both retired. `live`: receipt retired, its Observation still hot (Pool admission reads its locator).
+  const done = await seed({ channel: "browser_extension" });
+  assert.equal((await retireReceipt(db, done.receipt, storage)).status, "retired");
+  for (let page = 0; page < 20; page++) { const pass = await retireLeadEvidence(db, storage.store, storage.read); if ("wrapped" in pass && pass.wrapped) break; }
+  const live = await seed({ channel: "browser_extension" });
+  assert.equal((await retireReceipt(db, live.receipt, storage)).status, "retired");
+  const http = await seed({ channel: "granot_http_automation" });
+  await closeRun(http);
+  const doneLocator = (await archivedReceipts(db).findOne({ _id: done.receipt }))!;
+  const page = doneLocator.evidence_archive.hash as string;
+  const hotPointer = new ObjectId();
+  await db.collection("granot_webhook_receipts").insertOne({ _id: hotPointer, evidence_archive: { hash: page } });
+  const table: Array<[string, string, string | null]> = [
+    ["fully retired receipt", doneLocator.hash, null],
+    ["receipt whose Observation is still hot", (await archivedReceipts(db).findOne({ _id: live.receipt }))!.hash, "observation_hot"],
+    ["closed scheduled run (fences run creation)", (await closedRuns(db).findOne({ _id: http.run as never }))!.hash, "closed_run"],
+    ["evidence page a hot receipt still points at", page, "hot_receipt"],
+  ];
+  const refs = await referencesOf(db, table.map(([, hash]) => hash));
+  for (const [label, hash, reason] of table) assert.equal(refs.get(hash)!.blocked, reason, label);
+  await db.collection("granot_webhook_receipts").deleteOne({ _id: hotPointer });
+
+  // Off until the Owner enables it.
+  assert.equal((await endOfLifePass(db, { store: archive.store, days: 90 })).status, "not_configured");
+
+  // Review, drain, then the clock: rows are marked only once the 800 s drain has passed.
+  const at = () => new Date(clock.at);
+  assert.equal((await startReview(db, archive.store, doneLocator.hash, "receipt", at(), 90)).outcome, "review_started");
+  const reviewing = (await state.findOne({ _id: doneLocator.hash }))!;
+  assert.equal((await finishReview(db, archive.store, reviewing, at(), 90)).outcome, "draining");
+  assert.equal((await archivedReceipts(db).findOne({ _id: done.receipt }))!.expires_at, undefined, "nothing marked before the drain");
+  clock.at += 800_000;
+  const released = await finishReview(db, archive.store, (await state.findOne({ _id: doneLocator.hash }))!, at(), 90);
+  assert.deepEqual(released, { outcome: "released", rows: 1 });
+  const object = (await archive.store.stat(nameOf(doneLocator.hash)))!;
+  const expiresAt = (await archivedReceipts(db).findOne({ _id: done.receipt }))!.expires_at as Date;
+  assert.ok(object.recoveryClockStartedAt && !Object.keys(object.holds).length, "on its clock, unheld");
+  assert.ok(+expiresAt <= Date.parse(object.recoveryClockStartedAt!) + 89 * DAY, "the locator expires at least a day before the bucket deletes");
+  assert.ok(+expiresAt >= +doneLocator.captured_at + 7 * DAY, "the extension duplicate fence outlives its 7-day replay window");
+  assert.equal((await state.findOne({ _id: page }))?.queued_at instanceof Date, true, "the evidence page the locator also points at is queued");
+
+  // A re-put of identical bytes during review cancels it; the page's rows stay unmarked.
+  assert.equal((await startReview(db, archive.store, page, "evidence", at(), 90)).outcome, "review_started");
+  await storage.store(db.databaseName, archive.bucket.peek(nameOf(page))!.bytes);
+  clock.at += 800_000;
+  assert.equal((await finishReview(db, archive.store, (await state.findOne({ _id: page }))!, at(), 90)).outcome, "review_cancelled");
+  assert.equal(await db.collection("granot_history_archive_chunks").countDocuments({ hash: page, expires_at: { $exists: true } }), 0);
+
+  // Past its end of life a locator reads as absent; the fence still answers until the TTL removes it.
+  await archivedReceipts(db).updateOne({ _id: done.receipt }, { $set: { expires_at: new Date(Date.now() - 1000) } });
+  assert.equal(await readGranotReceipt(db, done.receipt), null);
+  await db.collection("granot_retention_control").deleteOne({ _id: END_OF_LIFE_CONTROL as never });
 });

@@ -28,7 +28,7 @@
         "type": "Delete"
       },
       "condition": {
-        "daysSinceCustomTime": 30,
+        "daysSinceCustomTime": 90,
         "matchesPrefix": [
           "history/granot/released/vantagemovers/",
           "history/granot/v1/vantagemovers/"
@@ -40,7 +40,7 @@
         "type": "Delete"
       },
       "condition": {
-        "daysSinceCustomTime": 30,
+        "daysSinceCustomTime": 90,
         "matchesPrefix": [
           "history/sales-intelligence/v1/vantagemovers/"
         ]

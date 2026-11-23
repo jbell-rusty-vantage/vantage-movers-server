@@ -186,7 +186,7 @@ async function apply(client, db, m) {
   const matching = policy?.rule?.filter(r => r.action?.type === "Delete" &&
     (!r.condition?.matchesPrefix || r.condition.matchesPrefix.some(p => prefix.startsWith(p) || p.startsWith(prefix))));
   assert.equal(matching?.length, 1, "Ambiguous rollback retention policy");
-  assert.deepEqual(matching[0].condition, { daysSinceCustomTime: 30, matchesPrefix: [prefix] });
+  assert.deepEqual(matching[0].condition, { daysSinceCustomTime: 90, matchesPrefix: [prefix] });
   assert.ok(m.packs.every(p => p.verified));
   const jobs = db.collection("sales_intelligence_jobs");
   for (const p of m.packs) {

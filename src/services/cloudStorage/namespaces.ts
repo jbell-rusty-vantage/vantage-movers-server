@@ -42,7 +42,8 @@ export const CLOUD_STORAGE_NAMESPACES: Record<CloudStorageNamespace, NamespaceDe
   "granot-history": {
     bucket: PRIVATE_BACKUP_BUCKET,
     prefix: "history/granot/v1/",
-    recoveryDays: 30,
+    /** Owner decision 1 (2026-11-23): 90 days, the top of the 60–90 day band, for both older namespaces. */
+    recoveryDays: 90,
     holdKeys: { publisher: "granotPublisherHold", review: "granotReleaseReview" },
     reuse: { mode: "rehold", holder: "publisher", cancels: ["review"] },
     /** 800 s: the server's maximum invocation lifetime, so any publication already in flight has finished. */
@@ -53,7 +54,7 @@ export const CLOUD_STORAGE_NAMESPACES: Record<CloudStorageNamespace, NamespaceDe
   "sales-intelligence-packs": {
     bucket: PRIVATE_BACKUP_BUCKET,
     prefix: "history/sales-intelligence/v1/",
-    recoveryDays: 30,
+    recoveryDays: 90,
     holdKeys: {},
     reuse: { mode: "refuse_released" },
     sealedNames: /\/catalog\.json$/,
