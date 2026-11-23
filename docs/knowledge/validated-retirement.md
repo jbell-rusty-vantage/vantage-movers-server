@@ -82,6 +82,18 @@ A failure at any step changes nothing in MongoDB. A record whose effect is not f
   - Proven routine jobs become receipts that leave at the end of their replay window (3 days; captures 7). Held and ordinary rows are not written.
 - **Lookup.** `pnpm outreach:job-retirement lookup --target=vantagemovers --id=<job>` restores a job byte for byte.
 - **Proof.** `ops/sales-outreach/job-retirement.replica.ts` (local replica, fake bucket). Production dry run on 2026-11-22: 221,388 completed full rows; 103,677 proven and retirable (90.1 MB logical), 117,711 ordinary, 0 held.
+- **Live since 2026-11-23 01:09 New York** ([release record](../operations/SI-VALIDATED-RETIREMENT-RELEASE-2026-11-23.md)). The first supervised run proved and archived 1,000 jobs (843 retired, 157 kept, 0 held; 8.3× compression), and a lookup restored a retired job from GCS. The first attempt found a Cloud Storage multipart-upload defect, fixed in #266: an archive that cannot be written changes nothing.
+
+## Owner decisions (2026-11-23)
+
+The [release record](../operations/SI-VALIDATED-RETIREMENT-RELEASE-2026-11-23.md#owner-decisions-for-next-session-2026-11-23-about-0055-new-york) lists them in full.
+- **Approved to implement:**
+  - 90 days for every namespace;
+  - Granot end of life: clock at retirement, locators expire, the extension fence stays compact;
+  - `ringcentral_webhook_events` 1 day hot;
+  - drop `csi_job_due` on or after Nov 29.
+- **Approved to propose with evidence:** `daily_operations_events`, Sheet Sync logs and jobs, Granot booking webhooks, `entity_changes` with `domain_command_executions`, and relaxing the Granot reference holds.
+- **Compaction:** after the Sales Intelligence backlog drains, batched.
 
 ## Where every service stands (2026-11-22)
 

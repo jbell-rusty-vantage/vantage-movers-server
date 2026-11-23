@@ -1,7 +1,9 @@
 {
   "rule": [
     {
-      "action": { "type": "Delete" },
+      "action": {
+        "type": "Delete"
+      },
       "condition": {
         "age": 8,
         "matchesPrefix": [
@@ -11,11 +13,47 @@
       }
     },
     {
-      "action": { "type": "Delete" },
+      "action": {
+        "type": "Delete"
+      },
       "condition": {
         "age": 29,
         "matchesPrefix": [
           "backups/mongodb/vantagemovers/weekly/"
+        ]
+      }
+    },
+    {
+      "action": {
+        "type": "Delete"
+      },
+      "condition": {
+        "daysSinceCustomTime": 30,
+        "matchesPrefix": [
+          "history/granot/released/vantagemovers/",
+          "history/granot/v1/vantagemovers/"
+        ]
+      }
+    },
+    {
+      "action": {
+        "type": "Delete"
+      },
+      "condition": {
+        "daysSinceCustomTime": 30,
+        "matchesPrefix": [
+          "history/sales-intelligence/v1/vantagemovers/"
+        ]
+      }
+    },
+    {
+      "action": {
+        "type": "Delete"
+      },
+      "condition": {
+        "daysSinceCustomTime": 90,
+        "matchesPrefix": [
+          "history/sales-intelligence/v2/vantagemovers/"
         ]
       }
     }

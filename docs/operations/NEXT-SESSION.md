@@ -2,11 +2,14 @@
 
 ## Start here — next session (Owner, November 22)
 
+**November 23 close (01:10 New York): Sales Intelligence validated retirement is ON and draining the backlog.** [Release record and Owner decisions](SI-VALIDATED-RETIREMENT-RELEASE-2026-11-23.md). The Owner's eight decisions there set this session's scope.
+
 **Next session: review and optimize every service against [validated retirement](../knowledge/validated-retirement.md).** Owner directive, November 22: records that grow with operation volume (receipts, observations, job rows, events, attempts) leave MongoDB only after the system proves they were used for their purpose and their lifecycle effect exists, with a verified GCS copy kept 60–90 days and restorable by original ID. Start from the [audit](VALIDATED-RETIREMENT-AUDIT-2026-11-22.md) and its order:
-1. Confirm Sales Intelligence job retirement in production (`pnpm outreach:job-retirement status`): lag near zero, 0 unexpected holds, the cursor through the backlog.
-2. `ringcentral_webhook_events`: the largest unvalidated TTL (13.6–19.5 MB/day).
-3. One Owner decision for every namespace: move the 30-day namespaces to 60–90 days, give Granot objects and locators an end of life, mirror the live bucket rules into the repo, and run the real-bucket contract proof.
-4. Granot follow-ups (Nov 26 rerun, decision 2, booking webhooks), Sheet attempts and runs, `daily_operations_events` (needs the Owner to revisit Nov 19), `sheet_sync_jobs`, then `entity_changes` and `domain_command_executions`.
+1. Confirm Sales Intelligence job retirement in production (`pnpm outreach:job-retirement status`): lag near zero, 0 unexpected holds, the cursor through the backlog. Then drop `csi_job_due` on or after Nov 29, and compact (batched).
+2. Move Granot and the Nov 19 packs to 90 days, and give Granot objects and locators an end of life (Owner decisions 1–2).
+3. `ringcentral_webhook_events`: proven receipts 1 day hot, then GCS (Owner decision 5).
+4. Run the real-bucket contract proof of the Cloud Storage module. Only the multipart smoke has run (Nov 23).
+5. Proposals for the Owner: Granot follow-ups (Nov 26 rerun, decision 2, booking webhooks), Sheet attempts and runs, `daily_operations_events` (decision 3), `sheet_sync_jobs`, then `entity_changes` and `domain_command_executions`.
 
 ## Start here — next session (Owner, November 20)
 
