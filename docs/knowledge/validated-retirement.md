@@ -78,7 +78,7 @@ A failure at any step changes nothing in MongoDB. A record whose effect is not f
 - **Run.** In completion order after a 5-minute settle, batches of 500 by the `csi_job_completed_ttl` index (no blocking sort; rows sharing one completion instant never split across batches):
   - `evidence.ts` proves each job's effect: evaluation → `sales_outreach_projections.publication_revision`; rep-day → `sales_outreach_rep_day_projections`; call contact change → its contact event and `call_interactions.projection_revision`; Estimates Lead change → a later evaluated projection of the same Lead's subject; capture → every touched call at its revision.
   - `pack.ts` packs the raw BSON; the worker writes it under `history/sales-intelligence/v2/<db>/<day>/<sha256>.bson.gz` with its 90-day clock started, and checks the read-back.
-  - `sales_intelligence_job_archive_packs` gets one catalog row (TTL 90 days).
+  - `sales_intelligence_job_archive_packs` gets one catalog row (TTL 89 days, one day before GCS deletes the pack).
   - Proven routine jobs become receipts that leave at the end of their replay window (3 days; captures 7). Held and ordinary rows are not written.
 - **Lookup.** `pnpm outreach:job-retirement lookup --target=vantagemovers --id=<job>` restores a job byte for byte.
 - **Proof.** `ops/sales-outreach/job-retirement.replica.ts` (local replica, fake bucket). Production dry run on 2026-11-22: 221,388 completed full rows; 103,677 proven and retirable (90.1 MB logical), 117,711 ordinary, 0 held.
