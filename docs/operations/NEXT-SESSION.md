@@ -1,5 +1,13 @@
 # Resume the server optimization sprint from main
 
+## Start here — next session (Owner, November 22)
+
+**Next session: review and optimize every service against [validated retirement](../knowledge/validated-retirement.md).** Owner directive, November 22: records that grow with operation volume (receipts, observations, job rows, events, attempts) leave MongoDB only after the system proves they were used for their purpose and their lifecycle effect exists, with a verified GCS copy kept 60–90 days and restorable by original ID. Start from the [audit](VALIDATED-RETIREMENT-AUDIT-2026-11-22.md) and its order:
+1. Confirm Sales Intelligence job retirement in production (`pnpm outreach:job-retirement status`): lag near zero, 0 unexpected holds, the cursor through the backlog.
+2. `ringcentral_webhook_events`: the largest unvalidated TTL (13.6–19.5 MB/day).
+3. One Owner decision for every namespace: move the 30-day namespaces to 60–90 days, give Granot objects and locators an end of life, mirror the live bucket rules into the repo, and run the real-bucket contract proof.
+4. Granot follow-ups (Nov 26 rerun, decision 2, booking webhooks), Sheet attempts and runs, `daily_operations_events` (needs the Owner to revisit Nov 19), `sheet_sync_jobs`, then `entity_changes` and `domain_command_executions`.
+
 ## Start here — next session (Owner, November 20)
 
 **Next session: start with [the Sales Intelligence job volume brief](SI-JOBS-VOLUME-BRIEF-2026-11-22.md).** It is the largest daily inflow, about 21,900 jobs and 15.5 MB per day, mostly 14-day `outreach_evaluate` and `capture_projection` jobs.

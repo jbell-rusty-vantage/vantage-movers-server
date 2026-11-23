@@ -15,6 +15,7 @@ import {
 import { CsiError } from "./auth";
 import { finishedExecutionFields, routineJobExpiry, routineJobSubjectMatches } from "./routineJobExpiry";
 import { assertIndexes, payloadHash } from "./transactions";
+import { jobRetirementEnabled } from "./retirement/control";
 export type JobInput = {
   dedupe_key: string;
   stage: CsiJobStage;
@@ -111,8 +112,8 @@ type CompletedJobIdentity = {
 };
 /**
  * The routine three-day purge instant for a job completing with `result`, or undefined for the ordinary window.
- * The completion transaction and the `ops/sales-outreach/routine-expiry-backlog.ts` operator share it, so a backlog
- * row qualifies exactly when the same row would qualify at completion today.
+ * The completion transaction and validated retirement (`retirement/evidence.ts`) share it, so a retired row
+ * qualifies exactly when the same row would qualify at completion today.
  */
 export function routinePurgeAt(row: CompletedJobIdentity, result: unknown, completedAt: Date) {
   const refs = row.input_refs.map(String);
@@ -305,6 +306,8 @@ export async function completeCsiJob<T>(
   mutation: (session: ClientSession) => Promise<T>,
   options: { result?: unknown; resultFrom?: (value: T) => unknown } = {},
 ) {
+  // Validated retirement on: keep the full row; the retirement worker proves, archives and then compacts it.
+  const keepFull = await jobRetirementEnabled(getSalesIntelligenceJobModel().db?.db);
   return withTransaction(async (session) => {
     const Model = getSalesIntelligenceJobModel();
     const held = await Model.findOne(fence(lease)).session(session);
@@ -312,7 +315,7 @@ export async function completeCsiJob<T>(
     const result = await mutation(session);
     const stored = options.resultFrom ? options.resultFrom(result) : options.result;
     const completed_at = new Date();
-    const routine_purge_at = routinePurgeAt(held, stored, completed_at);
+    const routine_purge_at = keepFull ? undefined : routinePurgeAt(held, stored, completed_at);
     // A job that never failed compacts to a receipt. A routine job that succeeded after a retry keeps its full
     // row (its failure reason is evidence) but still leaves on the routine three-day purge, not the 14-day TTL.
     if (routine_purge_at && held.reason == null) {

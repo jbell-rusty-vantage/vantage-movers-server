@@ -67,6 +67,10 @@
       "schedule": "*/2 * * * *"
     },
     {
+      "path": "/api/cron/sales-intelligence-job-retirement",
+      "schedule": "1-59/2 * * * *"
+    },
+    {
       "path": "/api/cron/ringcentral-call-log-sync",
       "schedule": "*/30 * * * *"
     },

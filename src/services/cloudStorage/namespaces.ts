@@ -17,7 +17,7 @@ import { createObjectStore } from "./objectStore";
  */
 export const CLOUD_STORAGE_CONTROL_COLLECTION = "cloud_storage_control";
 
-export type CloudStorageNamespace = "granot-history" | "sales-intelligence-packs";
+export type CloudStorageNamespace = "granot-history" | "sales-intelligence-packs" | "sales-intelligence-retirement";
 
 type NamespaceDefinition = {
   bucket: string;
@@ -56,6 +56,19 @@ export const CLOUD_STORAGE_NAMESPACES: Record<CloudStorageNamespace, NamespaceDe
     holdKeys: {},
     reuse: { mode: "refuse_released" },
     sealedNames: /\/catalog\.json$/,
+    timeouts: { readMs: 30_000, writeMs: 60_000 },
+  },
+  /**
+   * Validated retirement of completed Sales Intelligence jobs (docs/knowledge/validated-retirement.md). Every pack is a
+   * disposable copy whose recovery clock starts at creation, so the bucket deletes it 90 days later.
+   */
+  "sales-intelligence-retirement": {
+    bucket: PRIVATE_BACKUP_BUCKET,
+    prefix: "history/sales-intelligence/v2/",
+    recoveryDays: 90,
+    holdKeys: {},
+    reuse: { mode: "refuse_released" },
+    sealedNames: /\/\d{4}-\d{2}-\d{2}\/[a-f0-9]{64}\.bson\.gz$/,
     timeouts: { readMs: 30_000, writeMs: 60_000 },
   },
 };
@@ -153,6 +166,15 @@ export function salesIntelligencePackObjectName(prefix: string, database: string
     throw new CloudStorageError("invalid_name", "Invalid pack address");
   }
   return `${prefix}${database}/${run}/${file}`;
+}
+
+/** Retirement pack address: `history/sales-intelligence/v2/<database>/<YYYY-MM-DD>/<sha256>.bson.gz` (content-addressed). */
+export function salesIntelligenceRetirementObjectName(prefix: string, database: string, day: string, hash: string) {
+  if (database !== "vantagemovers" && !/^testvantagemovers(?:_[a-z0-9]+)?$/.test(database)) {
+    throw new CloudStorageError("invalid_name", "Invalid pack database");
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !HASH.test(hash)) throw new CloudStorageError("invalid_name", "Invalid pack address");
+  return `${prefix}${database}/${day}/${hash}.bson.gz`;
 }
 
 /**

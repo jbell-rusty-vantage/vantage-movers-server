@@ -1,0 +1,143 @@
+# Validated retirement audit — vantage-main-server (2026-11-22)
+
+**Use.** This is the baseline for next session's review and optimization of every service against [validated retirement](../knowledge/validated-retirement.md). It describes `main` before the validated-retirement PR: the `sales_intelligence_jobs` row is its pre-PR state, and that collection is now the reference implementation.
+
+Read-only audit of `main` at `927c1c1a` (PR #263). No database, GCS or deploy access was used; every growth figure is cited from an existing evidence file. Paths are relative to `vantage-main-server/` unless they start with the workspace root (`../`).
+
+**The Owner's target pattern ("validated retirement").** A fast-growing operational row leaves MongoDB only when (1) a check proves it did its job and its lifecycle effect exists in the owning business record, (2) it was packed to GCS with a create-only write, a pinned-generation read-back and a SHA-256 check, (3) it is catalogued, and (4) it can be read back for validation. GCS keeps it 60–90 days through a bucket lifecycle rule.
+
+**Short answer.** Only Granot (receipts, Observations/Decisions, scheduled runs) does all four steps, and it misses the fifth: its objects never start a GCS clock, so they are kept forever, and their locators stay in MongoDB forever. Sales Intelligence jobs check "used" at completion but delete by TTL without an archive. Every other upgraded service deletes by plain TTL, or never deletes. Both GCS namespaces use a **30-day** recovery window, not 60–90.
+
+Status words: **implemented** = code on `main`; **tested** = offline or replica tests exist; **deployed** = serving in production per a release record; **planned** = only in a doc.
+
+---
+
+## 1. Per-collection table
+
+Growth sources:
+- **[G20]** `../storage-net-growth-2026-11-20/evidence/model-2026-11-20.json`, Nov 20. It gives intake for the last 1 day and the 7-day average, by ObjectId creation time. The 7-day figure includes the Nov 14–16 one-off backfill (SI brief).
+- **[D18]** `docs/operations/DAILY-COMMANDS-MASTER-SHEETS-RELEASE-2026-11-19.md:11-17`, the business day of Nov 18.
+- **[O18]** `docs/operations/OUTREACH-NUMBERS-RELEASE-2026-11-19.md:31-35`.
+- **[SI21]** `docs/operations/SI-JOBS-VOLUME-BRIEF-2026-11-22.md`, the last 48 hours as of Nov 21.
+
+"Live" is logical BSON and "alloc" is allocated data, both from [G20].
+
+### 1a. Granot — the closest existing implementation
+
+| Collection | Owner / Service doc | What a row is | Producer and growth | Current retention | Validated against a lifecycle effect? | GCS archive | Lookup | Mongo readers and windows | Verdict and gap |
+|---|---|---|---|---|---|---|---|---|---|
+| `granot_webhook_receipts` | Granot lifecycle. `docs/knowledge/granot-lifecycle/storage-retention-operations.md`, `capture.md` | One delivery: an inbound webhook, a browser-extension operation or a legacy HTTP action. | Capture (`granotLifecycle/capture.ts`). 13,044 docs, 30.0 MB live; intake 0.024 MB on the last day, 4.28 MB/day over 7 days [G20]. Release run (Nov 21): 13,070 → 7,013 docs (`GRANOT-RETIRE-ON-USE-RELEASE-2026-11-21.md:28-31`). | **Retire on use.** Cron every 2 min (`vercel.json:66-67`, `routes/granot-retention-cron.routes.ts:18`), 32 receipts per tick. The TTL `granot_retention_purge_v1` was dropped on Nov 21. | **Yes.** `usedReason` (`src/services/granotHistory/retireOnUse.ts:185-189`):<br>• webhook (`:86-112`): Daily Ops day counted with `webhook_counts_version:1`, Observation present, one live Decision, and the Lead effect committed on `form_leads`/`call_leads` or a policy-final source check;<br>• channel operation (`:145-182`): live Decision, Observation identity, replay agrees, Lead effect committed, and (HTTP only) the exact row is in a verified closed-run replay.<br>The transaction re-checks the proof (`:262`). | **Yes.** Through `cloudStorage` (`archiveObjects.ts:34-50`). Gzip BSON, content-addressed `history/granot/v1/vantagemovers/<hh>/<sha256>.bson.gz`. Create-only put with pinned read-back (`cloudStorage/objectStore.ts:173-199`). The restored bytes are byte-compared before the Mongo transaction (`retireOnUse.ts:253-256`). | **Yes.** `readGranotReceipt`/`readRetiredReceipt` (`retiredRecords.ts:43,71`) and `ops/granot-read-archived-evidence.ts`. | Drainer, requeue, case evidence, Pool admission and the timeline all fall back hot → locator → GCS (reader inventory, `storage-retention-operations.md:65-82`). Closed-run preparation, the processing path and the Daily Ops rebuild read hot only, and they run before retirement. | **Adopted** for `lead_created`/`priority_updated` webhooks and `lead_snapshot_apply` operations.<br>**Partial** elsewhere:<br>• booking routes and other operation kinds never retire (`PERMANENT_HOLDS`, `retireOnUse.ts:39`; Owner decision 1);<br>• **GCS objects are written with no hold and no `customTime`, so the lifecycle never deletes them.** Expiry happens only after a manual `ops/granot-release-archive-generation.ts` review, and the window is 30 d, not 60–90;<br>• locators are permanent (below).<br>Deployed Nov 21 (#257). Tested on replica (`retireOnUse.replica.test.ts`) and on the fake bucket. The real-bucket proof has not run (`cloud-storage.md:58`). |
+| `granot_observations`, `synchronization_decisions` | Granot lifecycle. `capture.md#retirement-of-lead-observations-and-decisions` | A normalized snapshot, and the decision taken on it. | Live 6.9 MB / 31 MB alloc (Observations) and 8.0 MB (Decisions); intake about 0.26 MB/day and 0.38 MB/day on the last day [G20]. | Lead evidence pass, one page of 192 per tick (`retireLeadEvidence.ts:175`). TTL dropped on Nov 21. | **Yes.** The receipt has a locator, the chain is not referenced (`referencedChains`, `retentionReferences.ts:81`, run inside `releasable` `retireLeadEvidence.ts:156`) and is not the current winner. A transactional `deleteMany` follows (`:238`, `:313`). | **Yes.** An evidence page of at most 7 MiB with `evidence_ids`, through `cloudStorage`. | `readGranotObservation`/`readGranotDecision` (`retiredRecords.ts:77,83`); `readEvidenceIds` (`evidencePage.ts:85`). | References hold rows hot: `form_leads.last_accepted_granot_observation` 5,411, outreach subjects 1,619, pool work 905, call leads 498 (`GRANOT-RETIRE-ON-USE-RELEASE…:39-44`). | **Adopted, but blocked by holds.** 5,755 chains are held. Owner decision 2 (relax the holds after a reader review) is planned, not implemented. **Gap:** direct scheduled Observations and Decisions have no receipt, so no path retires them (`storage-retention-operations.md:259`). Same GCS-forever gap as above. |
+| `granot_automation_runs` | Granot HTTP collector. `storage-retention-operations.md#scheduled-run-closure-and-recovery` | One scheduled Estimates/ALL/Pool run with its action results. | Scheduled slots. 2.225 GB before archival (Nov 18). 0 docs at the Nov 19 baseline; the post-cutover daily rate is unmeasured. | Archive on completion (`scheduledRunArchive.ts:90,131`). The TTL `granot_run_retention_ttl` (`models/GranotAutomationRun.ts:71-77`) is inert: new runs store `purge_at: null`. | **Yes.** Each action, sealed checksum, committed result, payload hash and downstream refresh marker is compared with the plan and operation namespace (`scheduledRunArchive.ts:43,80`). The transaction inserts a closed-run row and a coverage window, then deletes the run (`:103-121`). | **Yes.** The original run BSON and its replay object, through `cloudStorage`. | `readArchivedScheduledRun` (`:24`); `ops/granot-read-archived-evidence.ts --run`. | The closed-run row fences duplicate creation; it is permanent. | **Adopted.** Deployed Nov 19 (`7c5a0490`): 992 runs, 0 holds. Gaps: GCS forever; the inert TTL index could be dropped. |
+| `granot_archived_receipts`, `granot_history_archive_chunks`, `granot_closed_automation_runs` | Granot history | Locators and catalogs: `hash` + `generation` plus a replay or identity summary. About 780 B per receipt locator. | Archived receipts 6.4 MB live; 0.056 MB on the last day, 0.92 MB/day over 7 days (backlog) [G20]. Chunks 15.7 MB and closed runs 1.7 MB; growth unmeasured (non-ObjectId `_id`). | **None.** No TTL (`storage-retention-operations.md:168,218,238`). | n/a (these are the catalog) | n/a | They are the lookup. | `readRetiredOperation` (`retiredRecords.ts:127`) uses the locator's unique operation key as the **duplicate-delivery fence** for extension operations. | **Partial.** The catalog grows forever. An end of life would need an Owner decision on how long original-ID read-back and the duplicate fence must outlive the body. Today it is "forever". |
+| `granot_completed_estimate_windows`, `granot_estimates_schedule_slots` | Granot HTTP collector | Coverage and slot rows. | 2,776 rows / 1.55 MB; 270 rows / 1.0 MB [G20]. | TTL on `purge_at` (`ops/granot-retention-install.ts:16`; `models/GranotEstimatesScheduleSlot.ts:19`, 8 days). | n/a | none | n/a | Freshness and recovery | **Not applicable.** Small, self-bounded coverage state. |
+
+### 1b. Queue and job exhaust
+
+| Collection | Owner / Service doc | What a row is | Producer and growth | Current retention | Validated? | GCS | Lookup | Readers and windows | Verdict and gap |
+|---|---|---|---|---|---|---|---|---|---|
+| `sales_intelligence_jobs` *(being built separately; current state only)* | Sales Intelligence foundation / Outreach. `docs/knowledge/services/sales-intelligence-foundation.md:63-93`, `sales-outreach-desk.md:596-597` | One durable job: evaluate, contact change, capture projection, Lead change, rep-day, Lead link, Call Log refresh, SMS sync. | About **21,900 jobs/day and 15.5 MB/day** [SI21]. 307,879 docs, 223.5 MB live, filling toward its 14-day TTL [G20]. | TTL `csi_job_completed_ttl` 14 d on `completed_at`, and `csi_job_routine_ttl` on `routine_purge_at` (3 d) (`models/salesIntelligence/infrastructure.ts:28,45-50`). | **Partly, at completion.** The job's effect commits in the same transaction as completion (`salesIntelligence/jobs.ts:291-305`). `routineJobExpiry` (`routineJobExpiry.ts:43-63`) uses strict zod result shapes and producer-key/subject cross-checks (`:66-75`) to put routine results on 3 d and compact them to receipts (`jobs.ts:307-319`). There is no later check that the business projection still reflects the result before the TTL deletes it. | **None for normal completions.** The one-time Nov 19 packs used a **bespoke `googleapis` client** (`ops/sales-outreach/retire-historical-jobs.cjs:29`): create-only insert (`:166`), strict lifecycle `deepEqual` at **30 d** (`:185-189`), `customTime` (`:236`), sealed catalog (`:279-303`). 38.72 MiB, first expiry Dec 19. | One-time packs only: `lookup` mode (`:309`). | Admissions read completed `outreach_lead_change` results for 14 days (`salesOutreach/enrollment/admissions.ts:25`). Dedupe keys must live through their replay windows (SI release "What each reader still needs"). | **Partial.** Validated at completion, then TTL deletes with no archive. The pack writer has not moved to `cloudStorage` (migration item 3, `cloud-storage.md:184`). 30-day lifecycle. |
+| `sheet_sync_jobs` | Sheet Sync. `docs/knowledge/services/sheet-sync.md:264,338-340,360` | Outbox intent: one Lead/Booking/Cancellation projection to the Master Sheets, plus tombstones. | 173 rows and 76,816 B on Nov 18 [D18]. 166,713 docs, 71.2 MB live; intake 1.07 MB on the last day, 2.0 MB/day over 7 days, all **permanent** [G20]. | **None by design.** Field compaction only (`ops/capacity/compact-service-fields.cjs`, Nov 19: 3.61 MB). | No. | none | n/a | Admin retry, Sheet Contains, operator trace and `sheet_sync_attempts.job_id` (`sheet-sync.md:340`). | **Should adopt.** Retire `synced` jobs once the Lead's `sheet_sync[]` metadata (`models/FormLead.ts:115`, `BookedLead.ts:98`) confirms the target row, and no newer job for the entity is pending. Keep a compact tombstone or ID locator for Admin. |
+| `sheet_sync_attempts` | Sheet Sync, same doc `:285-292` | Per-target outcome of one drain: action, status, row and error. | 520 rows and 151,215 B on Nov 18 [D18]. 467,754 docs, 129.3 MB live; 2.18 MB on the last day [G20]. Saturates around Nov 24. | TTL 90 d on `createdAt` (`models/SheetSyncAttempt.ts:41-50`; installed by `ops/lib/disk-trim.ts:57-62`). | No. Deleted by age. | none | none | Admin evidence by `job_id` | **Should adopt.** The TTL deletes without a lifecycle check or an archive. The 90-day hot window is the cost driver. |
+| `sheet_sync_runs` | Sheet Sync `:296-302` | Per-drain summary. | 452 runs on Nov 18. 26.1 MB live; 0.11 MB on the last day [G20]. Saturated. | TTL 90 d on `started_at` (`models/SheetSyncRun.ts:43-52`). | No | none | none | Operator history | **Should adopt (low).** TTL without an archive; small. |
+| `domain_command_executions` | Domain commands. `docs/knowledge/services/domain-commands.md:172` | Idempotency receipt: origin + key, checksum, outcome references. | 244 rows and 332,878 B on Nov 18 [D18]. 168,593 docs, 203.5 MB live / 65 MB alloc; 0.67 MB on the last day [G20]. | **None.** One-time field compaction removed 32.4 MB on Nov 19. | n/a. The Nov 19 decision kept the fence permanent. | none | n/a | Exact replay and changed-checksum rejection for "the lifetime of possible retries". | **Partial** (compaction only). Adoption would need a hot permanent `{origin, key, checksum, outcome refs}` fence plus a verified archive of the full body, which is the option the Nov 19 record rejected. Medium impact, high risk. |
+| `entity_changes` | Domain commands `:205` | Immutable Lead/Booking/Cancellation revision. | 374 rows and 758,733 B on Nov 18 [D18]. 179,070 docs, **226.7 MB live** / 72.5 MB alloc; 0.66 MB on the last day [G20]. | **None.** Kept by explicit decision. | n/a | none | n/a | Outreach tail cursor (2-min overlap), Number Activity lead-link cursor (both in `sales_intelligence_sync_state`), Granot reference checks via `provenance.*`, assignment reconstruction, detailed timeline. | **Should adopt, last.** It is the largest live collection. Retire a revision only when it is superseded, both cursors have passed it, no Granot reference names it, and assignment/timeline readers get a GCS fallback. That fallback needs a reader inventory like Granot's. High risk. |
+
+### 1c. Provider receipts and logs
+
+| Collection | Owner / Service doc | What a row is | Producer and growth | Current retention | Validated? | GCS | Lookup | Readers and windows | Verdict and gap |
+|---|---|---|---|---|---|---|---|---|---|
+| `ringcentral_webhook_events` | Number Activity capture. `docs/knowledge/services/number-activity-capture.md` | Raw RingCentral webhook body plus indexed identities. | 5,162 receipts, 22.6 MiB on Nov 18, before the field trim [O18]. 36,007 docs, **94.9 MB live**; intake **19.5 MB on the last day, 13.6 MB/day over 7 days** [G20]. Saturated. | TTL 7 d on `receivedAt` (`services/ringcentral/webhook-capture.ts:29-34,306`). | **No.** An age-only delete. The code comment (`:25-28`) warns that a `capture_projection` still pending after 7 days loses its body; Call Log sync is the backfill. | none | none | Capture, watermark replay (5-min overlap), debugging (`OUTREACH-NUMBERS…:19`). | **Should adopt — the largest recurring "Should" by intake.** Proof: the `capture_projection` job for the receipt completed (same dedupe key) and `call_interactions` holds the session at that revision or later. Packed pages would cut 7 days of hot storage to about 1 day. |
+| `call_interactions`, `call_interaction_aliases`, `contact_numbers` | Number Activity capture `:233` | Canonical call and its provider aliases. | Interactions 118.6 MB live, 2.54 MB on the last day; aliases 29.7 MB, 0.70 MB [G20]. | Owner policy purge after 730 d (`salesIntelligence/retention.ts:55-60,65`): content is cleared in place and identity kept. Aliases are never deleted. | n/a | none | n/a | Attribution, Numbers, corrections. | **Not applicable.** These are the business record (the lifecycle effect itself), already under the Owner policy. |
+| `sales_intelligence_audit_events` | Sales Intelligence foundation (`infrastructure.ts:104-115`) | Owner/Desk semantic history. | 23,573 docs, 18.8 MB live; 0.03 MB/day [G20]. | TTL 90 d on `happened_at`. | No | none | none | Desk history | **Should adopt (low).** TTL without an archive; negligible bytes. |
+| `sales_outreach_live_events` | Sales Outreach Desk `:564,595` | Invalidation hint carrying IDs and revisions only. | 2.27 MB/day, saturated [G20]. | TTL 1 d (`models/salesOutreach/liveEvents.ts:6,15`). | n/a | none | n/a | SSE stream only | **Not applicable.** Ephemeral hint. |
+| `daily_operations_events` | Daily Operations. `docs/knowledge/services/daily-operations.md:139-143` | One board fact (Lead, Call, Booking, Sheet completion), unique `dedupe_key` (`models/DailyOperationsEvent.ts:139`). | 674 rows and 462,533 B on Nov 18 [D18]. 279,386 docs, **185.9 MB live / 199.9 MB alloc, plus 147 MB of index**. Filling toward its 400-day TTL: **+660 MB allocated by about Dec 2027** [G20]. | TTL 400 d on `createdAt` (`DailyOperationsEvent.ts:150-159`). | **No.** Deleted by age. Nov 19 decision: keep in Mongo, no GCS. The scenario math was 176.4 MiB of events against 16.4 MiB of objects plus 31.9 MiB of hot keys (`DAILY-COMMANDS…:25`). | none | none | The live board reads today and the two days before (`DailyOperationsEvent.ts:146`). Late corrections land on their original day. The unique key fences duplicates; historical board views read old days. | **Should adopt — the highest long-term impact.** Needs the Owner to reverse the Nov 19 decision. Proof: `daily_operations_days.status:"closed"` with a frozen revision (`models/DailyOperationsDay.ts:111-112`), plus a hot dedupe-key fence for late facts. |
+| `daily_operations_read_views` | Daily Operations `:166,186` | Cache, one per scope per day, up to 512 KiB. | 39 docs, 1.6 MB [G20]. Growth unmeasured. | **None.** | n/a | none | n/a | Rebuildable cache | **Not applicable to archiving.** Gap: it needs a TTL, since a cache never needs GCS. |
+| Sales Outreach business collections: `contact_events`, `projections`, `policy_periods`, `rep_day_projections`, `pool_work`, `pool_duties`, `sms_requirement_days`, `sms_volume_contributions`, `refresh_requests`, and `ringcentral_rep_sms_evidence` | Sales Outreach Desk `:554-614` | Desk business state: attribution, cadence and goal history. | Contact events 34.6 MB live. Their 20.2 MB/day of intake against 0.5 MB net growth is delete-and-reinsert churn (`../NET-STORAGE-GOAL-2026-11-20.md:77`). | "Permanent" by design. | n/a | none | n/a | Every re-evaluation | **Not applicable.** These records *are* the lifecycle effects that job retirement proves against. `refresh_requests` grows with every subject ever nominated (`:614`), which is small. The contact-event churn is an oplog cost, not a retirement target. |
+| Throttles and leases: `sheet_sync_quota_buckets`, `lead_message_rate_limits`, `public_submission_throttle_buckets`, `granot_lifecycle_health_state`, RingCentral token store | various | Short-lived control rows | small | TTL | n/a | none | n/a | n/a | **Not applicable.** |
+
+`source_row_receipts` (1.3 MB; 0.25 MB on the last day [G20]) was not reviewed. Its owner and purpose are unclassified here.
+
+---
+
+## 2. Proof each "used for its purpose" check needs
+
+| Collection | Proof that the row did its job (read inside the deleting transaction) |
+|---|---|
+| Granot webhook receipt | Implemented (`retireOnUse.ts:86-112`): `webhook_day_counted` + the `daily_operations_days` row with `webhook_counts_version:1`; Observation by `receipt_id`; a live Decision equal to `processing.latest_decision_id`; then a Lead effect in `form_leads`/`call_leads` (`lead_updated`/`lead_created` effect + Lead exists), or a terminal no-change, or a source policy at `granot_crm_sources.lifecycle_policy_version`. |
+| Granot channel operation | Implemented (`:145-182`): Decision/Observation identity, `replay_result` equals the Decision, the Lead effect, and for HTTP the exact row in `granot_closed_automation_runs` + the GCS replay. |
+| Granot booking webhook / booking operation | Not implemented. Candidate: the booking case closed (`granot_booking_reconciliation_cases` terminal) and the case copies pinned (Owner decision 1). |
+| Observation / Decision | Implemented: the receipt has a locator, `referencedChains` (`retentionReferences.ts:81`) is empty, and it is not the current winner. The Owner's decision 2 would narrow the reference paths. |
+| Scheduled run | Implemented: the plan and operation namespace match; committed results, payload hashes and Outreach refresh markers are present (`scheduledRunArchive.ts:43-80`). |
+| `sales_intelligence_jobs` | At completion: the routine classifier (`routineJobExpiry.ts:43-75`). For deletion (the Nov 19 historical rule): the subject's `sales_outreach_projections` publication revision ≥ the result's revision; for a contact change, the `sales_outreach_contact_events` row at the source revision or later; for a rep-day, `sales_outreach_rep_day_projections` at that revision or later; for a capture, the `call_interactions` revision. Dedupe key past its replay window. |
+| `ringcentral_webhook_events` | The `capture_projection` job for this receipt has completed (or its compact receipt exists), and `call_interactions` for the session has a revision ≥ the receipt's; past the watermark overlap. |
+| `sheet_sync_jobs` | `status:"synced"`; the entity's `sheet_sync[]` entry (`FormLead.ts:115`) records this job's target and row; no newer `pending`/`retrying` job for the same `coalescing_key`. |
+| `sheet_sync_attempts` / `runs` | The parent job is `synced` or terminally `failed`-and-resolved, and nothing in Admin is pending on that `job_id`. |
+| `daily_operations_events` | The day document is `closed` with its frozen revision and snapshot. The event's `dedupe_key` is retained hot (or in a compact key set) for late facts. Its `parent_receipt_id` chain is complete. |
+| `entity_changes` | A later revision exists for the entity. `sales_intelligence_sync_state` scopes `outreach_entity_changes` and `lead_link_entity_changes` are past `(applied_at, _id)`. No `provenance.*` reference from live Granot evidence. Assignment and timeline readers have a fallback. |
+| `domain_command_executions` | The retry window for the origin has ended (needs an Owner-defined bound). The outcome references resolve to live business records. A compact hot fence is retained. |
+
+---
+
+## 3. Building blocks that exist and should be reused
+
+1. **`src/services/cloudStorage/`** (implemented, offline-tested, integrated for Granot only; **the real-bucket proof has not run**):
+   - `put` is create-only with a pinned SHA-256 read-back, and `readVerified` reads pinned and verified (`objectStore.ts:173-199`);
+   - holds, `startRecoveryClock` and `deleteIfGeneration` with reference guards;
+   - `checkRecoveryPolicy` and the release capability (`namespaces.ts:136,169`);
+   - Mongo runtime config `cloud_storage_control.recovery_days` (`namespaces.ts:94-98`);
+   - fake bucket plus `contractSuite.ts`.
+   - New namespaces are added in `CLOUD_STORAGE_NAMESPACES` (`namespaces.ts:39-61`).
+2. **The `retireReceipt` transaction shape** (`retireOnUse.ts:235-271`):
+   - read raw BSON, strip the review bookkeeping, gzip;
+   - content-addressed put, then restore and byte-compare;
+   - snapshot transaction (majority write concern) that re-reads the raw bytes and the proof, inserts the locator, deletes, and asserts `deletedCount === 1`.
+   - It is safe to interrupt anywhere.
+3. **Review-queue mechanics:**
+   - a sparse `retention_review_at` index scanned from `enabled_from`;
+   - a 30-minute claim, a reason code in `retention_reason`, re-review the next day;
+   - `PERMANENT_HOLDS` (`retireOnUse.ts:39`) to drop rows that can never qualify;
+   - an Owner switch in a control document (`granot_retention_control receipts-on-use-v1`), plus `--install`/`--enable`/`--disable` (`ops/granot-retention-install.ts`).
+4. **Backlog operator pattern:** `ops/granot-retire-used-receipts.ts`. The dry run is the default and makes no GCS call. `--apply --limit N`. It reports bytes out, locator bytes in, and holds by reason. Trap: `--limit` counts receipts examined, not receipts retired.
+5. **Packing for high-count small rows.** Per-row objects do not fit Sheet attempts, RingCentral receipts or Daily Ops events. Reuse either:
+   - the Granot evidence page (≤ 7 MiB, `evidence_ids` index, `evidencePage.ts:85`); or
+   - the SI packs plus a sealed range catalog (no per-row locator in Mongo; `retire-historical-jobs.cjs:279-309`).
+   The catalog form is the one that actually shrinks Mongo when the lookup can be offline-only.
+6. **Hot → locator → GCS read fallback** (`retiredRecords.ts:43-146`) and the reader-inventory doc format (`storage-retention-operations.md:65-82`). Every adopting service needs the same inventory.
+7. **Reference check** `referencedChains` (`retentionReferences.ts:81`) and `archiveObjectReferenced` (`archiveReferences.ts:9`), as the model for "no live business record still points at this row".
+8. **Result classifiers with strict zod shapes** (`routineJobExpiry.ts`), for proving "used" from a stored result.
+9. **Measurement:** `../storage-net-growth-2026-11-20/measure-net-growth.cjs` + `ledger.cjs`, and `ops/lib/disk-trim.ts` (TTL planners).
+10. **Coarse fallback only:** the daily mongodump to the same bucket, with 8-day daily and 29-day weekly lifecycles (`ops/cloud/mongodb-backup/lifecycle.json`). It is not a per-record lookup.
+
+**Cross-cutting gaps:**
+- **Recovery is 30 d everywhere:**
+  - `namespaces.ts:44,55`;
+  - the live bucket rules;
+  - the strict assert at `retire-historical-jobs.cjs:189`.
+  Moving to 60–90 days needs an Owner-approved bucket rule change, `cloud_storage_control.recovery_days`, and an update to that assert.
+- **Granot objects never start their clock automatically.** Retired data stays in GCS indefinitely, and its locators stay in Mongo.
+- **Repo drift:** `ops/cloud/mongodb-backup/lifecycle.json` lists only the backup rules. The Granot and SI `daysSinceCustomTime` rules exist only on the live bucket.
+- **Unmigrated clients:** the SI pack writer, the release script and the `ops/` readers still build their own clients.
+
+---
+
+## 4. Prioritized order for next session (storage impact × risk)
+
+1. **`sales_intelligence_jobs`** (already in hand). About 15.5 MB/day intake; steady state about 165 MB. Add the archive step through a new `cloudStorage` namespace, and migrate `retire-historical-jobs.cjs` onto it.
+2. **`ringcentral_webhook_events`.** 13.6–19.5 MB/day intake and 95 MB live. Today it is an unvalidated 7-day TTL with a known lost-body edge case. Proof is cheap (job completed + interaction revision) and the readers are few. **High impact, low-to-medium risk.**
+3. **Platform settings, one Owner decision.** Recovery days 30 → 60–90 for both namespaces. Decide an end of life for Granot GCS objects and locators: an automatic clock N days after the locator, or keep forever. Fix the `lifecycle.json` drift. Run the real-bucket contract proof. **Low risk; it unblocks every later service.**
+4. **Granot follow-ups already planned:**
+   - Nov 26 backlog rerun (6,959 held receipts) and compaction;
+   - decision 2, relaxing the holds on 5,755 Observation/Decision chains;
+   - booking webhooks once cases close;
+   - drop the inert `granot_run_retention_ttl`.
+   **Medium impact, medium risk.**
+5. **`sheet_sync_attempts` + `sheet_sync_runs`.** 155 MB live, hot for 90 days, no check. Retire after the parent job is `synced`, packed with a catalog; keep a short hot window for Admin. **Medium impact, low risk.**
+6. **`daily_operations_events`.** The largest future growth (+660 MB) plus 147 MB of index. Requires reversing the Owner's Nov 19 "keep in Mongo" decision. Closed-day packs plus a hot dedupe-key fence. **High impact, medium risk** (late corrections, historical board).
+7. **`sheet_sync_jobs`.** About 1–2 MB/day, permanent. Retire synced jobs to a tombstone or locator. **Low-to-medium impact, medium risk** (Admin retry and Sheet Contains).
+8. **`entity_changes` / `domain_command_executions`.** About 430 MB live combined, about 1.3 MB/day. Multiple readers and a permanent idempotency fence. Needs a full reader inventory first. **High one-time impact, high risk.** Last.
+9. **Housekeeping:**
+   - a TTL for `daily_operations_read_views`;
+   - archive-before-TTL for `sales_intelligence_audit_events`, which is optional and negligible.
+
+**Not applicable:** the Sales Outreach business collections, `call_interactions` and its aliases (the business record), live events, coverage, slot and throttle rows.
