@@ -106,7 +106,9 @@ export async function retireCompletedJobs(db: Db, options: {
   const run = empty("ran");
   let cursor: Cursor | null = control.cursor ?? null;
   try {
-    const opened = options.store ? null : await openObjectStore(db, "sales-intelligence-retirement");
+    // Every run re-checks, read-only, that exactly one bucket rule deletes this prefix after the configured recovery days;
+    // a changed rule or override stops the run before anything is compacted (the catalog expiry assumes that rule).
+    const opened = options.store ? null : await openObjectStore(db, "sales-intelligence-retirement", { capability: "release" });
     const store = options.store ?? opened!.store;
     const recoveryDays = opened?.config.recoveryDays ?? RETIREMENT_ARCHIVE_DAYS;
     const packs = db.collection(ARCHIVE_PACKS_COLLECTION);
