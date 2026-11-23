@@ -69,6 +69,8 @@ const adminQueryBase = {
   cancelled: booleanInput.optional(),
   no_sync: booleanInput.optional(),
   leadless: booleanInput.optional(),
+  referral: booleanInput.optional(),
+  include_totals: booleanInput.optional(),
   pickup_city: optionalTrimmedString,
   pickup_state: optionalTrimmedString,
   pickup_zip: optionalTrimmedString,

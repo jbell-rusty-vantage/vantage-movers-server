@@ -33,6 +33,7 @@ const originalCallLeadCount = CallLead.countDocuments as unknown;
 const originalAgentFind = Agent.find as unknown;
 const originalMerchantFind = Merchant.find as unknown;
 const originalBookedLeadFind = BookedLead.find as unknown;
+const originalBookedLeadAggregate = BookedLead.aggregate as unknown;
 const originalBookedLeadCount = BookedLead.countDocuments as unknown;
 const SourceCompany = getLeadSourceCompanyModel();
 const SourceGranularity = getLeadSourceGranularityModel();
@@ -47,6 +48,7 @@ afterEach(() => {
   (CallLead as unknown as MutableModel).countDocuments = originalCallLeadCount;
   (Agent as unknown as MutableModel).find = originalAgentFind;
   (Merchant as unknown as MutableModel).find = originalMerchantFind;
+  (BookedLead as unknown as MutableModel).aggregate = originalBookedLeadAggregate;
   (BookedLead as unknown as MutableModel).find = originalBookedLeadFind;
   (BookedLead as unknown as MutableModel).countDocuments =
     originalBookedLeadCount;
@@ -145,6 +147,22 @@ test("admin booked lead browse filters leadless bookings", async () => {
   const filterPreview = inspect(capture.filter, { depth: null });
   assert.match(filterPreview, /is_leadless_booking/);
   assert.match(filterPreview, /true/);
+});
+
+test("booking summary counts and sums the full filtered list before pagination", async () => {
+  const capture: QueryCapture = { populated: [] };
+  stubFind(BookedLead, capture, [{ deposit_amount: 1 }]);
+  const totals = { count: 4, total_binder_amount: 921.25, total_deposit_amount: 190, cancelled_count: 1 };
+  (BookedLead as unknown as MutableModel).aggregate = (pipeline: { $match?: unknown }[]) => {
+    assert.deepEqual(pipeline[0].$match, capture.filter);
+    return { exec: async () => [totals] };
+  };
+  const query = adminBrowseQuerySchema.parse({ referral: true, limit: 1, include_totals: true });
+  const result = await browseAdminResource("booked-leads", query);
+  assert.deepEqual(capture.filter, { is_referral_booking: true });
+  assert.deepEqual(result.totals, totals);
+  assert.equal(result.total, 4);
+  assert.equal(result.has_next_page, true);
 });
 
 test("admin call lead browse Manual attach filters (name/email/phone without q) include snapshot paths", async () => {

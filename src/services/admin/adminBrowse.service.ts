@@ -19,7 +19,15 @@ import {
 type AdminRecord = Record<string, unknown>;
 type AdminFilter = QueryFilter<AdminRecord>;
 
+type BookingTotals = {
+  count: number;
+  total_binder_amount: number;
+  total_deposit_amount: number;
+  cancelled_count: number;
+};
+
 export type AdminBrowseResult = {
+  totals?: BookingTotals;
   items: AdminRecord[];
   page: number;
   limit: number;
@@ -189,17 +197,38 @@ export async function browseAdminResource(
   const sort = { [sortField]: query.direction === "asc" ? 1 : -1 } as Record<string, 1 | -1>;
   const skip = (query.page - 1) * query.limit;
   const findQuery = applyPopulate(model.find(filter).sort(sort).skip(skip).limit(query.limit), config);
-  const [docs, total] = await Promise.all([
+  const summary = async (): Promise<{ total: number; totals?: BookingTotals }> => {
+    if (resource !== "booked-leads" || !query.include_totals) {
+      return { total: await model.countDocuments(filter).exec() };
+    }
+    const [totals = { count: 0, total_binder_amount: 0, total_deposit_amount: 0, cancelled_count: 0 }] =
+      await model.aggregate<BookingTotals>([
+        { $match: filter },
+        { $group: {
+          _id: null,
+          count: { $sum: 1 },
+          total_binder_amount: { $sum: "$total_binder_amount" },
+          total_deposit_amount: { $sum: "$deposit_amount" },
+          cancelled_count: { $sum: { $cond: [{ $ifNull: ["$cancelled", false] }, 1, 0] } },
+        } },
+        { $project: { _id: 0, count: 1, cancelled_count: 1,
+          total_binder_amount: { $round: ["$total_binder_amount", 2] },
+          total_deposit_amount: { $round: ["$total_deposit_amount", 2] },
+        } },
+      ]).exec();
+    return { total: totals.count, totals };
+  };
+  const [docs, counts] = await Promise.all([
     findQuery.lean().exec(),
-    model.countDocuments(filter).exec(),
+    summary(),
   ]);
   const items = (docs as Record<string, unknown>[]).map(normalizeDoc);
   return {
     items: resource === "form-leads" ? await enrichFormLeadItems(items, false) : items,
     page: query.page,
     limit: query.limit,
-    total,
-    has_next_page: skip + docs.length < total,
+    ...counts,
+    has_next_page: skip + docs.length < counts.total,
   };
 }
 
@@ -265,7 +294,9 @@ function applyResourceFilter(
   if (resource === "booked-leads") {
     return mergeFilters(
       mergeFilters(filter, bookingSourceFilterClause(query)),
-      leadlessBookingFilterClause(query),
+      mergeFilters(leadlessBookingFilterClause(query), query.referral === undefined ? {} : {
+        is_referral_booking: query.referral ? true : { $ne: true },
+      }),
     );
   }
 
