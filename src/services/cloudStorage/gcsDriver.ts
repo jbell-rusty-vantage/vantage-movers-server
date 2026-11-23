@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import { google, type storage_v1 } from "googleapis";
 import { createGoogleServiceAccountAuth } from "../googleAuth/serviceAccount";
 import { CloudStorageError, type LifecycleRule } from "./contract";
@@ -124,10 +125,13 @@ export function createGcsDriver(options: GcsDriverOptions): BucketDriver {
         ...(insert.metadata ? { metadata: insert.metadata } : {}),
       };
       try {
+        const multipart = Object.keys(requestBody).length > 0;
         const created = await retried(() => client("write").objects.insert({
           bucket, name, fields: "generation", ifGenerationMatch: "0",
-          ...(Object.keys(requestBody).length ? { requestBody } : {}),
-          media: { mimeType: insert.contentType, body: bytes },
+          ...(multipart ? { requestBody } : {}),
+          // A multipart upload (metadata or customTime with the bytes) streams its media part, so the client needs a
+          // stream; a fresh one per attempt, since a retry re-sends the body. A media-only upload accepts the Buffer.
+          media: { mimeType: insert.contentType, body: multipart ? Readable.from([bytes]) : bytes },
         }, { timeout: writeMs }));
         if (!created.data.generation) throw new CloudStorageError("generation_mismatch", "Storage generation unavailable");
         return { generation: String(created.data.generation) };

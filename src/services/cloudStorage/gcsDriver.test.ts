@@ -8,7 +8,7 @@ import { objectStoreContract } from "./contractSuite";
 import type { RawObject } from "./driver";
 import { createFakeBucket, type FakeBucket } from "./fakeBucket";
 import { createGcsDriver, type GcsApi, type GcsScope } from "./gcsDriver";
-import { CLOUD_STORAGE_NAMESPACES, CONTENT_TYPES, granotHistoryObjectName, openObjectStore } from "./namespaces";
+import { CLOUD_STORAGE_NAMESPACES, CONTENT_TYPES, granotHistoryObjectName, openObjectStore, salesIntelligenceRetirementObjectName, storeForNamespace } from "./namespaces";
 
 type Call = { scope: GcsScope; method: string; params: Record<string, unknown>; options: Record<string, unknown> };
 
@@ -29,6 +29,12 @@ async function translated<T>(call: () => Promise<T>) {
   }
 }
 
+async function drain(stream: AsyncIterable<Buffer>) {
+  const parts: Buffer[] = [];
+  for await (const part of stream) parts.push(Buffer.from(part));
+  return Buffer.concat(parts);
+}
+
 /** A GCS JSON API emulator over the fake bucket, recording every request the driver sends. */
 function emulator(bucket: FakeBucket) {
   const calls: Call[] = [];
@@ -39,9 +45,12 @@ function emulator(bucket: FakeBucket) {
       objects: {
         async insert(params, options) {
           record("objects.insert", params, options);
-          const media = params.media as { mimeType: string; body: Buffer };
+          const media = params.media as { mimeType: string; body: Buffer | NodeJS.ReadableStream };
           const body = params.requestBody as { customTime?: string; metadata?: Record<string, string> } | undefined;
-          const result = await bucket.insert(String(params.name), media.body, { contentType: media.mimeType, ...body });
+          // Like googleapis: a multipart upload (with a requestBody) pipes its media part, so a Buffer there fails.
+          if (body && typeof (media.body as NodeJS.ReadableStream).pipe !== "function") throw new TypeError("part.body.pipe is not a function");
+          const bytes = Buffer.isBuffer(media.body) ? media.body : await drain(media.body as AsyncIterable<Buffer>);
+          const result = await bucket.insert(String(params.name), bytes, { contentType: media.mimeType, ...body });
           if (result === "exists") throw providerError(412, "conditionNotMet");
           return { data: { generation: result.generation } };
         },
@@ -132,6 +141,18 @@ test("Granot requests reproduce today's archive writer: create-only insert, pinn
     ifMetagenerationMatch: before.metageneration,
     requestBody: { temporaryHold: true, metadata: { granotReleaseReview: "", granotPublisherHold: "1" } },
   });
+});
+
+test("a retirement pack (customTime and metadata) uploads as a multipart stream and reads back verified (regression 2026-11-23)", async () => {
+  const ns = CLOUD_STORAGE_NAMESPACES["sales-intelligence-retirement"];
+  const fake = createFakeBucket({ bucket: ns.bucket });
+  const store = storeForNamespace({ ...ns, namespace: "sales-intelligence-retirement", source: "default" },
+    createGcsDriver({ bucket: ns.bucket, timeouts: ns.timeouts, client: emulator(fake).client, sleep: async () => {} }));
+  const bytes = Buffer.from("pack bytes");
+  const name = salesIntelligenceRetirementObjectName(ns.prefix, "vantagemovers", "2026-11-23", digest(bytes));
+  const stored = await store.put({ name, bytes, contentType: CONTENT_TYPES.pack, customTime: new Date("2026-11-23T05:00:00.000Z"), metadata: { rows: "1" } });
+  assert.ok(stored.persisted.equals(bytes) && fake.peek(name)?.customTime);
+  assert.ok((await store.put({ name, bytes, contentType: CONTENT_TYPES.pack, customTime: new Date(), metadata: { rows: "1" } })).generation === stored.generation, "a retry reuses the pack");
 });
 
 test("provider errors: idempotent requests retry, compare-and-swap never does, and codes map to the contract", async () => {
