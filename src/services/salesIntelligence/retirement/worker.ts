@@ -141,6 +141,10 @@ export async function retireCompletedJobs(db: Db, options: {
         // One day before GCS can delete the object (the bucket counts whole days since its custom time).
         created_at: now, expires_at: new Date(+now + (recoveryDays - 1) * DAY_MS),
       } }, { upsert: true });
+      // The compaction carries the catalog row's own instant, also when a retry reuses a row written by an earlier run:
+      // receipt retirement (`numberActivity/receiptRetirement.ts`) proves a compacted capture job by that match.
+      const catalogued = (await packs.findOne({ name }, { projection: { created_at: 1 } }))?.created_at;
+      if (!(catalogued instanceof Date)) throw new Error("retirement_catalog_missing");
       const compactions = docs.flatMap((doc, i) => {
         const v = verdicts[i]!;
         if (v.verdict !== "retire") return [];
@@ -149,7 +153,7 @@ export async function retireCompletedJobs(db: Db, options: {
           completed_at: doc.completed_at, payload_hash: doc.payload_hash, lease_epoch: doc.lease_epoch, updatedAt: doc.updatedAt };
         // A job that succeeded after a retry keeps its full row (the failure reason is evidence) and only gets its purge instant.
         const update = v.compact
-          ? { $set: { record_kind: "completion_receipt", routine_purge_at: v.purge_at, updatedAt: now }, $unset: finishedExecutionFields(String(doc.stage)) }
+          ? { $set: { record_kind: "completion_receipt", routine_purge_at: v.purge_at, updatedAt: catalogued }, $unset: finishedExecutionFields(String(doc.stage)) }
           : { $set: { routine_purge_at: v.purge_at } };
         return [{ compact: v.compact, op: { updateOne: { filter, update } } }];
       });

@@ -26,8 +26,10 @@ import { captureProjectionDedupeKey, CAPTURE_PROJECTION_STAGE, WEBHOOK_RECEIPTS_
  * already archived. Receipts without a telephony session (SMS message-store, validation) are not reviewed: nothing
  * reads them after capture and the TTL removes them.
  *
- * The capture job keeps its 7-day key fence (`CAPTURE_RECEIPT_RETENTION_DAYS`): a RingCentral redelivery of a retired
- * receipt's uuid is stored again, but its fan-out finds the completed job and projects nothing.
+ * The capture job keeps its 7-day key fence (`CAPTURE_RECEIPT_RETENTION_DAYS`). A RingCentral redelivery of a retired
+ * receipt's uuid is stored again under a new `_id`; its fan-out (and recovery) meets the completed job for the same key with
+ * different `input_refs`, an idempotency conflict, so it projects nothing (logged as an enqueue failure, recovery quarantines
+ * it). That row holds as `job_other_receipt` and leaves with the TTL.
  */
 export const RECEIPT_RETIREMENT_CONTROL_COLLECTION = "ringcentral_webhook_receipt_retirement";
 export const RECEIPT_RETIREMENT_CONTROL_ID = "v1";
@@ -56,7 +58,7 @@ export type ReceiptVerdict = { verdict: "retire" } | { verdict: "hold"; reason: 
 /** The job-retirement catalog rows a compacted capture job can be matched against. */
 type JobPack = { first_id: ObjectId; last_id: ObjectId; first_completed_at: Date; last_completed_at: Date; created_at: Date; retire: number };
 export type ReceiptRetirementRun = {
-  status: "disabled" | "lease_held" | "watermark_missing" | "ran";
+  status: "disabled" | "lease_held" | "not_reviewable" | "ran";
   batches: number; rows: number; retire: number; hold: number; deleted: number; held_reasons: Record<string, number>;
   packs: number; raw_bytes: number; packed_bytes: number; until: string | null; cursor: string | null; lag_seconds: number | null;
   error?: string; error_at?: string;
@@ -76,8 +78,9 @@ export function receiptVerdict(receipt: Document, jobs: Map<string, Document>, e
   // A redelivery stored after the original left: the job belongs to the earlier row, so this one was never projected.
   if (String(job.input_refs?.[0]) !== String(receipt._id)) return { verdict: "hold", reason: "job_other_receipt" };
   if (job.record_kind === "completion_receipt") {
-    // Compacted by the job retirement worker only after it proved the effect: that run catalogued a pack covering this
-    // job and stamped the job with the same instant. A completion compacted on the spot (switch off) is not proof.
+    // Compacted by the job retirement worker only after it proved the effect: it stamps the compaction with the
+    // `created_at` of the catalog row of the pack holding the job (`worker.ts`). A completion compacted on the spot
+    // (switch off) carries its completion instant, earlier than any covering pack, so it is not proof.
     const id = String(job._id), completed = job.completed_at instanceof Date ? +job.completed_at : NaN;
     const proven = jobPacks.some((p) => p.retire > 0 && +p.created_at === +job.updatedAt && within(id, p.first_id, p.last_id)
       && +p.first_completed_at <= completed && completed <= +p.last_completed_at);
@@ -108,15 +111,16 @@ export async function loadEvidence(db: Db, receipts: readonly Document[]) {
 
 /**
  * The newest instant a receipt may have to be reviewed: one day old, behind the recovery watermark, and older than the
- * newest telephony receipt. `null` when the watermark has never been written (recovery could still need any receipt).
+ * newest telephony receipt. `null` when nothing is reviewable: the watermark has never been written (recovery could still
+ * need any receipt) or no telephony receipt exists.
  */
 export async function reviewUntil(db: Db, now: Date): Promise<Date | null> {
   const state = await db.collection("sales_intelligence_sync_state").findOne({ scope: WEBHOOK_RECEIPTS_SCOPE }, { projection: { "cursor.last_sync_to": 1 } });
   const watermark = state?.cursor?.last_sync_to;
   if (!(watermark instanceof Date)) return null;
   const newest = await receiptsOf(db).findOne(TELEPHONY, { sort: { receivedAt: -1 }, projection: { receivedAt: 1 } });
-  const bounds = [+now - RECEIPT_HOT_MS, +watermark - RECEIPT_WATERMARK_MARGIN_MS, newest?.receivedAt instanceof Date ? +newest.receivedAt - 1 : -Infinity];
-  return new Date(Math.min(...bounds));
+  if (!(newest?.receivedAt instanceof Date)) return null;
+  return new Date(Math.min(+now - RECEIPT_HOT_MS, +watermark - RECEIPT_WATERMARK_MARGIN_MS, +newest.receivedAt - 1));
 }
 
 /** The next telephony receipts after `cursor`, in `(receivedAt, _id)` order, up to the count and byte limits. */
@@ -174,7 +178,7 @@ export async function retireProvenReceipts(db: Db, options: {
   let cursor: Cursor | null = control.cursor ?? null;
   try {
     const until = await reviewUntil(db, now);
-    if (!until) { run.status = "watermark_missing"; return run; }
+    if (!until) { run.status = "not_reviewable"; return run; }
     run.until = until.toISOString();
     // Every run re-checks, read-only, the single 90-day bucket rule the catalog expiry assumes.
     const opened = options.store ? null : await openObjectStore(db, "ringcentral-webhook-receipts", { capability: "release" });

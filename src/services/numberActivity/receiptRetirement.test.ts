@@ -29,7 +29,7 @@ test("a receipt retires only when its own capture job completed and its effect i
     ["job still pending", { ...full, status: "pending" }, effects(3), [], { verdict: "hold", reason: "job_not_completed" }],
     ["job belongs to an earlier delivery", { ...full, input_refs: [String(new ObjectId())] }, effects(3), [], { verdict: "hold", reason: "job_other_receipt" }],
     ["compacted by the retirement worker", compacted, effects(0), [pack], { verdict: "retire" }],
-    ["compacted on the spot (no catalog run)", compacted, effects(0), [{ ...pack, created_at: new Date(+compactedAt + 1) }], { verdict: "hold", reason: "job_receipt_unproven" }],
+    ["compacted on the spot (switch off)", { ...compacted, updatedAt: completed }, effects(0), [pack], { verdict: "hold", reason: "job_receipt_unproven" }],
     ["compacted, catalog pack covers other jobs", compacted, effects(0), [{ ...pack, first_id: new ObjectId(), last_id: new ObjectId() }], { verdict: "hold", reason: "job_receipt_unproven" }],
   ] as const) {
     const jobs = new Map(job ? [[key, job as never]] : []);

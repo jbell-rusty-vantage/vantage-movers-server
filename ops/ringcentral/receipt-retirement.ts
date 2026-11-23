@@ -83,7 +83,7 @@ async function main() {
       hot_receipts: await receiptsOf(db).estimatedDocumentCount(), last_run: control?.last_run ?? null, catalog: packs[0] ?? { packs: 0 },
       bucket_rule: checkRecoveryPolicy(rules as never, scope, config.recoveryDays) };
   } else if (args.mode === "dry-run") {
-    if (!until) throw new Error("The receipt watermark has never been written; nothing is reviewable");
+    if (!until) throw new Error("Nothing is reviewable: no receipt watermark or no telephony receipt");
     const docs = await receiptsOf(db).find(pendingFilter(), { sort: { receivedAt: 1, _id: 1 }, limit: args.limit,
       hint: { provider: 1, receivedAt: 1, _id: 1 }, readPreference: "secondaryPreferred" }).toArray();
     const tally: Record<string, { rows: number; bytes: number }> = {};
