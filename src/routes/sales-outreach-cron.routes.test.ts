@@ -49,7 +49,7 @@ app.use(
         skipped: sweepSkipped,
         reason: sweepSkipped ? "cadence_disabled" : null,
         due: { pages: 1, nominated: 2 },
-        coverage: { pages: 0, nominated: 0, call_through: null, sms_through: null },
+        coverage: { pages: 0, nominated: 0, coalesced: 0, call_through: null, sms_through: null },
         reconcile: { pages: 1, checked: 2, nominated: 0, wrapped: true },
         drain_options: sweepSkipped ? null : { max: 300, deadlineMs: 50_000, concurrency: 2 },
       };

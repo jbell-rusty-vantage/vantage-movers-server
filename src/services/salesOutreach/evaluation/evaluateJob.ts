@@ -366,8 +366,11 @@ export type EvaluationSweepResult = Readonly<{
   skipped: boolean;
   reason: string | null;
   due: { pages: number; nominated: number };
-  /** olr A1 coverage repair: the current cadence coverage per channel and the rows it nominated. */
-  coverage: { pages: number; nominated: number; call_through: string | null; sms_through: string | null };
+  /**
+   * olr A1 coverage repair: the current cadence coverage per channel, the rows it nominated, and the rows it left to
+   * the subject's unclaimed pending evaluation (`coalesced`).
+   */
+  coverage: { pages: number; nominated: number; coalesced: number; call_through: string | null; sms_through: string | null };
   reconcile: { pages: number; checked: number; nominated: number; wrapped: boolean };
   /** olr A5: the drain budget the active configuration resolves to (`operations.evaluate_drain_*`); null when skipped. */
   drain_options: EvaluateDrainOptions | null;
@@ -377,7 +380,7 @@ const skippedSweep = (reason: string): EvaluationSweepResult => ({
   skipped: true,
   reason,
   due: { pages: 0, nominated: 0 },
-  coverage: { pages: 0, nominated: 0, call_through: null, sms_through: null },
+  coverage: { pages: 0, nominated: 0, coalesced: 0, call_through: null, sms_through: null },
   reconcile: { pages: 0, checked: 0, nominated: 0, wrapped: false },
   drain_options: null,
 });
@@ -393,6 +396,22 @@ async function enqueueMissing(store: EvaluationStore, jobs: readonly JobInput[],
   let count = 0;
   for (const job of jobs) if (!existing.has(job.dedupe_key) && (await store.enqueue(job, session)) === "enqueued") count++;
   return count;
+}
+
+/**
+ * Coverage repair only: a subject whose earlier evaluation is still unclaimed gets no second job. At the 20:00 New
+ * York deadline the drain can lag the minute sweep, and the next coverage bucket re-nominated rows whose first job had
+ * not run yet; those second jobs completed `unchanged`. The pending job reads coverage when it is claimed, which is no
+ * earlier than this sweep's. Leased and retrying jobs do not count: they may have read coverage before it advanced.
+ */
+async function enqueueCoverageRepairs(store: EvaluationStore, jobs: readonly JobInput[], session: ClientSession) {
+  const existing = await store.existingJobKeys(jobs.map((job) => job.dedupe_key), session);
+  const fresh = jobs.filter((job) => !existing.has(job.dedupe_key));
+  const busy = fresh.length && store.pendingEvaluationSubjects
+    ? await store.pendingEvaluationSubjects(fresh.map((job) => job.input_refs![0]!), session) : new Set<string>();
+  let nominated = 0;
+  for (const job of fresh) if (!busy.has(job.input_refs![0]!) && (await store.enqueue(job, session)) === "enqueued") nominated++;
+  return { nominated, coalesced: fresh.filter((job) => busy.has(job.input_refs![0]!)).length };
 }
 
 /** The coverage repair nominates a waiting row at most once per this step of channel coverage. */
@@ -449,7 +468,7 @@ export async function sweepOutreachEvaluations(now = new Date(), deps: Evaluatio
 
   const value = admission.context.configuration.value;
   const current = engineCoverageOf(await store.loadCoverage(value.controls.rep_sms_capture_enabled, null, now), deskTimingOf(value));
-  const coverage = { pages: 0, nominated: 0, call_through: current.call?.toISOString() ?? null, sms_through: current.sms?.toISOString() ?? null };
+  const coverage = { pages: 0, nominated: 0, coalesced: 0, call_through: current.call?.toISOString() ?? null, sms_through: current.sms?.toISOString() ?? null };
   for (const channel of ["call", "sms"] as const) {
     const through = current[channel];
     if (!through) continue; // no coverage: staying pending is correct, nothing to nominate
@@ -458,9 +477,11 @@ export async function sweepOutreachEvaluations(now = new Date(), deps: Evaluatio
       const page = await store.coverageWaiting(channel, through, waitAfter, EVALUATION_SWEEP_PAGE);
       if (!page.length) break;
       coverage.pages++;
-      coverage.nominated += await transaction((session) =>
-        enqueueMissing(store, page.map((row) => evaluationJob(row.subject_id, coverageRepairCause(channel, row.wait, through))), session),
+      const repaired = await transaction((session) =>
+        enqueueCoverageRepairs(store, page.map((row) => evaluationJob(row.subject_id, coverageRepairCause(channel, row.wait, through))), session),
       );
+      coverage.nominated += repaired.nominated;
+      coverage.coalesced += repaired.coalesced;
       const last = page.at(-1)!;
       waitAfter = { at: last.wait, subject_id: last.subject_id };
       if (page.length < EVALUATION_SWEEP_PAGE) break;

@@ -9,6 +9,8 @@ import { nominateLeadChanges } from "../subjects/feed";
 import { normalizeQueueQuery } from "../reads/queue";
 import { outreachLiveHint } from "../live/stream";
 import { poolBookingBlocks } from "./admission";
+import { poolResultOf } from "./projection";
+import type { EvaluateSubjectResult } from "../engine/types";
 import { Types } from "mongoose";
 
 const date = "2026-10-14", tz = "America/New_York";
@@ -71,4 +73,16 @@ test("Accepted Pool changes nominate no-subject work even while ordinary expansi
   assert.equal(nominateLeadChanges([change], new Set(), false, false, false).length, 0);
   const hint = outreachLiveHint({ fullDocument: { topic: "outreach_pool", agent_ids: [], subject_ids: [], business_day: date, revision: null } }, { role: "rep", agent_id: "a".repeat(24) });
   assert.deepEqual(hint, { topic: "outreach_pool", agent_ids: [], subject_ids: [], business_day: date, revision: null });
+});
+
+test("A completed Pool duty that passes its close still stores its next wake (regression: 87 rows froze behind a completed due job)", () => {
+  const window = poolDutyWindow([], date, value());
+  const base = { state: "active", business_date: date, subject_id: "a".repeat(24), flags: {} } as unknown as EvaluateSubjectResult;
+  const shared = { window, winner: { id: "won" }, pending_evidence: false } as never;
+  const configuration = { value: value() } as never;
+  const before = poolResultOf(base, shared, configuration, new Date(window.due - 60_000), [], null);
+  const after = poolResultOf(base, shared, configuration, new Date(window.due + 1), [], null);
+  assert.equal(before.next_evaluation_at, new Date(window.due + 1).toISOString());
+  assert.ok(+new Date(after.next_evaluation_at!) > window.due + 1);
+  assert.notEqual(after.fingerprint, before.fingerprint, "the moved wake rewrites the row");
 });

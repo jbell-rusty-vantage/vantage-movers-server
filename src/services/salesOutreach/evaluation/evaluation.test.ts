@@ -222,13 +222,13 @@ async function waitingOnCoverage() {
   return { store, subject };
 }
 
-test("A1.6: coverage repair nominates rows whose coverage_wait <= current coverage, once per bucket", async () => {
+test("A1.6: coverage repair nominates rows whose coverage_wait <= current coverage, once per bucket and pending job", async () => {
   const { store, subject } = await waitingOnCoverage();
   const deps = { loader: fixedConfigurationLoader(configuration()), store, transaction: runInFakeTransaction };
   const wait = at("2026-10-05T14:30:00.000Z");
   store.coverage = capturedCoverage(at("2026-10-05T14:35:00.000Z")); // cadence coverage 14:33 >= 14:30
   const first = await sweepOutreachEvaluations(at("2026-10-05T14:41:00.000Z"), deps);
-  assert.deepEqual(first.coverage, { pages: 1, nominated: 1, call_through: "2026-10-05T14:33:00.000Z", sms_through: null });
+  assert.deepEqual(first.coverage, { pages: 1, nominated: 1, coalesced: 0, call_through: "2026-10-05T14:33:00.000Z", sms_through: null });
   const key = `sod:evaluate:${subject.id}:${coverageRepairCause("call", wait, at("2026-10-05T14:33:00.000Z"))}`;
   assert.equal(key, `sod:evaluate:${subject.id}:coverage:call:${+wait}:${Math.floor(+at("2026-10-05T14:33:00.000Z") / COVERAGE_REPAIR_BUCKET_MS)}`);
   assert.ok(store.jobs.has(key));
@@ -237,6 +237,9 @@ test("A1.6: coverage repair nominates rows whose coverage_wait <= current covera
   await sweepOutreachEvaluations(at("2026-10-05T14:42:00.000Z"), deps);
   assert.equal(coverageJobs().length, 1, "same coverage bucket: the same job identity");
   store.coverage = capturedCoverage(at("2026-10-05T14:40:00.000Z")); // 14:38: the next 5-minute bucket
+  const lagging = await sweepOutreachEvaluations(at("2026-10-05T14:43:00.000Z"), deps);
+  assert.deepEqual([coverageJobs().length, lagging.coverage.coalesced], [1, 1], "the unclaimed first job covers the next bucket");
+  store.pending.delete(key); // the first job ran; the row still waits
   await sweepOutreachEvaluations(at("2026-10-05T14:43:00.000Z"), deps);
   assert.equal(coverageJobs().length, 2, "a later coverage step re-nominates a row that is still waiting");
 

@@ -12,6 +12,7 @@ import {
   getSalesOutreachProjectionModel,
   getSalesOutreachSubjectModel,
 } from "../../../models/salesOutreach";
+import { csiDataset } from "../../../config/domain/salesIntelligence";
 import { CsiError } from "../../salesIntelligence/auth";
 import { type JobInput } from "../../salesIntelligence/jobs";
 import { currentSmsMailboxIds, currentSmsMailboxRows, loadCallWatermarks, smsCoverage, type CallWatermarks } from "../evidence/coverage";
@@ -152,6 +153,11 @@ export type EvaluationStore = {
   projectionPolicies(subjectIds: readonly string[], session: ClientSession): Promise<Map<string, string | null>>;
   /** olr A5: the `dedupe_key`s among `keys` that already have a job row, any status (`csi_job_dedupe_unique`). */
   existingJobKeys(keys: readonly string[], session: ClientSession): Promise<Set<string>>;
+  /**
+   * The subjects among `subjectIds` that already hold an unclaimed `pending` evaluation. That job evaluates the
+   * subject's current state when it is claimed, so a later wake for the same subject adds nothing.
+   */
+  pendingEvaluationSubjects?(subjectIds: readonly string[], session: ClientSession): Promise<Set<string>>;
   enqueue(job: JobInput, session: ClientSession): Promise<"enqueued" | "conflict">;
 };
 
@@ -404,6 +410,17 @@ export const mongoEvaluationStore: EvaluationStore = {
       .session(session)
       .lean();
     return new Set(rows.map((row) => String(row.dedupe_key)));
+  },
+
+  async pendingEvaluationSubjects(subjectIds, session) {
+    if (!subjectIds.length) return new Set<string>();
+    // Served by the `csi_job_claim` prefix (dataset, stage, status); only unclaimed rows are read.
+    const rows = await getSalesIntelligenceJobModel()
+      .find({ ...csiDataset(), stage: "outreach_evaluate", status: "pending",
+        subject_key: { $in: [...new Set(subjectIds)].map((id) => `outreach-subject:${id}`) } }, { _id: 0, subject_key: 1 })
+      .session(session)
+      .lean();
+    return new Set(rows.map((row) => String(row.subject_key).slice("outreach-subject:".length)));
   },
 
   async enqueue(job, session) {

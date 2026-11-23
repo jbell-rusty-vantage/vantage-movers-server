@@ -12,6 +12,14 @@ export async function projectPoolResult(base: EvaluateSubjectResult, configurati
   if (base.state === "closed") return base;
   const shared = await recomputePoolDuty(base.subject_id, base.business_date, configuration, now, session, readOnly);
   if (!shared?.work.active) return base;
+  return poolResultOf(base, shared, configuration, now, restrictions, coverage, noContact);
+}
+
+type PoolDuty = NonNullable<Awaited<ReturnType<typeof recomputePoolDuty>>>;
+
+/** The Pool row for an active duty (pure; `projectPoolResult` loads the duty). */
+export function poolResultOf(base: EvaluateSubjectResult, shared: Pick<PoolDuty, "window" | "winner" | "pending_evidence">,
+  configuration: ActiveConfiguration, now: Date, restrictions: readonly DeskRestrictionRow[], coverage: Date | null, noContact = false): EvaluateSubjectResult {
   const { window, winner } = shared;
   const blocked = noContact || restrictions.some((r) => r.state === "active" && r.channels.includes("call") && (!r.until || +r.until > +now));
   const required = window.required || winner ? 1 : 0;
@@ -35,7 +43,9 @@ export async function projectPoolResult(base: EvaluateSubjectResult, configurati
     flags: { ...base.flags, needs_contact: required > done && !blocked, overdue, blocked, pending,
       inherited_overdue: false, review: false },
   };
+  // The stored wake is part of the row: an unchanged result must not leave a passed `next_evaluation_at` behind,
+  // because its completed `due:` job fences the sweep and the row would never wake again.
   result.fingerprint = createHash("sha256").update(JSON.stringify({ date: base.business_date, required, done, winner: winner?.id ?? null,
-    blocked, pending, overdue, due, policy: configuration.value.pool })).digest("hex");
+    blocked, pending, overdue, due, next_evaluation_at: result.next_evaluation_at, policy: configuration.value.pool })).digest("hex");
   return result;
 }
