@@ -1,4 +1,5 @@
 import granotRetentionCron from "./routes/granot-retention-cron.routes";
+import salesIntelligenceRetirementCron from "./routes/sales-intelligence-retirement-cron.routes";
 import cors from "cors";
 import express, { type Request, type Response } from "express";
 import mongoose from "mongoose";
@@ -58,6 +59,7 @@ app.use(sheetSyncCronRoutes);
 app.use(dailyOperationsCronRoutes);
 app.use(capacitySnapshotCronRoutes);
 app.use(granotRetentionCron);
+app.use(salesIntelligenceRetirementCron);
 app.use(leadMessagingCronRoutes);
 app.use(cplCorrectionCronRoutes);
 app.use(twilioMessageStatusRoutes);

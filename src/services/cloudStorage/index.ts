@@ -14,6 +14,7 @@ export {
   openObjectStore,
   readCloudStorageConfig,
   salesIntelligencePackObjectName,
+  salesIntelligenceRetirementObjectName,
   storeForNamespace,
   type CloudStorageNamespace,
   type OpenOptions,
