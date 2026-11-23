@@ -16,6 +16,7 @@
 import mongoose from "mongoose";
 import { BSON, ObjectId, type AnyBulkWriteOperation, type Document } from "mongodb";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime";
+import { csiDataset } from "../../src/config/domain/salesIntelligence";
 import { connectMongo } from "../../src/db";
 import { getSalesIntelligenceJobModel } from "../../src/models/SalesIntelligenceJob";
 import { assertProductionWriterMatchesDeployment } from "../lib/production-writer-guard";
@@ -32,8 +33,10 @@ async function main() {
   const now = new Date();
   const plan = emptyPlan();
   let scanned = 0, matched = 0, modified = 0, last: ObjectId | null = args.after ? new ObjectId(args.after) : null;
+  // Every runtime query on this collection is scoped to this deployment's dataset; so is the backlog.
+  const dataset = csiDataset();
   const filter = (after: ObjectId | null): Document => ({
-    stage: { $in: [...BACKLOG_STAGES] }, status: "completed", completed_at: { $type: "date" },
+    ...dataset, stage: { $in: [...BACKLOG_STAGES] }, status: "completed", completed_at: { $type: "date" },
     routine_purge_at: { $exists: false }, ...(after ? { _id: { $gt: after } } : {}),
   });
   const cursor = collection.find(filter(last), { sort: { _id: 1 }, batchSize: args.batch,
@@ -53,7 +56,7 @@ async function main() {
     last = doc._id as ObjectId;
     if (!purge || !args.apply) continue;
     pending.push({ updateOne: {
-      filter: { _id: doc._id, status: "completed", completed_at: doc.completed_at, payload_hash: doc.payload_hash,
+      filter: { _id: doc._id, ...dataset, status: "completed", completed_at: doc.completed_at, payload_hash: doc.payload_hash,
         routine_purge_at: { $exists: false } },
       update: { $set: { routine_purge_at: purge } },
     } });
@@ -65,7 +68,7 @@ async function main() {
   const eligible = Object.values(plan.eligible).reduce((sum, t) => ({ rows: sum.rows + t.rows, bytes: sum.bytes + t.bytes, leave_now: sum.leave_now + t.leave_now }),
     { rows: 0, bytes: 0, leave_now: 0 });
   console.log(JSON.stringify({
-    mode: args.apply ? "apply" : "dry_run", database, measured_at: now.toISOString(), scanned,
+    mode: args.apply ? "apply" : "dry_run", database, deployment: dataset.deployment, measured_at: now.toISOString(), scanned,
     eligible_total: { ...eligible, mib: +(eligible.bytes / 1_048_576).toFixed(2) }, plan,
     ...(args.apply ? { matched, modified, next_after: last ? String(last) : null } : {}),
   }, null, 2));

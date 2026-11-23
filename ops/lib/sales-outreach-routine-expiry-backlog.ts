@@ -2,13 +2,13 @@
  * Backlog half of the November 22 routine-expiry extension (`docs/operations/SI-JOBS-VOLUME-BRIEF-2026-11-22.md`).
  *
  * A completed job keeps the expiry it was given when it completed. Since this release the completion transaction
- * gives sweep-woken `outreach_evaluate` jobs (`due:` and `coverage:` keys) and `capture_projection` jobs whose every
- * session projected the routine three-day purge. This operator gives already-completed rows the same instant through
+ * gives sweep-woken `outreach_evaluate` jobs (`due:` and `coverage:` keys) the routine three-day purge, and
+ * `capture_projection` jobs whose every session projected a purge at the receipt TTL (seven days). This operator gives already-completed rows the same instant through
  * the same function (`routinePurgeAt`), so a row qualifies here exactly when it would qualify at completion today.
  *
- * It only sets `routine_purge_at`. The `csi_job_routine_ttl` monitor then removes the row; a row completed more than
- * three days ago leaves on the monitor's next pass. Nothing else on the row changes, and nothing is archived: no
- * reader uses these results (the Service docs list the readers).
+ * It only sets `routine_purge_at`. The `csi_job_routine_ttl` monitor then removes the row; a row already past its
+ * window leaves on the monitor's next pass, so apply in chunks (`--limit`) and watch replication lag and the oplog.
+ * Nothing else on the row changes, and nothing is archived: no reader uses these results (the Service docs list them).
  */
 import type { CsiJobStage } from "../../src/config/domain/salesIntelligence";
 import { routinePurgeAt } from "../../src/services/salesIntelligence/jobs";
@@ -51,6 +51,7 @@ export function parseBacklogArgs(argv: readonly string[]): BacklogArgs {
   }
   if (!target || !/^[A-Za-z0-9_]+$/.test(target)) throw new Error("--target=<database name> is required (for example --target=vantagemovers)");
   if (apply && limit === null) throw new Error("--apply requires --limit=<rows>");
+  if (!apply && limit !== null) throw new Error("--limit only applies with --apply");
   return { target, apply, limit, after, batch, pause_ms };
 }
 
@@ -81,7 +82,7 @@ export const emptyPlan = (): BacklogPlan => ({ eligible: {}, held: {}, first_pur
 /** Classify one completed row into `plan`; returns its purge instant when it qualifies. */
 export function planBacklogRow(plan: BacklogPlan, row: BacklogRow, bytes: number, now: Date): Date | undefined {
   const cls = backlogClass(row);
-  const purge = routinePurgeAt(row, row.result, row.completed_at);
+  const purge = Array.isArray(row.input_refs) ? routinePurgeAt(row, row.result, row.completed_at) : undefined;
   if (!purge) {
     plan.held[cls] = (plan.held[cls] ?? 0) + 1;
     return undefined;

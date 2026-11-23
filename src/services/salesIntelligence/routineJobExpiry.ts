@@ -31,6 +31,13 @@ const estimates = /^sod:lead-change:(?:FormLead|CallLead):[a-f0-9]{24}:estimates
 /** The minute sweep's clock and coverage wakes (`evaluateJob.ts`): `due:<ms>` and `coverage:<channel>:<wait ms>:<bucket>`. */
 const sweepCause = /^(?:due:[1-9]\d*|coverage:(?:call|sms):[1-9]\d*:\d+)$/;
 const captureKey = /^csi:capture_projection:(receipt|receipt_id):(\S+)$/;
+/**
+ * A clean capture's key stays as long as its stored receipt can still be re-ensured. Receipt recovery resumes from
+ * its stored watermark, which can lag by days (capture disabled, recovery stalled), so the only hard bound is the
+ * receipt TTL (`WEBHOOK_EVENT_RETENTION_SECONDS` in `ringcentral/webhook-capture.ts`, 7 days on `receivedAt`).
+ */
+export const CAPTURE_RECEIPT_RETENTION_DAYS = 7;
+const DAY_MS = 86_400_000;
 const captureSession = z.strictObject({
   telephony_session_id: z.string().min(1), ok: z.literal(true), interaction_id: id, contact_number_id: id.nullable(),
   projection_revision: z.number().int().min(0), noop: z.boolean(), created: z.boolean(), newly_terminal: z.boolean(),
@@ -75,6 +82,7 @@ function isCleanCapture(key: string, result: unknown, subjectKey: string | undef
 /** Classify the committed result. Repair, admission and unknown producers keep their existing dedupe window. */
 export function routineJobExpiry(stage: string, key: string, result: unknown, completed: Date, subjectKey?: string): Date | undefined {
   let qualifies = false;
+  let days = 3;
   if (stage === "outreach_lead_change" && estimates.test(key)) {
     const parsed = refresh.safeParse(result);
     qualifies = parsed.success && (parsed.data.reason === null || parsed.data.outcome === "unchanged");
@@ -90,11 +98,12 @@ export function routineJobExpiry(stage: string, key: string, result: unknown, co
     qualifies = source !== undefined && source === subjectKey && contactProgress.safeParse(result).success;
   } else if (stage === "capture_projection") {
     qualifies = isCleanCapture(key, result, subjectKey);
+    days = CAPTURE_RECEIPT_RETENTION_DAYS;
   } else if (stage === "outreach_rep_day") {
     const day = repDay.exec(key)?.[1];
     qualifies = day !== undefined && subjectKey === "outreach-rep-day:" + day && repDayProgress.safeParse(result).success;
   }
-  return qualifies ? new Date(completed.getTime() + 3 * 86_400_000) : undefined;
+  return qualifies ? new Date(completed.getTime() + days * DAY_MS) : undefined;
 }
 
 /** Cross-check the actual worker input against the subject and producer-scoped key. */

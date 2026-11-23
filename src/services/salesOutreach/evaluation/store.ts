@@ -157,7 +157,7 @@ export type EvaluationStore = {
    * The subjects among `subjectIds` that already hold an unclaimed `pending` evaluation. That job evaluates the
    * subject's current state when it is claimed, so a later wake for the same subject adds nothing.
    */
-  pendingEvaluationSubjects?(subjectIds: readonly string[], session: ClientSession): Promise<Set<string>>;
+  pendingEvaluationSubjects(subjectIds: readonly string[], session: ClientSession): Promise<Set<string>>;
   enqueue(job: JobInput, session: ClientSession): Promise<"enqueued" | "conflict">;
 };
 
@@ -416,7 +416,7 @@ export const mongoEvaluationStore: EvaluationStore = {
     if (!subjectIds.length) return new Set<string>();
     // Served by the `csi_job_claim` prefix (dataset, stage, status); only unclaimed rows are read.
     const rows = await getSalesIntelligenceJobModel()
-      .find({ ...csiDataset(), stage: "outreach_evaluate", status: "pending",
+      .find({ ...csiDataset(), stage: "outreach_evaluate", status: "pending", next_attempt_at: { $lte: new Date() },
         subject_key: { $in: [...new Set(subjectIds)].map((id) => `outreach-subject:${id}`) } }, { _id: 0, subject_key: 1 })
       .session(session)
       .lean();

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isRoutineEvaluationKey, routineJobExpiry, routineJobSubjectMatches } from "./routineJobExpiry";
+import { WEBHOOK_EVENT_RETENTION_SECONDS } from "../ringcentral/webhook-capture";
+import { CAPTURE_RECEIPT_RETENTION_DAYS, isRoutineEvaluationKey, routineJobExpiry, routineJobSubjectMatches } from "./routineJobExpiry";
 
 const subject = "a".repeat(24);
 const key = `sod:lead-change:FormLead:${"b".repeat(24)}:estimates-refresh:${"c".repeat(24)}`;
@@ -50,7 +51,8 @@ test("only matching terminal call revisions, contact evaluations and rep-day rec
   assert.equal(isRoutineEvaluationKey(evalKey, subject), false);
 });
 
-test("a capture expires on the routine window only when every session projected", () => {
+test("a capture receipt outlives its stored webhook receipt, and only when every session projected", () => {
+  assert.equal(CAPTURE_RECEIPT_RETENTION_DAYS * 86_400, WEBHOOK_EVENT_RETENTION_SECONDS, "a purged key must never meet a re-ensurable receipt");
   const receipt = "d".repeat(24), uuid = "0f1e2d3c-aaaa-bbbb-cccc-111122223333";
   const session = { telephony_session_id: "s-1", ok: true, interaction_id: "e".repeat(24), contact_number_id: null,
     projection_revision: 3, noop: false, created: true, newly_terminal: true, jobs: 1 };
@@ -58,9 +60,9 @@ test("a capture expires on the routine window only when every session projected"
   const byUuid = `csi:capture_projection:receipt:${uuid}`, byId = `csi:capture_projection:receipt_id:${receipt}`;
   const ttl = (key: string, result: unknown, owner: string) =>
     routineJobExpiry("capture_projection", key, result, completed, owner)?.toISOString();
-  assert.equal(ttl(byUuid, clean, `webhook_receipt:${uuid}`), "2026-11-21T00:00:00.000Z");
-  assert.equal(ttl(byId, { ...clean, receipt_uuid: null }, `webhook_receipt:${receipt}`), "2026-11-21T00:00:00.000Z");
-  assert.equal(ttl(byUuid, { ...clean, sessions: 0, ok: 0, results: [], call_log_refresh: [] }, `webhook_receipt:${uuid}`), "2026-11-21T00:00:00.000Z");
+  assert.equal(ttl(byUuid, clean, `webhook_receipt:${uuid}`), "2026-11-25T00:00:00.000Z");
+  assert.equal(ttl(byId, { ...clean, receipt_uuid: null }, `webhook_receipt:${receipt}`), "2026-11-25T00:00:00.000Z");
+  assert.equal(ttl(byUuid, { ...clean, sessions: 0, ok: 0, results: [], call_log_refresh: [] }, `webhook_receipt:${uuid}`), "2026-11-25T00:00:00.000Z");
   for (const [key, result, owner] of [
     [byUuid, { ...clean, ok: 0, failed: 1, results: [{ telephony_session_id: "s-1", ok: false, error_code: "account_unresolved" }] }, `webhook_receipt:${uuid}`],
     [byUuid, { ...clean, sessions: 2 }, `webhook_receipt:${uuid}`],

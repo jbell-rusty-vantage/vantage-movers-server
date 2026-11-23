@@ -407,7 +407,7 @@ async function enqueueMissing(store: EvaluationStore, jobs: readonly JobInput[],
 async function enqueueCoverageRepairs(store: EvaluationStore, jobs: readonly JobInput[], session: ClientSession) {
   const existing = await store.existingJobKeys(jobs.map((job) => job.dedupe_key), session);
   const fresh = jobs.filter((job) => !existing.has(job.dedupe_key));
-  const busy = fresh.length && store.pendingEvaluationSubjects
+  const busy = fresh.length
     ? await store.pendingEvaluationSubjects(fresh.map((job) => job.input_refs![0]!), session) : new Set<string>();
   let nominated = 0;
   for (const job of fresh) if (!busy.has(job.input_refs![0]!) && (await store.enqueue(job, session)) === "enqueued") nominated++;
