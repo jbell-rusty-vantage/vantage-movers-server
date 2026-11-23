@@ -170,8 +170,7 @@ export async function retireCompletedJobs(db: Db, options: {
   } catch (error) {
     run.error = error instanceof Error ? error.message.slice(0, 200) : "unknown";
     // Where it failed: the first two stack frames, so a production-only failure is diagnosable from `status`.
-    if (error instanceof Error && error.stack) run.error_at = error.stack.split("
-").slice(1, 3).map((l) => l.trim()).join(" | ").slice(0, 300);
+    if (error instanceof Error && error.stack) run.error_at = error.stack.split(/\r?\n/).slice(1, 3).map((l) => l.trim()).join(" | ").slice(0, 300);
     throw error;
   } finally {
     run.cursor = cursor?.completed_at.toISOString() ?? null;
