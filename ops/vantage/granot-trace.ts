@@ -113,6 +113,7 @@ export async function traceGranotAction(db: Db, run: string, actionId: string) {
     captured_at: typed("$captured_at", "date"), state: enumerated("$processing.state", RECEIPT_WORK_STATES),
     next_attempt_at: typed("$processing.next_attempt_at", "date"), leased_until: typed("$processing.leased_until", "date"),
     latest_decision_id: typed("$processing.latest_decision_id", "objectId"),
+    evidence_released: { $ne: [{ $type: "$evidence_archive" }, "missing"] },
   }, { observation_channel: 1, channel_operation_id: 1 });
   if (!receipt) return finish("operation_receipt_missing");
   data.receipt = { ...receipt, matches_sealed_capture_time: row.collection_captured_at && receipt.captured_at
@@ -126,7 +127,8 @@ export async function traceGranotAction(db: Db, run: string, actionId: string) {
     observation_id: typed("$_id", "objectId"), receipt_id: typed("$receipt_id", "objectId"), captured_at: typed("$captured_at", "date"),
     normalization_result: enumerated("$normalization_result", NORMALIZATION_RESULTS),
   }, { receipt_id: 1 });
-  if (!observation) return finish("observation_missing");
+  // The Lead evidence pass (including the proven-winner release) moved it to GCS; read it with ops/granot-read-archived-evidence.ts.
+  if (!observation) return finish(receipt.evidence_released ? "observation_released_to_gcs" : "observation_missing");
   data.observation = observation;
   if (!observation.observation_id) return finish("observation_id_invalid");
   if (row.observation_id && !row.observation_id.equals(observation.observation_id)) return finish("run_observation_pointer_mismatch");

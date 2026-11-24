@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import { getCallLeadModel, type CallLeadDocument } from "../../models/CallLead";
 import { getGranotObservationModel } from "../../models/GranotObservation";
+import { readEvidenceIds } from "../granotHistory/evidencePage";
+import { provenWinnerReleaseEnabled } from "../granotHistory/provenWinners";
 import { getSalesOutreachSubjectModel } from "../../models/salesOutreach";
 import { executeCanonicalCommandWithPostCommit } from "../domainCommands/idempotency";
 import { persistEntityChangeMutations } from "../domainCommands/entityChange";
@@ -39,13 +41,27 @@ function recoveryObservationIds(lead: RecoveryLead): string[] {
 
 const observationFields = { captured_at: 1, normalization_result: 1, "identity.normalized_job_no": 1, "move.move_date": 1 } as const;
 
+/**
+ * Hot Observations, then, only while the proven-winner release is on, any retired one read back from GCS by original ID.
+ * Never call inside a transaction: an archived Observation is immutable, so it is read once beforehand.
+ */
+async function recoveryObservations(ids: string[]): Promise<RecoveryObservation[]> {
+  const Model = getGranotObservationModel();
+  const hot: RecoveryObservation[] = await Model.find({ _id: { $in: ids } }, observationFields).lean();
+  const found = new Set(hot.map((row) => String(row._id)));
+  const missing = ids.filter((id) => !found.has(id)).map((id) => new mongoose.Types.ObjectId(id));
+  if (!missing.length || !(await provenWinnerReleaseEnabled(Model.db.db!))) return hot;
+  const archived = await readEvidenceIds(Model.db.db!, missing as never[], "observation");
+  return [...hot, ...(archived as unknown as RecoveryObservation[])];
+}
+
 /** Open desk Call Leads only; batches by indexed Lead/Observation IDs and emits no customer content. */
 export async function inspectCallMoveDateRecovery() {
   const subjects = await getSalesOutreachSubjectModel().find({ lead_model: "CallLead", status: { $in: ["active", "review"] } }, { lead_id: 1 }).lean();
   const leads = await getCallLeadModel().find({ _id: { $in: subjects.map((subject) => subject.lead_id) }, booked: null, cancelled: null, duplicate: { $ne: true }, created_on_unmatched: { $ne: true } },
     { move_date: 1, normalized_job_no: 1, current_move_provenance: 1, last_accepted_granot_observation: 1 }).lean();
   const ids = [...new Set(leads.flatMap(recoveryObservationIds))];
-  const observations = await getGranotObservationModel().find({ _id: { $in: ids } }, observationFields).lean();
+  const observations = await recoveryObservations(ids);
   const candidates = leads.flatMap((lead) => { const recovery = callMoveDateRecovery(lead, observations); return recovery ? [recovery] : []; });
   const dated = leads.filter((lead) => lead.move_date).length;
   return { leads: leads.length, dated, unknown: leads.length - dated - candidates.length, candidates };
@@ -60,13 +76,16 @@ export async function recoverCallMoveDate(expected: CallMoveDateRecovery): Promi
     payload_checksum: createHash("sha256").update(`${key}:${expected.move_date.toISOString()}`).digest("hex"), actor, initiator: actor,
     provenance: { origin: "vantage_admin", run_id: "call-move-dates-2026-10-15", source_receipt_id: null, source_connection_key: null, observation_id: expected.observation_id } };
   let changed = false;
+  // A retired winner is read from GCS here, before the transaction; the transaction rereads only hot rows.
+  const archived = (await recoveryObservations([expected.observation_id])).filter((o) => String(o._id) === expected.observation_id);
   await executeCanonicalCommandWithPostCommit<OutreachLivePublication[]>({ command_name: "recoverCallLeadMoveDate", context,
     operation: async ({ session, now, command_execution_id }) => {
       changed = false;
       const lead = await getCallLeadModel().findById(expected.lead_id).session(session);
       const subject = await getSalesOutreachSubjectModel().findOne({ lead_model: "CallLead", lead_id: expected.lead_id, status: { $in: ["active", "review"] } }).session(session).lean();
       if (!lead || !subject || lead.booked || lead.cancelled || lead.duplicate || lead.created_on_unmatched) return { entity_refs: [] };
-      const observations = await getGranotObservationModel().find({ _id: { $in: recoveryObservationIds(lead) } }, observationFields).session(session).lean();
+      const hot: RecoveryObservation[] = await getGranotObservationModel().find({ _id: { $in: recoveryObservationIds(lead) } }, observationFields).session(session).lean();
+      const observations = [...hot, ...archived.filter((o) => !hot.some((h) => String(h._id) === String(o._id)))];
       const current = callMoveDateRecovery(lead, observations);
       if (!current || current.observation_id !== expected.observation_id || +current.move_date !== +expected.move_date) return { entity_refs: [] };
       const revision = lead.domain_revision;

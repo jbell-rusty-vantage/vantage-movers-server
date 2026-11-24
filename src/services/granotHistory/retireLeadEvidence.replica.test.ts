@@ -4,7 +4,8 @@ import { ObjectId } from "mongodb";
 import { readEvidenceIds } from "./evidencePage";
 import { closedRuns, packClosedRun } from "./closedAutomationRun";
 import { fakeGranotArchive, historyReplica } from "./archiveTestSupport";
-import { retireLeadEvidence } from "./retireLeadEvidence";
+import { retireLeadEvidence, selectLeadEvidence } from "./retireLeadEvidence";
+import { PROVEN_WINNER_CONTROL } from "./provenWinners";
 import { installRetiredOperationIndex, retireReceipt } from "./retireOnUse";
 import { readGranotChain, readRetiredReceipt } from "./retiredRecords";
 import { loadClosedOperations } from "./prepareClosedRun";
@@ -24,7 +25,8 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
     await installRetiredOperationIndex(db, new Date(0)); // installed long ago, past the settle window
     const run = String(new ObjectId()),
       at = new Date(Date.now() - 2 * 86400000);
-    async function seed(orphan = false, priority = "1", winner = false) {
+    // Proven-winner release (Owner decision 8): a current winner with its v2 proof, accepted at `when`.
+    async function seed(orphan = false, priority = "1", winner = false, proof = false, when = at) {
       const d = new ObjectId(),
         o = new ObjectId(),
         r = new ObjectId(),
@@ -39,16 +41,17 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
       };
       await hot.insertOne({
         _id: r,
-        captured_at: at,
-        createdAt: at,
+        captured_at: when,
+        createdAt: when,
         observation_channel: "granot_http_automation",
         channel_operation_kind: "lead_snapshot_apply",
         channel_operation_id: (orphan ? String(new ObjectId()) : run) + ":" + o,
         payload_sha256: "a".repeat(64),
         processing: {
           latest_decision_id: d,
+          ...(proof ? { certified_lead: { model: "FormLead", id: lead, decision_id: d } } : {}),
           state: "completed",
-          completed_at: at,
+          completed_at: when,
           replay_result: replay,
         },
       });
@@ -58,7 +61,7 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
         identity: { normalized_job_no: "T-7145" },
         kind: "lead_snapshot",
         priority: { valid: true, canonical: priority },
-        captured_at: at,
+        captured_at: when,
       });
       if (!orphan)
         await ds.insertOne({
@@ -69,13 +72,14 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
           effects: [],
           target,
           execution_mode: "live",
-          decided_at: at,
+          decided_at: when,
         });
       await db.collection("form_leads").insertOne({
         _id: lead,
         last_accepted_granot_observation: {
           observation_id: winner ? o : new ObjectId(),
-          captured_at: new Date(),
+          captured_at: winner ? when : new Date(),
+          ...(proof ? { evidence: { version: 2, decision_id: d, receipt_id: r, source_scope: { granot_crm_source_id: new ObjectId() } } } : {}),
         },
       });
       return { o, d, r };
@@ -85,6 +89,23 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
       edited = await seed(),
       p5 = await seed(false, "5"),
       active = await seed(false, "2", true);
+    const old = new Date(Date.now() - 31 * 86400000);
+    // Table: only a proven winner older than 30 days leaves; a young or unproven winner stays hot.
+    const proven = await seed(false, "2", true, true, old),
+      young = await seed(false, "2", true, true),
+      unproven = await seed(false, "2", true, false, old),
+      openCase = await seed(false, "2", true, true, old),
+      resolvedCase = await seed(false, "2", true, true, old);
+    // An open case keeps its proven winner hot; a resolved one does not.
+    await db.collection("granot_booking_reconciliation_cases").insertMany([
+      { state: "open", evidence: [{ observation_id: openCase.o }] },
+      { state: "resolved", evidence: [{ observation_id: resolvedCase.o }] },
+    ]);
+    const page = await obs.find().sort({ _id: 1 }).toArray();
+    const selected = async () => new Set((await selectLeadEvidence(db, page)).map((r) => String(r.chain.observation._id)));
+    assert.equal((await selected()).has(String(proven.o)), false, "switch off keeps every winner");
+    await db.collection("granot_retention_control").insertOne({ _id: PROVEN_WINNER_CONTROL as never, enabled_at: new Date() });
+    assert.equal((await selected()).has(String(proven.o)), true);
     const { storage } = fakeGranotArchive();
     const read = storage.read;
     await assert.rejects(
@@ -92,16 +113,17 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
         throw Error("GCS unavailable");
       }),
     );
-    assert.equal(await obs.countDocuments(), 5);
+    assert.equal(await obs.countDocuments(), 10);
     const result = await retireLeadEvidence(db, async (name, bytes) => {
       await db
         .collection("lead_messages")
         .insertOne({ observation_id: edited.o });
       return storage.store(name, bytes);
     }, read);
-    assert.equal(result.observations, 2);
-    assert.equal(result.decisions, 1);
-    for (const row of [edited, p5, active])
+    assert.equal(result.observations, 4);
+    assert.equal(result.decisions, 3);
+    assert.equal(await obs.countDocuments({ _id: { $in: [proven.o, resolvedCase.o] } }), 0);
+    for (const row of [edited, p5, active, young, unproven, openCase])
       assert.ok(await obs.findOne({ _id: row.o }));
     assert.equal(
       (await readGranotChain(db, normal.r, read))?.decisions.length,

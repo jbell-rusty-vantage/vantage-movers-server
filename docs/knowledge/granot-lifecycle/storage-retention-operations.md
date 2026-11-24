@@ -62,6 +62,16 @@ If the work is interrupted before the transaction, the receipt stays hot. A retr
 
 Observations and Decisions leave through the [Lead evidence pass](./capture.md#retirement-of-lead-observations-and-decisions). That happens once their receipt has a locator (any channel) and the reference and newer-winner checks pass. A current winner stays hot. So does anything referenced from a Lead, case, Record Link, Pool work, Outreach subject, message or EntityChange.
 
+**Proven-winner release (Owner decision 8, 2026-11-23; off until enabled).** A current winner may also leave, relaxing both holds, when all of these hold (`provenWinners.ts`):
+- the receipt certifies the Lead (`processing.certified_lead`) with its latest Decision, and the live Decision targets the same Lead;
+- the Lead's `last_accepted_granot_observation` names this Observation and capture time and carries the v2 proof for this Decision and receipt (the proof Pool admission reads instead of the Observation);
+- capture, receipt completion and every Decision are at least 30 days old;
+- no **open** booking or release reconciliation case or discrepancy references the chain. A resolved one does not hold it: case readers use their pinned copies, then GCS.
+
+Every other chain keeps today's holds. The retirement steps are unchanged: pack, verify the read-back, recheck inside the transaction, catalogue, then remove. Pool admission stays fail-closed. A Lead whose proof later disappears (a reconciliation repoint) has no hot Observation to read, so admission refuses with `accepted_observation_conflict`. It never reads GCS inside its transaction. The retired receipt's own object loses its `observation_hot` block with the Observation, and then reaches its 90-day end of life through the existing path.
+
+Measured read-only on November 24, 2026, 00:42 UTC: 6,039 of 6,160 eligible chains are proven winners. Every one was accepted between November 19 and 23, because the November 19 Granot re-import re-accepted them. None is 30 days old yet, so the first 5,908 become releasable on December 19. Leaving MongoDB: 6.2 MiB of Observations, 6,039 Decisions (7.1 MiB) and 6,039 receipt objects unblocked for end of life.
+
 ### Reader inventory
 
 | Reader | Needs after use | How it reads now |
@@ -72,13 +82,17 @@ Observations and Decisions leave through the [Lead evidence pass](./capture.md#r
 | Decision repointing (`receiptDecisionPointer.ts`) | Receipt pointer and certified Lead | Hot, else the locator. Both formats carry the pointer. |
 | Channel capture (`capture.ts`) and `resumeCapturedAutomationAction` | Operation identity | The hot unique key, else `readRetiredOperation` on the locator's unique key. |
 | `applyAutomationPlanAction` | Operation result | The closed-run replay (unchanged). |
-| Pool admission (`admission.ts`) | Whether the accepted Observation's receipt completed | Hot receipt, else a `completed-webhook-bson-v1` or `channel-receipt-bson-v1` locator (before this change: the webhook format only; the channel format is new, so existing data reads the same). Reference holds keep the accepted Observation and Decision hot, because they are current winners. |
+| Pool admission (`admission.ts`) | Whether the accepted Observation's receipt completed | Hot receipt, else a `completed-webhook-bson-v1` or `channel-receipt-bson-v1` locator (before this change: the webhook format only; the channel format is new, so existing data reads the same). A Lead with the v2 proof skips the Observation read. Without the proof, a retired winner refuses (`accepted_observation_conflict`). |
+| Pool evidence check (`ops/verify-granot-pool-evidence.ts`) | The winner, to compare with the proof | Hot winners: the current-versus-history comparison. Retired winners: `readGranotObservation` and `readGranotDecision` by original ID, outside any transaction. Past end of life they count as `expired`; a winner whose proof a repoint removed counts as `unproven` (Pool refuses it), and only a proof that disagrees with the archived copy is a mismatch. |
+| Operator traces (`ops/vantage/granot-trace.ts`, `ops/pool-production/inspect.ts`) | The winner's Observation | Hot only. A released winner shows as `observation_released_to_gcs` (trace) or the `accepted_observation_not_released_to_gcs` hold (Pool inspection); read it with `ops/granot-read-archived-evidence.ts`. |
 | Job timeline (`mongo-evidence-loader.ts`) | Receipt capture facts | Hot, else the locator projection (both formats). |
 | Lead evidence pass (`retireLeadEvidence.ts`) | Retired receipt body | `readRetiredReceipt`. |
 | Closed-run preparation (`prepareClosedRun.ts`) | Every receipt of the run | Hot only. An HTTP receipt leaves only after its run has closed. |
 | Processing path (`processor.ts`, `normalization.ts`, `createLeadFromGranot.ts`, `acceptedLeadEvidence.ts`) | Receipt, Observation and Decision while processing | Hot only. These run before completion, and nothing incomplete retires. |
 | Daily Operations backfill (`dailyOperations/rebuild.ts`) | Webhook receipts by capture day | Hot only. It runs only for a day without `webhook_counts_version: 1`, and no webhook of such a day retires. |
-| Call move-date repair, Estimates sibling catch-up, Operations Health groups | Observations or Decisions by field | Hot only. They read current winners or the last 24 hours. Older rows already left through the evidence pass before this change. |
+| Call move-date repair (`callLeadMoveDateRepair.ts`) | The winner's move date | Hot, else, while the proven-winner release is on, the Lead evidence page by original ID. The repair reads a retired winner before its transaction, which rereads only hot rows. |
+| Accepted-evidence backfill (`ops/granot-accepted-evidence-backfill.ts`) | The winner, to write the proof | Hot only. Run `--review` for both Lead models before enabling the proven-winner release; a retired winner reports `observation_unavailable`. |
+| Estimates sibling catch-up, Operations Health groups | Observations or Decisions by field | Hot only. They read the last 24 hours or a recent window, well inside the 30-day proven-winner age. |
 | Diagnostics (`ops/granot-read-archived-evidence.ts`) | Full chain | `readGranotChain`. |
 
 ### Enabling, rollback and recovery
@@ -91,6 +105,7 @@ Observations and Decisions leave through the [Lead evidence pass](./capture.md#r
   1. Restore it with the diagnostics command below.
   2. In a reviewed transaction, insert it unchanged and delete its locator.
   No tool does this automatically.
+- **Proven-winner release.** Measure first, read-only: `node --env-file=.env --import tsx ops/granot-proven-winner-review.ts`. Enable: `ops/granot-retention-install.ts --enable-proven-winners` writes `{ _id: "proven-winner-release-v1", enabled_at }`. Rollback: `--disable-proven-winners` deletes it, so winners stay hot from the next pass. Released winners stay readable by ID.
 - **Fetch a retired record by ID.** `node --env-file=.env --import tsx ops/granot-read-archived-evidence.ts --receipt <receipt ID> <new private BSON file>` writes the receipt, Observation and Decisions as one BSON document. In code, use `readGranotReceipt`, `readGranotObservation` or `readGranotDecision` from [`retiredRecords.ts`](../../../src/services/granotHistory/retiredRecords.ts).
 
 ### Backlog command
@@ -114,7 +129,7 @@ Owner decision 2 (2026-11-23): each retired Granot object starts its 90-day GCS 
 
 | Kind | Object | Rows that expire with it | Kept while |
 | --- | --- | --- | --- |
-| `receipt` | One retired receipt (`completed-webhook-bson-v1`, `channel-receipt-bson-v1`) | Its `granot_archived_receipts` locator | Its Observation is still hot. Pool admission and the timeline prove completion from the locator, and reference holds keep current winners hot (decision 2 review). |
+| `receipt` | One retired receipt (`completed-webhook-bson-v1`, `channel-receipt-bson-v1`) | Its `granot_archived_receipts` locator | Its Observation is still hot. Pool admission and the timeline prove completion from the locator, and reference holds keep current winners hot (decision 2 review) until the proven-winner release retires a winner's Observation. |
 | `evidence` | One Lead evidence page | Its `granot_history_archive_chunks` catalog rows, and every locator whose `evidence_archive` names it | A hot receipt still points at it (`evidence_archive`). |
 | `history` | One November 18–19 job/month chunk | Its catalog row | — |
 | — | Closed scheduled runs and their replays | — | Always. The closed-run row fences deterministic run creation (`createGranotRun`) and serves same-key replay to `applyAutomationPlanAction`, and no Owner-defined bound exists. |

@@ -1,4 +1,4 @@
-import { inspectPoolCandidate } from "../salesOutreach/pool/admission";
+import { inspectPoolCandidate, inspectPoolCandidates } from "../salesOutreach/pool/admission";
 import { pointReceiptToDecision } from "./receiptDecisionPointer";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -79,6 +79,10 @@ test("certification records the winning Lead only and rolls back on failed recei
   await observations.insertOne(old);
   await withTransaction(s => pointReceiptToDecision(receipt, oid(), s));
   assert.equal((await read()).evidence, undefined);
+  // A retired winner without its proof fails closed: no GCS read inside the Pool transaction.
+  await observations.deleteOne({_id:observation});
+  assert.equal((await withTransaction(s => inspectPoolCandidates([target], s)))[0].reason,"accepted_observation_conflict");
+  await observations.insertOne(old);
   await leads.updateOne({ _id: lead }, { $set: { last_accepted_granot_observation: { observation_id: oid(), captured_at: new Date(+when + 1) } } });
   await receipts.updateOne({ _id: receipt }, { $set: { "processing.state": "claimed", "processing.lease_owner": "again" } });
   assert.equal(await finalizeReceiptClaim(receipt, "again", completion, result), true);

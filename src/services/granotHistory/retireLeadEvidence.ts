@@ -13,6 +13,7 @@ import { readRetiredReceipt, RETIRED_CHANNELS, RETIRED_RECEIPT_FORMATS } from ".
 import { evidenceFormat, packEvidence, unpackEvidence } from "./evidencePage";
 import { referencedChains } from "./retentionReferences";
 import { supersededObservations } from "./supersededObservations";
+import { provenWinners } from "./provenWinners";
 import { currentReceiptReplay } from "../granotLifecycle/receiptReplay";
 
 type Work = { chain: ArchivedChain; cold: boolean; header: Document };
@@ -153,7 +154,12 @@ async function loadPage(
   return rows;
 }
 
-async function releasable(db: Db, rows: Work[], session?: ClientSession) {
+/**
+ * Unreferenced and superseded, or a proven winner (`provenWinners.ts`, Owner switch): the one case that
+ * relaxes both the reference hold and the "a surviving Decision needs a later winner" rule.
+ * `provenRelease` overrides the switch for read-only review only.
+ */
+async function releasable(db: Db, rows: Work[], session?: ClientSession, provenRelease?: boolean) {
   const chains = rows.map((r) => r.chain);
   const held = await referencedChains(db, chains, session);
   const advanced = await supersededObservations(
@@ -161,15 +167,27 @@ async function releasable(db: Db, rows: Work[], session?: ClientSession) {
     chains.filter((c) => c.decisions.length),
     session,
   );
+  const proven = await provenWinners(db, chains, new Date(), session, provenRelease);
   return rows.filter(
     ({ chain: c }) =>
-      !held.has(String(c.observation._id)) &&
-      (!c.decisions.length || advanced.has(String(c.observation._id))),
+      proven.has(String(c.observation._id)) ||
+      (!held.has(String(c.observation._id)) &&
+        (!c.decisions.length || advanced.has(String(c.observation._id)))),
   );
 }
 
 export async function selectLeadEvidence(db: Db, page: Document[], read: ArchiveRead = readArchiveObject) {
   return releasable(db, await loadPage(db, page, undefined, undefined, read));
+}
+
+/** Read-only: the eligible chains of one page and what the pass releases with the proven-winner switch off and on. */
+export async function reviewLeadEvidence(db: Db, page: Document[], read: ArchiveRead = readArchiveObject) {
+  const rows = await loadPage(db, page, undefined, undefined, read);
+  return {
+    eligible: rows,
+    today: await releasable(db, rows, undefined, false),
+    proven: await releasable(db, rows, undefined, true),
+  };
 }
 
 export async function retireLeadEvidence(db: Db, store = storeArchiveObject, read: ArchiveRead = readArchiveObject) {

@@ -3,14 +3,18 @@
  *   node --import tsx ops/granot-retention-install.ts --install
  *   node --import tsx ops/granot-retention-install.ts --enable <ISO instant>   # start retire on use from this capture time
  *   node --import tsx ops/granot-retention-install.ts --disable                # stop the online pass (rollback)
+ *   node --import tsx ops/granot-retention-install.ts --enable-proven-winners  # Owner decision 8: release proven winners older than 30 days
+ *   node --import tsx ops/granot-retention-install.ts --disable-proven-winners # rollback: winners stay hot again
  * Retired records stay readable by original ID after --disable. Runbook:
  * docs/knowledge/granot-lifecycle/storage-retention-operations.md#retire-on-use.
  */
 import dns from "node:dns";
 import { MongoClient, type Db } from "mongodb";
 import { installRetiredOperationIndex, RETIRE_ON_USE_CONTROL } from "../src/services/granotHistory/retireOnUse";
+import { PROVEN_WINNER_CONTROL } from "../src/services/granotHistory/provenWinners";
 
-const control = (db: Db) => db.collection<{ _id: string; enabled_from?: Date; updated_at?: Date }>("granot_retention_control");
+const control = (db: Db) => db.collection<{ _id: string; enabled_from?: Date; enabled_at?: Date; updated_at?: Date }>("granot_retention_control");
+const MODES = ["--install", "--enable", "--disable", "--enable-proven-winners", "--disable-proven-winners"];
 
 export async function installRetention(db: Db) {
   await db.collection("granot_completed_estimate_windows").createIndex({purge_at:1},{name:"granot_completed_window_ttl",expireAfterSeconds:0});
@@ -38,7 +42,7 @@ export async function installRetention(db: Db) {
 
 async function main() {
   const [mode, at] = process.argv.slice(2);
-  if (!["--install", "--enable", "--disable"].includes(mode)) throw new Error("Expected --install | --enable <ISO instant> | --disable");
+  if (!MODES.includes(mode)) throw new Error("Expected " + MODES.join(" | ") + " (--enable takes an ISO instant)");
   if (process.env.MONGO_DNS_SERVERS)
     dns.setServers(
       process.env.MONGO_DNS_SERVERS.split(",").map((s) => s.trim()),
@@ -50,6 +54,14 @@ async function main() {
   try {
     const db = client.db("vantagemovers");
     if (mode === "--install") return console.log(JSON.stringify(await installRetention(db)));
+    if (mode === "--enable-proven-winners") {
+      await control(db).updateOne({ _id: PROVEN_WINNER_CONTROL }, { $setOnInsert: { enabled_at: new Date(), updated_at: new Date() } }, { upsert: true });
+      return console.log(JSON.stringify(await control(db).findOne({ _id: PROVEN_WINNER_CONTROL })));
+    }
+    if (mode === "--disable-proven-winners") {
+      await control(db).deleteOne({ _id: PROVEN_WINNER_CONTROL });
+      return console.log(JSON.stringify({ proven_winner_release: "disabled" }));
+    }
     if (mode === "--disable") {
       await control(db).deleteOne({ _id: RETIRE_ON_USE_CONTROL });
       return console.log(JSON.stringify({ retire_on_use: "disabled" }));
