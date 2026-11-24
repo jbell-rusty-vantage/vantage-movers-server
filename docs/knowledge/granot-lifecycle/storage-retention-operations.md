@@ -65,7 +65,8 @@ Observations and Decisions leave through the [Lead evidence pass](./capture.md#r
 **Proven-winner release (Owner decision 8, 2026-11-23; off until enabled).** A current winner may also leave, relaxing both holds, when all of these hold (`provenWinners.ts`):
 - the receipt certifies the Lead (`processing.certified_lead`) with its latest Decision, and the live Decision targets the same Lead;
 - the Lead's `last_accepted_granot_observation` names this Observation and capture time and carries the v2 proof for this Decision and receipt (the proof Pool admission reads instead of the Observation);
-- capture, receipt completion and every Decision are at least 30 days old.
+- capture, receipt completion and every Decision are at least 30 days old;
+- no **open** booking or release reconciliation case or discrepancy references the chain. A resolved one does not hold it: case readers use their pinned copies, then GCS.
 
 Every other chain keeps today's holds. The retirement steps are unchanged: pack, verify the read-back, recheck inside the transaction, catalogue, then remove. Pool admission stays fail-closed. A Lead whose proof later disappears (a reconciliation repoint) has no hot Observation to read, so admission refuses with `accepted_observation_conflict`. It never reads GCS inside its transaction. The retired receipt's own object loses its `observation_hot` block with the Observation, and then reaches its 90-day end of life through the existing path.
 

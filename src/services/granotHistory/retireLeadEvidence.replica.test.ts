@@ -93,7 +93,14 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
     // Table: only a proven winner older than 30 days leaves; a young or unproven winner stays hot.
     const proven = await seed(false, "2", true, true, old),
       young = await seed(false, "2", true, true),
-      unproven = await seed(false, "2", true, false, old);
+      unproven = await seed(false, "2", true, false, old),
+      openCase = await seed(false, "2", true, true, old),
+      resolvedCase = await seed(false, "2", true, true, old);
+    // An open case keeps its proven winner hot; a resolved one does not.
+    await db.collection("granot_booking_reconciliation_cases").insertMany([
+      { state: "open", evidence: [{ observation_id: openCase.o }] },
+      { state: "resolved", evidence: [{ observation_id: resolvedCase.o }] },
+    ]);
     const page = await obs.find().sort({ _id: 1 }).toArray();
     const selected = async () => new Set((await selectLeadEvidence(db, page)).map((r) => String(r.chain.observation._id)));
     assert.equal((await selected()).has(String(proven.o)), false, "switch off keeps every winner");
@@ -106,17 +113,17 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
         throw Error("GCS unavailable");
       }),
     );
-    assert.equal(await obs.countDocuments(), 8);
+    assert.equal(await obs.countDocuments(), 10);
     const result = await retireLeadEvidence(db, async (name, bytes) => {
       await db
         .collection("lead_messages")
         .insertOne({ observation_id: edited.o });
       return storage.store(name, bytes);
     }, read);
-    assert.equal(result.observations, 3);
-    assert.equal(result.decisions, 2);
-    assert.equal(await obs.countDocuments({ _id: proven.o }), 0);
-    for (const row of [edited, p5, active, young, unproven])
+    assert.equal(result.observations, 4);
+    assert.equal(result.decisions, 3);
+    assert.equal(await obs.countDocuments({ _id: { $in: [proven.o, resolvedCase.o] } }), 0);
+    for (const row of [edited, p5, active, young, unproven, openCase])
       assert.ok(await obs.findOne({ _id: row.o }));
     assert.equal(
       (await readGranotChain(db, normal.r, read))?.decisions.length,

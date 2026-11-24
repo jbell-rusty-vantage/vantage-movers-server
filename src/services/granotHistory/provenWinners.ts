@@ -10,7 +10,18 @@ import type { ArchivedChain } from "./archiveCodec";
 export const PROVEN_WINNER_CONTROL = "proven-winner-release-v1";
 export const PROVEN_WINNER_MIN_AGE_MS = 30 * 86_400_000;
 const MODELS = { FormLead: "form_leads", CallLead: "call_leads" } as const;
+/** Owner/lead decision on #276: a reference from an open case or discrepancy keeps the winner hot; resolved ones release. */
+const OPEN_CASES = ["granot_booking_reconciliation_cases", "granot_release_reconciliation_cases", "granot_booking_discrepancies", "granot_release_discrepancies"];
+const CASE_PATHS = ["evidence.observation_id", "evidence.decision_id", "priority_pairing.creating_booked_observation_id", "priority_pairing.preceding_priority_5_observation_id"];
 type Model = keyof typeof MODELS;
+
+/** Every value at a dotted path, through arrays (case `evidence` is an array). */
+function values(row: unknown, path: string[]): string[] {
+  if (row == null) return [];
+  if (Array.isArray(row)) return row.flatMap((x) => values(x, path));
+  if (!path.length) return [String(row)];
+  return values((row as Document)[path[0]], path.slice(1));
+}
 
 export async function provenWinnerReleaseEnabled(db: Db, session?: ClientSession) {
   const row = await db
@@ -43,7 +54,8 @@ function certifiedLead({ receipt: r, decisions }: ArchivedChain) {
 /**
  * Chains that are their certified Lead's current winner, accepted at least 30 days before `now`, whose
  * Lead still carries the v2 proof Pool admission reads instead of the Observation (`admission.ts`).
- * Empty while the control row is absent. Everything else keeps the reference and winner holds.
+ * An open case or discrepancy that references the chain keeps it hot. Empty while the control row is
+ * absent. Everything else keeps the reference and winner holds.
  */
 export async function provenWinners(db: Db, chains: ArchivedChain[], now: Date, session?: ClientSession, enabled?: boolean) {
   const found = new Set<string>();
@@ -70,6 +82,28 @@ export async function provenWinners(db: Db, chains: ArchivedChain[], now: Date, 
       )
         found.add(String(o._id));
     }
+  }
+  if (!found.size) return found;
+  const owner = new Map<string, string>();
+  for (const { chain: c } of candidates) {
+    if (!found.has(String(c.observation._id))) continue;
+    for (const id of [c.observation._id, c.receipt._id, c.receipt.processing?.latest_decision_id, ...c.decisions.map((d) => d._id)])
+      if (id) owner.set(String(id), String(c.observation._id));
+  }
+  const ids = [...owner.keys()].map(toObjectId);
+  const choices = [...ids, ...owner.keys()];
+  for (const name of OPEN_CASES) {
+    const rows = await db.collection(name).find(
+      { state: "open", $or: CASE_PATHS.map((k) => ({ [k]: { $in: choices } })) },
+      { session, projection: Object.fromEntries(CASE_PATHS.map((k) => [k, 1])), maxTimeMS: 3000 },
+    ).toArray();
+    for (const row of rows)
+      for (const path of CASE_PATHS) {
+        for (const id of values(row, path.split("."))) {
+          const key = owner.get(id);
+          if (key) found.delete(key);
+        }
+      }
   }
   return found;
 }
