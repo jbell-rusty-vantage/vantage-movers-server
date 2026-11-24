@@ -18,7 +18,8 @@ import { createObjectStore } from "./objectStore";
 export const CLOUD_STORAGE_CONTROL_COLLECTION = "cloud_storage_control";
 
 export type CloudStorageNamespace =
-  | "granot-history" | "sales-intelligence-packs" | "sales-intelligence-retirement" | "ringcentral-webhook-receipts";
+  | "granot-history" | "sales-intelligence-packs" | "sales-intelligence-retirement" | "ringcentral-webhook-receipts"
+  | "domain-records-retirement";
 
 type NamespaceDefinition = {
   bucket: string;
@@ -80,6 +81,20 @@ export const CLOUD_STORAGE_NAMESPACES: Record<CloudStorageNamespace, NamespaceDe
   "ringcentral-webhook-receipts": {
     bucket: PRIVATE_BACKUP_BUCKET,
     prefix: "history/ringcentral-webhook-receipts/v1/",
+    recoveryDays: 90,
+    holdKeys: {},
+    reuse: { mode: "refuse_released" },
+    sealedNames: /\/\d{4}-\d{2}-\d{2}\/[a-f0-9]{64}\.bson\.gz$/,
+    timeouts: { readMs: 30_000, writeMs: 60_000 },
+  },
+  /**
+   * Validated retirement of Domain Command history: proven `entity_changes` and `domain_command_executions` rows
+   * (`domainCommands/retirement/`). Same sealed pack shape: disposable from birth, deleted by the bucket 90 days after
+   * creation. Both collections share the prefix; each has its own catalog collection.
+   */
+  "domain-records-retirement": {
+    bucket: PRIVATE_BACKUP_BUCKET,
+    prefix: "history/domain-records/v1/",
     recoveryDays: 90,
     holdKeys: {},
     reuse: { mode: "refuse_released" },
@@ -185,7 +200,8 @@ export function salesIntelligencePackObjectName(prefix: string, database: string
 
 /**
  * Validated-retirement pack address, content-addressed: `<prefix><database>/<YYYY-MM-DD>/<sha256>.bson.gz`, for the
- * `sales-intelligence-retirement` (`history/sales-intelligence/v2/`) and `ringcentral-webhook-receipts` namespaces.
+ * `sales-intelligence-retirement` (`history/sales-intelligence/v2/`), `ringcentral-webhook-receipts` and
+ * `domain-records-retirement` namespaces.
  */
 export function retirementPackObjectName(prefix: string, database: string, day: string, hash: string) {
   if (database !== "vantagemovers" && !/^testvantagemovers(?:_[a-z0-9]+)?$/.test(database)) {

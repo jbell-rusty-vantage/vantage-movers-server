@@ -44,6 +44,7 @@ import {
 import { normalizeJobNo } from "../bookings/bookingIdentity";
 import mongoose from "mongoose";
 import { toObjectId } from "../../utils/objectId";
+import { readArchivedEntityChanges, withArchived } from "../domainCommands/retirement/archivedEntityChanges";
 import {
   projectBookingCandidateBrowserPolicy,
   searchBookingLeadCandidates,
@@ -620,7 +621,7 @@ export async function projectGranotLeadTimeline(
   const pages = await Promise.all(jobNumbers.map((job) => buildTimelineForJob(job)));
   const items = pages.flatMap((page) => page.items);
   if (jobNumbers.length === 0) {
-    const changes = await getEntityChangeModel().find({ "entity.model": leadModel, "entity.id": leadId }).lean();
+    const changes = await entityChangesWithArchive([{ model: leadModel, id: leadId }]);
     items.push(...changes.map(projectTimelineChange));
   }
   const deduped = [...new Map(items.map((item) => [`${item.type}:${item.id}`, item])).values()];
@@ -1167,6 +1168,13 @@ async function browseConnectLeadViews(
   ];
 }
 
+/** Every Entity Change of these entities: MongoDB, plus the retired ones still in their 90-day archive (validated retirement). */
+async function entityChangesWithArchive(refs: EntityRef[]): Promise<EntityChangeDocument[]> {
+  const hot = await getEntityChangeModel().find({ $or: refs.map((ref) => ({ "entity.model": ref.model, "entity.id": ref.id })) }).lean();
+  const db = mongoose.connection.db;
+  return db ? withArchived(hot as EntityChangeDocument[], await readArchivedEntityChanges(db, refs)) : hot as EntityChangeDocument[];
+}
+
 function projectTimelineChange(change: EntityChangeDocument): GranotTimelineEntry {
   return {
     id: String(change._id), type: "entity_change", event_at: iso(change.applied_at, "entity_change.applied_at"), type_priority: 80,
@@ -1211,9 +1219,7 @@ async function buildTimelineForJob(
   if (cancellation) {
     entityRefs.push({ model: "CancelledLead", id: String(cancellation._id) });
   }
-  const entityChanges = entityRefs.length
-    ? await getEntityChangeModel().find({ $or: entityRefs.map((ref) => ({ "entity.model": ref.model, "entity.id": ref.id })) }).lean()
-    : [];
+  const entityChanges = entityRefs.length ? await entityChangesWithArchive(entityRefs) : [];
   const items: GranotTimelineEntry[] = [];
   const cases = [
     ...bookingCases.map((row) => ({ row, kind: "booking" as const, mode: row.mode })),

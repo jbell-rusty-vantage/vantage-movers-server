@@ -1,6 +1,7 @@
 import { archiveJobKey } from "../granotHistory/archiveCodec.js";
 import { leadJobNumberFilter } from "../bookings/indexedJobLookup.js";
 import { archiveCatalog, readArchiveEntry, mergeEvidence } from "../granotHistory/archiveReads.js";
+import { readArchivedEntityChanges, withArchived } from "../domainCommands/retirement/archivedEntityChanges.js";
 import type { Db, Document } from "mongodb";
 import type { FindCursor } from "mongodb";
 import { isObjectIdString, toObjectId } from "../../utils/objectId.js";
@@ -494,7 +495,14 @@ export async function loadJobNumberTimelineRows(
         processedCallQuery,
         wordpressReceiptQuery,
       ]);
-      const changes = asDocumentArray(changeDocs);
+      // The Granot incident revisions retired to GCS (validated retirement) are still part of the Lead's history.
+      // Bounded before any GCS read: the catalog's row counts must fit beside the hot rows.
+      const hotChanges = asDocumentArray(changeDocs);
+      const archivedChanges = bounds.milestonesOnly ? [] : await readArchivedEntityChanges(db, [{ model: leadRef.model, id: asId(leadDoc._id) }], {
+        read, limitError: () => new JobTimelineEvidenceLimitError(),
+        ...(bounds.maxRowsPerQuery !== undefined ? { maxRows: bounds.maxRowsPerQuery - hotChanges.length } : {}) });
+      const changes = withArchived(hotChanges, archivedChanges);
+      if (bounds.maxRowsPerQuery !== undefined && changes.length > bounds.maxRowsPerQuery) throw new JobTimelineEvidenceLimitError();
       const messages = asDocumentArray(messageDocs);
       const processedCallDocs = asDocumentArray(processedCallDocRows);
       const wordpressReceiptDocs = asDocumentArray(wordpressReceiptDocRows);
