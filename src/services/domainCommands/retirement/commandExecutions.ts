@@ -32,7 +32,7 @@ import {
 export const COMMAND_EXECUTION_RETIREMENT_CONTROL_ID = "command_executions_v1";
 export const COMMAND_EXECUTION_ARCHIVE_PACKS_COLLECTION = "domain_command_execution_archive_packs";
 export const COMMAND_EXECUTION_ARCHIVE_PACK_INDEXES = catalogIndexes("command_execution", []);
-export const RETIRABLE_ORIGINS = ["external_sheet_ingestion", "granot_lifecycle"] as const;
+export const REVIEWED_ORIGINS = ["external_sheet_ingestion", "granot_lifecycle"] as const;
 const PROCESSOR_ACTOR_ID = "granot-lifecycle-processor";
 /** The collections an `entity_refs` model of a phase 2 receipt lives in. Any other model holds. */
 const LIVE_COLLECTIONS: Record<string, string> = { FormLead: "form_leads", CallLead: "call_leads", GranotRecordLink: "granot_record_links" };
@@ -98,8 +98,8 @@ export async function loadCommandFacts(db: Db, rows: readonly Document[], until:
 /** Reads (read-only) the next reviewed receipts after `cursor` (`_id` order) and their verdicts, for `dry-run` and the worker.
  * External-ingestion receipts are read so the run reports them as held. */
 export async function reviewCommandBatch(db: Db, cursor: string | null, now: Date, size = RETIREMENT_BATCH) {
-  const rows = await readRawBatch(executionsOf(db).find({ origin: { $in: [...RETIRABLE_ORIGINS] }, ...(cursor ? { _id: { $gt: toObjectId(cursor) } } : {}) },
-    { raw: true, sort: { _id: 1 }, limit: size }) as never);
+  const rows = await readRawBatch(executionsOf(db).find({ origin: { $in: [...REVIEWED_ORIGINS] }, ...(cursor ? { _id: { $gt: toObjectId(cursor) } } : {}) },
+    { raw: true, sort: { _id: 1 }, limit: size, hint: "_id_" }) as never);
   const facts = await loadCommandFacts(db, rows.map((r) => r.doc), new Date(+now - RETIREMENT_SETTLE_MS));
   return { rows, verdicts: rows.map((r) => commandExecutionVerdict(r.doc, facts)) };
 }
