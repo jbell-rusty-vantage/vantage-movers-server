@@ -222,8 +222,9 @@ export async function defaultFindDailyOperationsEventById(
   if (!isObjectIdString(eventId)) {
     return null;
   }
+  // A retired event's dedupe fence (`eventRetirement.ts`) is never a card.
   const row = await getDailyOperationsEventModel()
-    .findById(eventId)
+    .findOne({ _id: eventId, kind: { $exists: true } })
     .lean()
     .exec();
   return (row as DailyOperationsLiveEventRow | null) ?? null;

@@ -9,6 +9,8 @@ resource: src/services/dailyOperations/recordDailyOperationsFact.ts
 applies_to:
   - src/services/dailyOperations/**
   - src/models/DailyOperationsEvent.ts
+  - src/routes/daily-operations-event-retirement-cron.routes.ts
+  - ops/daily-operations/event-retirement.ts
   - src/models/DailyOperationsDay.ts
   - src/models/DailyOperationsReadView.ts
   - src/models/dailyOperationsModelFactory.ts
@@ -140,7 +142,20 @@ Indexes declared in [`DailyOperationsEvent.ts`](../../../src/models/DailyOperati
 
 `dailyops_day_kind_order` is also created by [`ops/daily-operations-read-view-indexes.ts`](../../../ops/daily-operations-read-view-indexes.ts). The TTL was installed by `ops/disk-trim/trim.ts` (2026-10-07). The `day` key is a string and cannot carry a TTL.
 
-Retention: 400 days after `createdAt`. Keep the history in MongoDB. The release record compared a GCS export of closed days and kept MongoDB: the export would add an upload and verification per day, archive reads and a merge for late facts. New GCS objects for this release were zero.
+Retention: 400 days after `createdAt`, and since 2026-11-23 [validated retirement](../validated-retirement.md) of closed-day bodies (below). The Nov 19 "keep in MongoDB" decision was revisited by the Owner on 2026-11-23 (proposal §1 of [VALIDATED-RETIREMENT-PROPOSALS-2026-11-23](../../operations/VALIDATED-RETIREMENT-PROPOSALS-2026-11-23.md)); Option B (a Sheet completion count on the day document) was not approved.
+
+#### Closed-day retirement and the dedupe fence
+
+[`eventRetirement.ts`](../../../src/services/dailyOperations/eventRetirement.ts), cron `/api/cron/daily-operations-event-retirement` (every 10 minutes at :03), operator `pnpm dailyops:event-retirement`. Switch: `daily_operations_event_retirement` `{_id: "v1", enabled_at}`, off by default; off keeps every body for the 400-day TTL.
+
+- **Proof.** The event's day document is `status: "closed"` with `closed_at`, the day is at least two New York days before today, and it has `webhook_counts_version: 1`. Any old day still open (close cron behind) blocks the whole run (`not_reviewable`).
+- **Scan.** By `createdAt` on `daily_operations_event_created_ttl` (no blocking sort), up to the start of yesterday in New York, 500 rows or 8 MiB per batch; rows sharing one instant never split. A late event on an old closed day is reviewed when its own `createdAt` passes.
+- **Pack.** Every reviewed row's exact BSON goes to `history/daily-operations-events/v1/<db>/<day>/<sha256>.bson.gz` ([Cloud Storage](cloud-storage.md), 90-day clock at creation) and is read back byte for byte. Catalog `daily_operations_event_archive_packs`: one row per pack with `days`, `_id` and `createdAt` ranges and verdict counts; TTL 89 days.
+- **Fence.** A proven event is replaced in place, in a snapshot transaction that rechecks its bytes and its day, by `{_id, dedupe_key, day, createdAt}` (about 124 B). `dedupe_key_1` and the 400-day TTL keep working unchanged, so a re-emitted key (an Admin retry of an old Sheet job, an intake refresh, a late fact) is still a `duplicate`. A fence has no `kind`: scans use `{kind: {$exists: true}}`, and every body reader (board, `/events`, rebuild, the retired live stream) reads today only, so a fence is never counted or rendered. The live stream's by-id read also skips fences.
+- **Held.** Rows on days without a day document, unversioned days or too-recent days keep their body for the ordinary 400 days, already archived.
+- **Lookup.** `pnpm dailyops:event-retirement lookup --target=vantagemovers --id=<event>` restores an event byte for byte from GCS.
+- **Ops readers.** `ops/booking-job-number/sources.ts` and `ops/granot-frequency/observe-equal-date.ts` read event bodies for investigations; for retired days they find only fences and must read the packs.
+- **Measured (read-only production dry run, 2026-11-24 00:43 UTC, window to 2026-11-22 05:00 UTC, cutoff day 2026-11-21).** 279,966 live rows reviewed: 4,300 retire (2.80 MB logical → 0.53 MB fences), 275,666 held `day_webhook_counts_unversioned` (183.5 MB). Only days from 2026-11-18 carry `webhook_counts_version: 1` (158 day documents, first 2026-05-22), so the existing stock stays until its TTL unless the Owner relaxes that clause; new days retire after two days. Replica proof: `ops/daily-operations/event-retirement.replica.ts`.
 
 Measured baseline (release record and [`operations-command-sheets-final-stock.json`](../../operations/evidence/operations-command-sheets-final-stock.json)):
 
