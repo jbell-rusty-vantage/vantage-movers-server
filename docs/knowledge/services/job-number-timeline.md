@@ -129,7 +129,9 @@ Milestone-mode reads, in order, with the declared index that fits (code declarat
 
 `recent-official-bookings` reads `booked_leads` with `$or` on non-empty `job_no` / `normalized_job_no`, sorted `{ book_date: -1, createdAt: -1 }`, limit 3. No declared `booked_leads` index leads with `book_date`.
 
-Retention: none owned. The milestones depend on Record Links, official Bookings and Cancellations (including their immutable `*_snapshot` fields) and Lead Entity Changes staying in MongoDB. See [`domain-commands.md`](./domain-commands.md) for why `entity_changes` has no expiry.
+Retention: none owned. The milestones depend on Record Links, official Bookings and Cancellations (including their immutable `*_snapshot` fields) and Lead Entity Changes staying in MongoDB. See [`domain-commands.md`](./domain-commands.md#entity_changes) for `entity_changes` retention.
+
+Retired incident revisions (validated retirement, 2026-11-23, off until enabled): the full timeline (not milestones, which read only job-number rows, never retired) adds the Lead's retired Entity Changes from GCS by entity (`readArchivedEntityChanges`, one catalog query; a GCS read only for a Lead with retired rows), so it shows the same "Lead updated" events and processing-gap attention as before. `maxRowsPerQuery` counts them. After the 90-day archive the rows are gone.
 
 ### Observations for the index phase
 

@@ -59,6 +59,8 @@ generated:
 
 **`ringcentral-webhook-receipts` namespace (2026-11-23).** Prefix `history/ringcentral-webhook-receipts/v1/`, 90 recovery days, the same sealed pack shape as `sales-intelligence-retirement`. Used by validated retirement of RingCentral webhook receipts ([Number Activity capture](number-activity-capture.md#retention-and-what-stays-in-mongodb)); its catalog is `ringcentral_webhook_receipt_archive_packs`. The bucket rule is added by `pnpm ringcentral:receipt-retirement install`.
 
+**`domain-records-retirement` namespace (2026-11-23).** Prefix `history/domain-records/v1/`, 90 recovery days, the same sealed pack shape. Used by validated retirement of Domain Command history ([Domain Commands](domain-commands.md#entity_changes)): `entity_changes` (catalog `entity_change_archive_packs`) and, with the second slice, `domain_command_executions`. One bucket rule covers the shared prefix, added by the first `install` that runs.
+
 **`sales-intelligence-retirement` namespace (2026-11-22).** Prefix `history/sales-intelligence/v2/`, 90 recovery days, every pack sealed at birth (`<db>/<YYYY-MM-DD>/<sha256>.bson.gz`, created with its recovery clock started), no holds. Used by [validated retirement](../validated-retirement.md) of Sales Intelligence jobs; its catalog is `sales_intelligence_job_archive_packs` in MongoDB. The bucket rule is added by `pnpm outreach:job-retirement install` under a metageneration precondition.
 
 ## Shape
@@ -151,7 +153,7 @@ Namespaces and their defaults:
 | `granot-history` | `vantage-mongodb-backups-496816` | `history/granot/v1/` | `<prefix><database>/<hh>/<sha256>.bson.gz` | `publisher` → `granotPublisherHold`, `review` → `granotReleaseReview` (evidence in `granotReleaseEvidence`) | `rehold` | 15 s / 30 s |
 | `sales-intelligence-packs` | `vantage-mongodb-backups-496816` | `history/sales-intelligence/v1/` | `<prefix><database>/<run uuid>/<sha256>.bson.gz` or `catalog.json` | none | `refuse_released` | 30 s / 60 s |
 
-Every namespace has a 90-day recovery window (Owner decision 1, 2026-11-23; the two retirement namespaces, `sales-intelligence-retirement` and `ringcentral-webhook-receipts`, have had 90 days since they shipped). The bucket rule for each prefix must agree, or a release store refuses to open. Bucket soft delete adds seven days after lifecycle deletion.
+Every namespace has a 90-day recovery window (Owner decision 1, 2026-11-23; the retirement namespaces, `sales-intelligence-retirement`, `ringcentral-webhook-receipts` and `domain-records-retirement`, have had 90 days since they shipped). The bucket rule for each prefix must agree, or a release store refuses to open. Bucket soft delete adds seven days after lifecycle deletion.
 
 Scopes stay least-privilege, as today:
 - reads, stat, list and lifecycle use `devstorage.read_only`;

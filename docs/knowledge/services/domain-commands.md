@@ -16,6 +16,9 @@ applies_to:
   - src/services/domainCommands/ringcentralFinalResult.ts
   - src/services/domainCommands/callFormFillBackfill.ts
   - src/services/domainCommands/index.ts
+  - src/services/domainCommands/retirement/shared.ts
+  - src/services/domainCommands/retirement/entityChanges.ts
+  - src/services/domainCommands/retirement/archivedEntityChanges.ts
   - src/models/EntityChange.ts
   - src/models/DomainCommandExecution.ts
 owners: [team:main-server]
@@ -202,7 +205,14 @@ The three provenance indexes were installed in production on 2026-11-18 ([Granot
 
 Other readers: the Outreach live stream watches `entity_changes` inserts for metric models (change stream, not a query; `salesOutreach/live/stream.ts`).
 
-Retention: none. Keep all `entity_changes` with no new expiry. Granot history and reference protection, the detailed timeline, Sales Intelligence history, Desk evaluation, assignment reconstruction, the Outreach `(applied_at, _id)` tail and Number Activity lead-link recovery read them. Advancing one reader's checkpoint cannot release evidence another reader needs (release record).
+Retention: no expiry. Granot history and reference protection, the detailed timeline, Sales Intelligence history, Desk evaluation, assignment reconstruction, the Outreach `(applied_at, _id)` tail and Number Activity lead-link recovery read them. Advancing one reader's checkpoint cannot release evidence another reader needs (release record).
+
+**Validated retirement of the Granot incident revisions (Owner decision 5, 2026-11-23; off until enabled).** The narrow rule of [proposal §5](../../operations/VALIDATED-RETIREMENT-PROPOSALS-2026-11-23.md#5-entity_changes-and-domain_command_executions-decision-7-after-the-reader-inventory). Code: `domainCommands/retirement/entityChanges.ts`; cron `/api/cron/entity-change-retirement` every 10 minutes; operator `pnpm domain:entity-change-retirement` (`status`, `dry-run`, `install`, `enable`, `disable`, `run`, `lookup --id=<change>` or `--entity=<CallLead id>`); replica proof `ops/domain-commands/entity-change-retirement.replica.ts`.
+- **Reviewed rows.** Only a Call Lead row from `synchronizeLeadFromGranot` with `revision_before > 0` whose `changed_paths` are only `last_accepted_granot_observation` and/or `current_move_provenance`. Such a row is never a creation, job-number or `receiver_agent` row. Every other row is never read by the worker.
+- **Proof, per row:** a later revision exists; both lead-change tails (`outreach_entity_changes`, `lead_link_entity_changes` in `sales_intelligence_sync_state`) are past its `applied_at` by more than their 120 s overlap, and a missing tail cursor makes nothing reviewable; it is strictly older than the Lead's 50th newest row by `applied_at` (the Sales Intelligence history reads those 50, sorted the same way); no receipt, Observation or Decision named in `provenance` is hot.
+- **Archive.** Proven rows only are packed (exact BSON) to GCS (`domain-records-retirement`, 90 days), read back byte for byte, catalogued in `entity_change_archive_packs` (TTL 89 days; `_id` range and `entity_ids`), then deleted in a snapshot transaction that rechecks their exact bytes. A held row needs no copy: it stays in MongoDB. The scan walks `entity_change_entity_revision_unique` in Lead order, so one Lead's rows share few packs; a finished pass rests a day, then re-reviews the holds.
+- **Readers after retirement.** The Granot lead and job timelines (`projections.ts`) and the Job Number Timeline (`mongo-evidence-loader.ts`) display every Entity Change of their entities, unfiltered, so they read retired rows back by entity (`readArchivedEntityChanges`: one catalog query, a GCS read only for a Lead with retired rows; an unreadable pack fails the read). Sales Intelligence history (newest 50), assignment reconstruction (`receiver_agent` rows), both tails (cursors past) and the Granot reference holds (records already retired) lose nothing. A retired row leaves the archive after 90 days; the revision chain then has gaps, which no reader checks.
+- **Dry run, production, 2026-11-24 00:50 UTC** (read-only, secondary): 142,658 incident rows reviewed; **111,426 retirable (126.0 MB logical) on 621 Call Leads**; held 30,641 newest-50 and 591 latest-revision rows; none held for a tail or a hot Granot record.
 
 Measured baseline:
 

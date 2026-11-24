@@ -14,6 +14,8 @@ applies_to:
   - src/services/cloudStorage/namespaces.ts
   - src/services/granotHistory/retireOnUse.ts
   - src/services/granotHistory/endOfLife.ts
+  - src/services/domainCommands/retirement/shared.ts
+  - src/services/domainCommands/retirement/entityChanges.ts
   - ops/sales-outreach/job-retirement.ts
 owners: [team:main-server]
 sources:
@@ -108,7 +110,8 @@ From the [audit](../operations/VALIDATED-RETIREMENT-AUDIT-2026-11-22.md). Verdic
 | `sheet_sync_attempts`, `sheet_sync_runs` | 90-day TTL, no archive; 155 MB live | **Should adopt.** Proof: the parent job is synced |
 | `daily_operations_events` | 400-day TTL; +660 MB projected | **Should adopt** after the Owner revisits the Nov 19 "keep in MongoDB" decision. Proof: the day is closed and frozen; keep a hot dedupe fence |
 | `sheet_sync_jobs` | Permanent | **Should adopt.** Proof: synced, the entity's sheet metadata records the row, nothing newer pending |
-| `entity_changes`, `domain_command_executions` | Permanent | **Should adopt, last.** Many readers; idempotency fence must stay hot |
+| `entity_changes` | Narrow incident rule built 2026-11-23 (`domainCommands/retirement/entityChanges.ts`, off until enabled): Granot re-snapshot Call Lead revisions outside the newest 50, tails past, Granot records retired; GCS 90 days; timelines read retired rows back by entity | **Adopted** once enabled (incident rows only). Dry run: 111,426 rows, 126.0 MB logical. Everything else stays permanent ([Domain Commands](services/domain-commands.md#entity_changes)) |
+| `domain_command_executions` | Permanent | **Should adopt, last.** Idempotency fence must stay hot |
 | Sales Outreach business collections, `call_interactions` | Business records | **Not applicable**: they are the lifecycle effects |
 
-Cross-cutting: every namespace uses 90 days, in code and on the live bucket (metageneration 9, 2026-11-23); `ops/cloud/mongodb-backup/lifecycle.json` mirrors all six rules. [Release record](../operations/VALIDATED-RETIREMENT-RELEASE-2026-11-23.md). The real-bucket contract proof of the Cloud Storage module has not run.
+Cross-cutting: every namespace uses 90 days, in code and on the live bucket (metageneration 9, 2026-11-23); `ops/cloud/mongodb-backup/lifecycle.json` mirrors all six rules, plus a seventh, `history/domain-records/v1/`, not yet on the live bucket (`pnpm domain:entity-change-retirement install` adds it). [Release record](../operations/VALIDATED-RETIREMENT-RELEASE-2026-11-23.md). The real-bucket contract proof of the Cloud Storage module has not run.
