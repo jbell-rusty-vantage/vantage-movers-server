@@ -148,7 +148,43 @@ A re-put of identical bytes during the review cancels it (`rehold`), and the obj
   - 6,279 receipts whose Observation is hot (6.8 MB);
   - 37 pages a hot receipt points at (3.1 MB).
 - **Rows that would expire:** 62,656 (19.4 MB of BSON).
-- **Out of reach:** no MongoDB row names the other 247,661 objects (1.75 GB). They are earlier per-chain archives that only operator manifests reference, so this pass cannot reach them. Their end of life is a separate Owner decision.
+- **Out of reach:** no MongoDB row names the other 247,661 objects (1.75 GB). They are earlier per-chain archives that only operator manifests reference, so this pass cannot reach them. [Unreferenced older objects](#unreferenced-older-objects) covers them.
+
+### Unreferenced older objects
+
+Owner decision 6 (2026-11-23, [proposal §6](../../operations/VALIDATED-RETIREMENT-PROPOSALS-2026-11-23.md#6-the-247661-unreferenced-older-granot-objects-175-gb-gcs)). Code: [`unreferencedObjects.ts`](../../../src/services/granotHistory/unreferencedObjects.ts). Operator: [`ops/granot-unreferenced-objects.ts`](../../../ops/granot-unreferenced-objects.ts). No runtime or cron change.
+
+**What they are.** Superseded month pages. `appendHistoryMonth` writes a new content-addressed page each time a job/month page grows and moves its catalog row to the new hash. The older page keeps its bytes in GCS with no row naming it.
+
+**Rule.** An object starts its 90-day clock only when all of these hold:
+- No row in any locator collection names its hash. The collections are `granot_history_archive_chunks` (`_id`, `hash`), `granot_archived_receipts`, hot receipts (`evidence_archive`, `history_archive`), closed runs (`hash`, `run_archive`), run summaries and `granot_history_end_of_life`. Case copies (`granot_case_*`) hold documents, not object names.
+- It is a version-1 job chunk with no hold and no clock, written more than a day ago.
+- Every receipt, Observation and Decision in it exists **byte for byte** in another object that a live row still names. That can be a newer month page of the same job, a Lead evidence page (committed `evidence_ids`) or a retired-by-use receipt pack.
+
+Anything else is held by reason: `chain_not_archived_elsewhere`, `newer_copy_differs`, `not_job_chunk:<format>`, `unreadable`, `hold_present`, `already_on_clock`, `recent`, `read_error`, `coverage_error`.
+
+**Commands** (server root; `apply` needs Owner approval):
+
+```sh
+node --env-file=.env --import tsx ops/granot-unreferenced-objects.ts inventory --target=vantagemovers .tmp/granot-unreferenced-<date>/manifest.json
+node --env-file=.env --import tsx ops/granot-unreferenced-objects.ts apply .tmp/granot-unreferenced-<date>/manifest.json --target=vantagemovers --limit=500
+# at least 800 s later, the same command again starts the clocks of the reviews it placed
+```
+
+- **Inventory** is read-only: it lists objects and reads them (GCS) and runs `find` (MongoDB, secondary preferred). It lists GCS before reading MongoDB, so a locator committed during the listing is still seen. It writes the private manifest (create-only) with counts and bytes by class, and each object's covering hashes.
+- **Apply** opens a release store only while the bucket rule matches 90 days. For each confirmed object it re-checks three things: the live generation equals the manifest's, `archiveObjectReferenced` plus end-of-life state still finds no row, and every covering object is still named.
+  - It then places the namespace review hold under `unreferenced-v1`.
+  - On a run at least 800 s later it calls `startRecoveryClock` with `archiveObjectReferenced` as the guard.
+  - A refusal or a new reference puts the publisher hold back in place of the review, never no hold.
+  - Progress is appended to `<manifest>.apply.jsonl`. The object's own hold token and clock are authoritative, so a re-run is idempotent.
+- **Recovery** stays possible by ID for 90 days: through the covering archive, by job, and through the manifest's object until the bucket deletes it.
+- **Rollback.** Stop running `apply`. A re-put of identical bytes re-holds a clocked object (reuse policy `rehold`).
+
+**Measured (2026-11-24 00:53–01:41 UTC, read-only inventory).**
+- **GCS:** 294,813 objects (1.96 GB) under the prefix. MongoDB rows name 47,152 hashes.
+- **Unreferenced:** 247,661 objects (1,747,758,834 bytes). All are version-1 job chunks for 6,103 jobs, holding 5,704,037 chains.
+- **Confirmed superseded:** all 247,661. Each is covered byte for byte by its job's current month page (6,103 covering pages), with none held and no read errors.
+- **Apply:** not run. It waits for an Owner-approved run. Once clocked, the bucket deletes each object 90 days later (about $0.04 per month of GCS today).
 
 ## Scheduled run closure and recovery
 
