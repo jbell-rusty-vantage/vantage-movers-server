@@ -1,9 +1,9 @@
 /**
- * Domain Command receipt retirement (phases 1–2), end to end on the local replica (csi01, loopback only) with a fake bucket.
+ * Domain Command receipt retirement (phase 2), end to end on the local replica (csi01, loopback only) with a fake bucket.
  *   node --import tsx ops/domain-commands/command-execution-retirement.replica.ts
- * Proves: a storage failure changes nothing; a run deletes only the external-ingestion receipt and the processor receipt
- * whose Granot sources are retired, and keeps a processor receipt whose receipt is hot, an Owner-keyed Granot receipt, a
- * receipt whose Lead is gone and an Admin receipt; a retired receipt restores byte for byte by `_id`; a later pass
+ * Proves: a storage failure changes nothing; a run deletes only the processor receipt whose Granot sources are retired,
+ * and keeps the external-ingestion receipt (billing evidence), a processor receipt whose receipt is hot, an Owner-keyed
+ * Granot receipt, a receipt whose Lead is gone and an Admin receipt; a retired receipt restores byte for byte by `_id`; a later pass
  * changes nothing. Synthetic rows in `testvantagemovers_entchg`, dropped at the end.
  */
 import assert from "node:assert/strict";
@@ -72,15 +72,15 @@ async function main() {
     const afterFailure = await controls.findOne({ _id: COMMAND_EXECUTION_RETIREMENT_CONTROL_ID });
     assert.equal(afterFailure?.cursor, null); assert.equal(afterFailure?.lease_owner, null);
 
-    // 2. A run deletes exactly the two proven receipts (the Admin receipt is never read).
+    // 2. A run deletes exactly the one proven receipt (the Admin receipt is never read).
     const { store, bucket } = createFakeObjectStore(options);
     const run = await retireProvenCommandExecutions(db, { now, store });
-    assert.deepEqual([run.rows, run.retire, run.deleted, run.packs, run.pass_completed], [5, 2, 2, 1, true]);
-    assert.deepEqual(run.held_reasons, { source_receipt_hot: 1, key_not_receipt_bound: 1, entity_ref_missing: 1 });
+    assert.deepEqual([run.rows, run.retire, run.deleted, run.packs, run.pass_completed], [5, 1, 1, 1, true]);
+    assert.deepEqual(run.held_reasons, { billing_evidence_best_relocation: 1, source_receipt_hot: 1, key_not_receipt_bound: 1, entity_ref_missing: 1 });
     const left = new Set((await executions.find({}, { projection: { _id: 1 } }).toArray()).map((d) => String(d._id)));
-    for (const r of rows) assert.equal(left.has(String(r._id)), r !== sheet && r !== retired, r.idempotency_key);
+    for (const r of rows) assert.equal(left.has(String(r._id)), r !== retired, r.idempotency_key);
     const [pack] = await db.collection(COMMAND_EXECUTION_ARCHIVE_PACKS_COLLECTION).find().toArray();
-    assert.ok(pack && pack.rows === 2 && pack.origins.external_sheet_ingestion === 1 && pack.origins.granot_lifecycle === 1 && pack.expires_at > now);
+    assert.ok(pack && pack.rows === 1 && pack.origins.granot_lifecycle === 1 && !pack.origins.external_sheet_ingestion && pack.expires_at > now);
     assert.ok((await bucket.stat(pack.name))?.customTime, "the pack's 90-day clock started at creation");
 
     // 3. Restore byte for byte by `_id`.
@@ -91,7 +91,7 @@ async function main() {
     const later = new Date(+now + 25 * 3_600_000);
     assert.equal((await retireProvenCommandExecutions(db, { now, store })).status, "resting");
     const again = await retireProvenCommandExecutions(db, { now: later, store });
-    assert.deepEqual([again.rows, again.retire, again.deleted, again.packs], [3, 0, 0, 0]);
+    assert.deepEqual([again.rows, again.retire, again.deleted, again.packs], [4, 0, 0, 0]);
     console.log(JSON.stringify({ ok: true, database, run, pack: { rows: pack.rows, size: pack.size } }));
   } finally {
     await db.dropDatabase();

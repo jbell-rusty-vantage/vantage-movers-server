@@ -12,9 +12,9 @@ const sheet = { _id: self, origin: "external_sheet_ingestion", idempotency_key: 
 const facts = (over: Partial<CommandFacts> = {}): CommandFacts => ({ until: new Date(+at + 1000), hot: new Set(),
   live: new Set([`CallLead:${lead}`, `FormLead:${lead}`, `GranotRecordLink:${link}`]), ...over });
 
-test("a command receipt retires only when no producer can replay its key and its records exist (phases 1–2)", () => {
+test("a command receipt retires only when no producer can replay its key and its records exist (phase 2)", () => {
   for (const [name, row, given, expected] of [
-    ["phase 1: retired external sheet ingestion", sheet, facts(), "retire"],
+    ["external sheet ingestion is billing evidence", sheet, facts(), "billing_evidence_best_relocation"],
     ["phase 2: processor key, receipt and Observation retired", granot, facts(), "retire"],
     ["phase 2: create-lead key", { ...granot, idempotency_key: `granot:create-lead:${observation}` }, facts(), "retire"],
     ["Owner key on a Granot command", { ...granot, idempotency_key: "4eddbefb-eeb4-4869-a39c-a0d3d07979e3" }, facts(), "key_not_receipt_bound"],
@@ -25,9 +25,9 @@ test("a command receipt retires only when no producer can replay its key and its
     ["Observation still hot", granot, facts({ hot: new Set([observation]) }), "source_observation_hot"],
     ["RingCentral and Admin keys wait for phases 3–4", { ...sheet, origin: "ringcentral" }, facts(), "origin_out_of_scope"],
     ["a referenced Lead is gone", granot, facts({ live: new Set([`GranotRecordLink:${link}`]) }), "entity_ref_missing"],
-    ["an unsupported reference", { ...sheet, entity_refs: [{ model: "BookedLead", id: lead }] }, facts(), "entity_ref_unsupported"],
-    ["only its own execution referenced", { ...sheet, entity_refs: [{ model: "CommandExecution", id: self }] }, facts(), "no_entity_refs"],
-    ["still settling", sheet, facts({ until: at }), "settling"],
+    ["an unsupported reference", { ...granot, entity_refs: [{ model: "BookedLead", id: lead }] }, facts(), "entity_ref_unsupported"],
+    ["only its own execution referenced", { ...granot, entity_refs: [{ model: "CommandExecution", id: self }] }, facts(), "no_entity_refs"],
+    ["still settling", granot, facts({ until: at }), "settling"],
   ] as const) {
     const verdict = commandExecutionVerdict(row, given);
     assert.equal(verdict.verdict === "retire" ? "retire" : verdict.reason, expected, name);

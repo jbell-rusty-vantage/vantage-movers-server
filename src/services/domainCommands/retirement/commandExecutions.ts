@@ -14,19 +14,19 @@ import {
 } from "./shared";
 
 /**
- * Validated retirement of Domain Command receipts, phases 1–2 (Owner decision 5, 2026-11-23; proposal §5 of
+ * Validated retirement of Domain Command receipts, phase 2 (Owner decision 5, 2026-11-23; proposal §5 of
  * docs/operations/VALIDATED-RETIREMENT-PROPOSALS-2026-11-23.md). A receipt is the replay fence of its
  * `{origin, idempotency_key}` (`idempotency.ts`); it may leave only when no producer can generate that key again:
- * - **Phase 1, `external_sheet_ingestion`.** The origin is retired (226dba24): the executor refuses every new operation
- *   of that origin before it runs, and no code builds that context any more. A replay with no stored receipt now raises
- *   "permanently retired" instead of returning the old outcome; nothing can send one.
+ * - **Phase 1 is held (lead decision, 2026-11-24).** `external_sheet_ingestion` receipts could never replay (the origin is
+ *   retired, 226dba24), but they are the Best Relocation final reconciliation (run `6aea79aa80506078c37279fe`) and back
+ *   billing evidence, which must outlive a 90-day archive. They stay in MongoDB (`billing_evidence_best_relocation`).
  * - **Phase 2, Granot processor receipts** (`granot:synchronize-lead:<Observation>`, `granot:create-lead:<Observation>`,
  *   the fixed processor actor). The processor builds the key only from a hot receipt (`defaultLoadReceipt`) and its
  *   Observation. Once Granot retention has removed both from MongoDB, nothing restores them hot; a redelivery meets the
  *   retired-operation fence or becomes a new receipt with a new Observation, so a new key.
  * Every other receipt is held: scheduled-estimate and Form-sibling keys are deterministic on other sources, Owner and Admin
  * keys are client-supplied (phase 4), RingCentral keys replay from the Call Log (phase 3). No compact fence row stays.
- * In every phase each `entity_refs` record must still exist. Proven rows are packed to GCS (90 days), read back byte for
+ * Each `entity_refs` record must still exist. Proven rows are packed to GCS (90 days), read back byte for
  * byte, catalogued by `_id` range, then deleted in a snapshot transaction that rechecks their exact bytes.
  */
 export const COMMAND_EXECUTION_RETIREMENT_CONTROL_ID = "command_executions_v1";
@@ -34,7 +34,7 @@ export const COMMAND_EXECUTION_ARCHIVE_PACKS_COLLECTION = "domain_command_execut
 export const COMMAND_EXECUTION_ARCHIVE_PACK_INDEXES = catalogIndexes("command_execution", []);
 export const RETIRABLE_ORIGINS = ["external_sheet_ingestion", "granot_lifecycle"] as const;
 const PROCESSOR_ACTOR_ID = "granot-lifecycle-processor";
-/** The collections an `entity_refs` model of phases 1–2 lives in. Any other model holds. */
+/** The collections an `entity_refs` model of a phase 2 receipt lives in. Any other model holds. */
 const LIVE_COLLECTIONS: Record<string, string> = { FormLead: "form_leads", CallLead: "call_leads", GranotRecordLink: "granot_record_links" };
 const OBJECT_ID = /^[a-f0-9]{24}$/;
 
@@ -60,17 +60,15 @@ const refsOf = (row: Document): Array<{ model: string; id: string }> => (Array.i
   .filter((r: Document) => !(r?.model === "CommandExecution" && String(r.id) === String(row._id)))
   .map((r: Document) => ({ model: String(r?.model), id: String(r?.id) }));
 
-/** The phase 1–2 proof for one receipt. Pure. */
+/** The phase 2 proof for one receipt. Pure. */
 export function commandExecutionVerdict(row: Document, facts: CommandFacts): Verdict {
+  if (row.origin === "external_sheet_ingestion") return { verdict: "hold", reason: "billing_evidence_best_relocation" };
+  if (row.origin !== "granot_lifecycle") return { verdict: "hold", reason: "origin_out_of_scope" };
   if (!(row.applied_at instanceof Date) || +row.applied_at >= +facts.until) return { verdict: "hold", reason: "settling" };
-  if (row.origin === "granot_lifecycle") {
-    const source = processorSource(row);
-    if (!source) return { verdict: "hold", reason: "key_not_receipt_bound" };
-    if (facts.hot.has(source.receipt)) return { verdict: "hold", reason: "source_receipt_hot" };
-    if (facts.hot.has(source.observation)) return { verdict: "hold", reason: "source_observation_hot" };
-  } else if (row.origin !== "external_sheet_ingestion") {
-    return { verdict: "hold", reason: "origin_out_of_scope" };
-  }
+  const source = processorSource(row);
+  if (!source) return { verdict: "hold", reason: "key_not_receipt_bound" };
+  if (facts.hot.has(source.receipt)) return { verdict: "hold", reason: "source_receipt_hot" };
+  if (facts.hot.has(source.observation)) return { verdict: "hold", reason: "source_observation_hot" };
   const refs = refsOf(row);
   if (!refs.length) return { verdict: "hold", reason: "no_entity_refs" };
   if (refs.some((r) => !LIVE_COLLECTIONS[r.model])) return { verdict: "hold", reason: "entity_ref_unsupported" };
@@ -97,7 +95,8 @@ export async function loadCommandFacts(db: Db, rows: readonly Document[], until:
   return { until, hot, live };
 }
 
-/** Reads (read-only) the next phase 1–2 receipts after `cursor` (`_id` order) and their verdicts, for `dry-run` and the worker. */
+/** Reads (read-only) the next reviewed receipts after `cursor` (`_id` order) and their verdicts, for `dry-run` and the worker.
+ * External-ingestion receipts are read so the run reports them as held. */
 export async function reviewCommandBatch(db: Db, cursor: string | null, now: Date, size = RETIREMENT_BATCH) {
   const rows = await readRawBatch(executionsOf(db).find({ origin: { $in: [...RETIRABLE_ORIGINS] }, ...(cursor ? { _id: { $gt: toObjectId(cursor) } } : {}) },
     { raw: true, sort: { _id: 1 }, limit: size }) as never);

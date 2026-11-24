@@ -1,5 +1,5 @@
 /**
- * Validated retirement of Domain Command receipts, phases 1–2: operator command (docs/knowledge/validated-retirement.md).
+ * Validated retirement of Domain Command receipts, phase 2: operator command (docs/knowledge/validated-retirement.md).
  *
  *   pnpm domain:command-execution-retirement status   --target=vantagemovers                  # read-only: switch, cursor, catalog, bucket rule
  *   pnpm domain:command-execution-retirement dry-run  --target=vantagemovers [--limit=250000] # read-only verdicts from the stored cursor (no GCS, no writes)

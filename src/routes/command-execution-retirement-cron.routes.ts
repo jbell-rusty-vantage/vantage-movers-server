@@ -4,7 +4,7 @@ import { connectMongo } from "../db";
 import { retireProvenCommandExecutions } from "../services/domainCommands/retirement/commandExecutions";
 import { requireCronAuth } from "./sales-intelligence-cron.routes";
 
-/** Validated retirement of Domain Command receipts (phases 1–2), every ten minutes (docs/knowledge/validated-retirement.md). */
+/** Validated retirement of Domain Command receipts (phase 2), every ten minutes (docs/knowledge/validated-retirement.md). */
 const router = Router();
 router.all("/api/cron/command-execution-retirement", requireCronAuth, async (_req, res, next) => {
   try {
