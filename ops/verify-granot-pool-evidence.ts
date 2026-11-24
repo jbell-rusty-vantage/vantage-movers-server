@@ -14,10 +14,11 @@ type Ref = { model: "FormLead" | "CallLead"; id: string };
  * A winner retired by the proven-winner release (Owner decision 8) is no longer hot, so the history
  * read cannot see it. Compare its v2 proof with the Observation and Decision read back from GCS by
  * original ID, outside any transaction. `expired` means past its 90-day end of life: nothing to compare.
+ * `unproven` means a repoint later removed the proof; Pool refuses that Lead (fail-closed), so it is not a mismatch.
  */
 async function verifyRetiredWinners(refs: Ref[]) {
   const db = mongoose.connection.db!;
-  const counts = { retired: 0, verified: 0, mismatches: 0, expired: 0 };
+  const counts = { retired: 0, verified: 0, mismatches: 0, expired: 0, unproven: 0 };
   const hot = new Set<string>();
   const winners = new Map<string, { observation_id: unknown; captured_at: Date; evidence?: unknown }>();
   for (const [model, Model] of [["FormLead", getFormLeadModel()], ["CallLead", getCallLeadModel()]] as const) {
@@ -38,13 +39,17 @@ async function verifyRetiredWinners(refs: Ref[]) {
     counts.retired++;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped Mixed proof
     const proof = winner.evidence as Record<string, any> | undefined;
+    if (proof?.version !== 2) {
+      counts.unproven++;
+      continue;
+    }
     const observation = await readGranotObservation(db, winner.observation_id as never);
-    const decision = proof?.decision_id ? await readGranotDecision(db, proof.decision_id) : null;
+    const decision = proof.decision_id ? await readGranotDecision(db, proof.decision_id) : null;
     if (!observation && !decision) {
       counts.expired++;
       continue;
     }
-    const same = proof?.version === 2 && observation && decision &&
+    const same = observation && decision &&
       +observation.captured_at === +winner.captured_at &&
       String(decision.observation_id) === String(observation._id) &&
       decision.execution_mode === "live" && decision.outcome === proof.outcome &&
@@ -73,7 +78,7 @@ async function main() {
   let checked = 0,
     eligible = 0,
     mismatches = 0;
-  const retired = { retired: 0, verified: 0, mismatches: 0, expired: 0 };
+  const retired = { retired: 0, verified: 0, mismatches: 0, expired: 0, unproven: 0 };
   for (let i = 0; i < work.length; i += 64) {
     const batch = work
       .slice(i, i + 64)

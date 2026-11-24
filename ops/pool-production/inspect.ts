@@ -36,6 +36,7 @@ export async function inspectPilot(refs: readonly LeadRef[], database: string, n
     const job = normalizeJobNo(lead.job_no);
     const observationId = str(lead.last_accepted_granot_observation?.observation_id);
     const observation = observationId ? await db.collection("granot_observations").findOne({ _id: oid(observationId) }, options) : null;
+    const released = !observation && !!observationId && !!(await db.collection("granot_history_archive_chunks").findOne({ evidence_ids: oid(observationId) }, { ...options, projection: { _id: 1 } }));
     const receipt = observation ? await db.collection("granot_webhook_receipts").findOne({ _id: observation.receipt_id }, options) : null;
     const decision = observation ? await db.collection("synchronization_decisions").find({ observation_id: observation._id }, options).sort({ attempt: -1 }).limit(1).next() : null;
     const links = job ? await db.collection("granot_record_links").find({ normalized_job_no: job, state: "active" }, options).toArray() : [];
@@ -68,6 +69,8 @@ export async function inspectPilot(refs: readonly LeadRef[], database: string, n
       live_source_scope: !!scope && scope.lifecycle_disposition === "source_scoped_lead" && scope.source_company_active === true && scope.source_granularity_active === true && scope.selected_lead_model === ref.model && scope.lead_source_company_id === str(lead.lead_source_company) && scope.source_granularity_id === str(lead.source_granularity_id) && str(link?.source_scope?.lead_source_company) === str(lead.lead_source_company) && str(link?.source_scope?.source_granularity_id) === str(lead.source_granularity_id),
       subject_not_closed_or_review: subjects.length <= 1 && (!subject || subject.status === "active" && !(subject.review_reasons ?? []).length && subject.priority?.uncertain !== true),
       priority_not_uncertain: !newerInvalid,
+      // A winner the proven-winner release moved to GCS shows as this hold, not as missing evidence.
+      accepted_observation_not_released_to_gcs: !released,
       existing_master_lineage: lineage.some((row: any) => row.status === "synced" && !!row.last_synced_at),
     };
     candidates.push({ lead: ref, lead_revision: lead.domain_revision ?? 0, receiver_agent_id: str(lead.receiver_agent), job_hash: contentHash(job),

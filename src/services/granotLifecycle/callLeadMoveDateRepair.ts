@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { getCallLeadModel, type CallLeadDocument } from "../../models/CallLead";
 import { getGranotObservationModel } from "../../models/GranotObservation";
 import { readEvidenceIds } from "../granotHistory/evidencePage";
+import { provenWinnerReleaseEnabled } from "../granotHistory/provenWinners";
 import { getSalesOutreachSubjectModel } from "../../models/salesOutreach";
 import { executeCanonicalCommandWithPostCommit } from "../domainCommands/idempotency";
 import { persistEntityChangeMutations } from "../domainCommands/entityChange";
@@ -41,7 +42,7 @@ function recoveryObservationIds(lead: RecoveryLead): string[] {
 const observationFields = { captured_at: 1, normalization_result: 1, "identity.normalized_job_no": 1, "move.move_date": 1 } as const;
 
 /**
- * Hot Observations, then any retired one (proven-winner release) read back from GCS by original ID.
+ * Hot Observations, then, only while the proven-winner release is on, any retired one read back from GCS by original ID.
  * Never call inside a transaction: an archived Observation is immutable, so it is read once beforehand.
  */
 async function recoveryObservations(ids: string[]): Promise<RecoveryObservation[]> {
@@ -49,6 +50,7 @@ async function recoveryObservations(ids: string[]): Promise<RecoveryObservation[
   const hot: RecoveryObservation[] = await Model.find({ _id: { $in: ids } }, observationFields).lean();
   const found = new Set(hot.map((row) => String(row._id)));
   const missing = ids.filter((id) => !found.has(id)).map((id) => new mongoose.Types.ObjectId(id));
+  if (!missing.length || !(await provenWinnerReleaseEnabled(Model.db.db!))) return hot;
   const archived = await readEvidenceIds(Model.db.db!, missing as never[], "observation");
   return [...hot, ...(archived as unknown as RecoveryObservation[])];
 }
