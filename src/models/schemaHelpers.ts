@@ -70,6 +70,10 @@ export const sheetSyncSchema = new Schema(
       required: true,
       default: true,
     },
+    /** The Sheet Sync job whose drain last wrote this entry; absent on direct-path entries and those written before 2026-11-23. */
+    job_id: {
+      type: String,
+    },
   },
   { _id: false },
 );
@@ -83,6 +87,7 @@ export type SheetSyncEntry = {
   last_synced_at?: Date;
   last_error?: string;
   updated_since_last_sync: boolean;
+  job_id?: string;
 };
 
 export function removeSheetSyncEntries(
