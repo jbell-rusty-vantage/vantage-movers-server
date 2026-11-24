@@ -143,9 +143,17 @@ DailyOperationsEventSchema.index({ day: 1, kind: 1, occurred_at: -1, _id: -1 }, 
 DailyOperationsEventSchema.index({ parent_receipt_id: 1, occurred_at: 1 });
 DailyOperationsEventSchema.index({ entity_type: 1, entity_id: 1 });
 /**
- * Disk trim (2026-10-07): the live board reads today, yesterday and the day
- * before; 400 days is the bound already chosen for this log. The board key
- * `day` is a string, so the TTL rides on the `timestamps` `createdAt` date.
+ * Every live event has a `kind`; a retired event's dedupe fence
+ * (`services/dailyOperations/eventRetirement.ts`) has none. Spread into every
+ * `kind` condition of a body read so a fence is never counted or rendered.
+ */
+export const DAILY_OPERATIONS_LIVE_KIND = { $exists: true } as const;
+/**
+ * Disk trim (2026-10-07): body readers read today only (board, `/events`,
+ * rebuild); the snapshot's three days come from day documents. 400 days is
+ * the bound chosen for this log and for the dedupe fences closed-day
+ * retirement leaves behind. The board key `day` is a string, so the TTL rides
+ * on the `timestamps` `createdAt` date.
  */
 export const DAILY_OPERATIONS_EVENT_RETENTION_SECONDS = 400 * 24 * 60 * 60;
 export const DAILY_OPERATIONS_EVENT_TTL_INDEX = {

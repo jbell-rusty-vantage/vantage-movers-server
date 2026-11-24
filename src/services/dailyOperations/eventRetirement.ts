@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { ClientSession, Db, Document, ObjectId } from "mongodb";
 import { getDailyOperationsCollectionName } from "../../config/domain/dailyOperations";
 import { logger } from "../../logger";
-import { DAILY_OPERATIONS_EVENT_TTL_INDEX } from "../../models/DailyOperationsEvent";
+import { DAILY_OPERATIONS_EVENT_TTL_INDEX, DAILY_OPERATIONS_LIVE_KIND } from "../../models/DailyOperationsEvent";
 import { toObjectId } from "../../utils/objectId";
 import { CONTENT_TYPES, isCloudStorageError, openObjectStore, retirementPackObjectName, sha256Hex, type ObjectStore } from "../cloudStorage";
 import { bson, decodePack, encodePack, packHoldsExactly, type RawRow } from "../salesIntelligence/retirement/pack";
@@ -88,7 +88,7 @@ export function fenceOf(event: Document): Document {
   return { _id: event._id, dedupe_key: event.dedupe_key, day: event.day, createdAt: event.createdAt };
 }
 /** Matches live events only (never a fence). */
-export const LIVE_EVENT = { kind: { $exists: true } } as const;
+export const LIVE_EVENT = { kind: DAILY_OPERATIONS_LIVE_KIND } as const;
 
 /**
  * The review window at `now`: rows created before the start of yesterday in New York (and settled), on days up to the

@@ -5,7 +5,7 @@ import {
   getDailyOperationsStreamKey,
 } from "../../config/domain/dailyOperations";
 import { isTestMode, isVantageTestRunner } from "../../config/domain/runtime";
-import { getDailyOperationsEventModel } from "../../models/DailyOperationsEvent";
+import { DAILY_OPERATIONS_LIVE_KIND, getDailyOperationsEventModel } from "../../models/DailyOperationsEvent";
 import { isObjectIdString, toObjectId } from "../../utils/objectId";
 import { easternDayKey, easternInstantBounds } from "./dayDocument";
 import {
@@ -222,9 +222,8 @@ export async function defaultFindDailyOperationsEventById(
   if (!isObjectIdString(eventId)) {
     return null;
   }
-  // A retired event's dedupe fence (`eventRetirement.ts`) is never a card.
   const row = await getDailyOperationsEventModel()
-    .findOne({ _id: eventId, kind: { $exists: true } })
+    .findOne({ _id: eventId, kind: DAILY_OPERATIONS_LIVE_KIND })
     .lean()
     .exec();
   return (row as DailyOperationsLiveEventRow | null) ?? null;
@@ -241,7 +240,7 @@ export async function defaultListDailyOperationsEventsAfter(
   const afterId = asObjectId(cursor.event_id);
   const filter: Record<string, unknown> = {
     day,
-    kind: { $nin: RETIRED_WEBHOOK_CARD_KINDS },
+    kind: { ...DAILY_OPERATIONS_LIVE_KIND, $nin: RETIRED_WEBHOOK_CARD_KINDS },
     ...(afterId
       ? {
           $or: [
@@ -263,7 +262,7 @@ export async function defaultListNewestDailyOperationsEvent(
   day: string,
 ): Promise<DailyOperationsLiveEventRow | null> {
   const row = await getDailyOperationsEventModel()
-    .findOne({ day, kind: { $nin: RETIRED_WEBHOOK_CARD_KINDS } })
+    .findOne({ day, kind: { ...DAILY_OPERATIONS_LIVE_KIND, $nin: RETIRED_WEBHOOK_CARD_KINDS } })
     .sort({ occurred_at: -1, _id: -1 })
     .lean()
     .exec();

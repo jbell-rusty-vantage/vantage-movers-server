@@ -1,5 +1,5 @@
 import { RETIRED_WEBHOOK_CARD_KINDS } from "./kinds";
-import { getDailyOperationsEventModel } from "../../models/DailyOperationsEvent";
+import { DAILY_OPERATIONS_LIVE_KIND, getDailyOperationsEventModel } from "../../models/DailyOperationsEvent";
 import { FLORIDA_TIME_ZONE } from "../../utils/easternTime";
 import { easternDayKey } from "./dayDocument";
 import { projectDailyOperationsEventItem, type DailyOperationsEventItem, type DailyOperationsEventRow } from "./eventsPage";
@@ -18,7 +18,7 @@ async function eventPage(day: string, milestones: boolean): Promise<DailyOperati
   const limit = milestones ? 51 : 81;
   const rows = await getDailyOperationsEventModel().find({ day, ...(milestones ? {
     kind: { $in: ["outreach.rep_goal_met", "outreach.team_goal_met"] },
-  } : { kind: { $nin: RETIRED_WEBHOOK_CARD_KINDS } }) }).sort({ occurred_at: -1, _id: -1 }).limit(limit).maxTimeMS(3000).lean().exec();
+  } : { kind: { ...DAILY_OPERATIONS_LIVE_KIND, $nin: RETIRED_WEBHOOK_CARD_KINDS } }) }).sort({ occurred_at: -1, _id: -1 }).limit(limit).maxTimeMS(3000).lean().exec();
   return rows.map((row) => projectDailyOperationsEventItem(row as DailyOperationsEventRow));
 }
 export async function getDailyOperationsBoard(deps: {
