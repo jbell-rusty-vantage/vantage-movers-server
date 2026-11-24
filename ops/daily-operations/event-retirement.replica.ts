@@ -2,7 +2,7 @@
  * Daily Operations event retirement, end to end on the local replica (csi01, loopback only) with a fake bucket.
  *   node --import tsx ops/daily-operations/event-retirement.replica.ts
  * Proves: an old open day blocks every review; a storage failure changes nothing; a run archives every reviewed event and
- * compacts only closed, versioned, old-enough days to their dedupe fence; a late fact with a fenced key is still a
+ * compacts only closed, old-enough days (with or without webhook count versioning) to their dedupe fence; a late fact with a fenced key is still a
  * duplicate; today's readers never see a fence; a retired event restores byte for byte by original ID; a re-run does
  * nothing. Synthetic rows in a unique `testvantagemovers_dailyops…` database dropped at the end.
  */
@@ -51,9 +51,9 @@ async function main() {
       job_no: "J-1", entity_type: "FormLead", entity_id: "x", parent_receipt_id: null, links: {}, card: { job_no: "J-1" }, metric_touches: ["sheet_sync.completed"],
       dedupe_key: key, createdAt, updatedAt: createdAt });
     const a = event(retired, "sheet_sync:a:completed"), b = event(retired, "sheet_sync:b:completed", new Date(+noon(retired) + 1000));
-    const held = event(unversioned, "sheet_sync:c:completed"), orphan = event(missing, "sheet_sync:d:completed");
+    const legacy = event(unversioned, "sheet_sync:c:completed"), orphan = event(missing, "sheet_sync:d:completed");
     const recent = event(yesterday, "sheet_sync:e:completed");
-    await eventsOf(db).insertMany([a, b, held, orphan, recent] as never[]);
+    await eventsOf(db).insertMany([a, b, legacy, orphan, recent] as never[]);
     const before = new Map((await eventsOf(db).find({}, { raw: true }).toArray() as unknown as Buffer[]).map((raw) => [String(BSON.deserialize(raw)._id), Buffer.from(raw)]));
     const unchanged = async (ids: ObjectId[]) => {
       for (const id of ids) assert.ok(Buffer.from(await eventsOf(db).findOne({ _id: id }, { raw: true }) as unknown as Buffer).equals(before.get(String(id))!), `${id} unchanged`);
@@ -69,21 +69,21 @@ async function main() {
     // 1. Storage failure: nothing changes, cursor unchanged, lease released.
     const broken = createFakeObjectStore(options).store;
     await assert.rejects(retireClosedDayEvents(db, { now, store: { ...broken, put: async () => { throw new Error("gcs down"); } } }));
-    await unchanged([a._id, b._id, held._id, orphan._id, recent._id]);
+    await unchanged([a._id, b._id, legacy._id, orphan._id, recent._id]);
     const afterFailure = await db.collection(EVENT_RETIREMENT_CONTROL_COLLECTION).findOne({ _id: EVENT_RETIREMENT_CONTROL_ID as never });
     assert.equal(afterFailure?.cursor, null); assert.equal(afterFailure?.lease_owner, null);
 
-    // 2. A run reviews the four events created before yesterday, archives all four and fences only the closed, versioned day's two.
+    // 2. A run reviews the four events created before yesterday, archives all four and fences the three on closed days (one unversioned).
     const { store, bucket } = createFakeObjectStore(options);
     const run = await retireClosedDayEvents(db, { now, store });
-    assert.deepEqual([run.rows, run.retire, run.hold, run.fenced, run.packs], [4, 2, 2, 2, 1]);
-    assert.deepEqual(run.held_reasons, { day_missing: 1, day_webhook_counts_unversioned: 1 });
-    for (const e of [a, b]) {
-      assert.deepEqual(await eventsOf(db).findOne({ _id: e._id }), { _id: e._id, dedupe_key: e.dedupe_key, day: retired, createdAt: e.createdAt });
+    assert.deepEqual([run.rows, run.retire, run.hold, run.fenced, run.packs], [4, 3, 1, 3, 1]);
+    assert.deepEqual(run.held_reasons, { day_missing: 1 });
+    for (const e of [a, b, legacy]) {
+      assert.deepEqual(await eventsOf(db).findOne({ _id: e._id }), { _id: e._id, dedupe_key: e.dedupe_key, day: e.day, createdAt: e.createdAt });
     }
-    await unchanged([held._id, orphan._id, recent._id]);
+    await unchanged([orphan._id, recent._id]);
     const [pack] = await db.collection(EVENT_ARCHIVE_PACKS_COLLECTION).find().toArray();
-    assert.ok(pack && pack.rows === 4 && pack.retire === 2 && pack.expires_at > now);
+    assert.ok(pack && pack.rows === 4 && pack.retire === 3 && pack.expires_at > now);
     assert.deepEqual(pack.days, [missing, retired, unversioned].sort());
     assert.ok((await bucket.stat(pack.name))?.customTime, "the pack's 90-day clock started at creation");
 

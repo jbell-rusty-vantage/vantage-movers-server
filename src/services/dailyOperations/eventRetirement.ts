@@ -14,8 +14,7 @@ import { easternDayKey, easternInstantBounds, previousEasternDayKey } from "./da
  *
  * Every reader of an event body reads today only (board, `/events`, rebuild, live stream), and a closed day keeps its
  * frozen counters on the day document. An event's body has done its job when its day document is closed (`status`,
- * `closed_at`), the day is at least two New York days before today, and the day carries `webhook_counts_version: 1`
- * (the webhook backfill can never read it). Such an event is packed (exact BSON) to GCS with its 90-day clock started,
+ * `closed_at`) and the day is at least two New York days before today. Such an event is packed (exact BSON) to GCS with its 90-day clock started,
  * read back byte for byte, catalogued by `days` and `_id`, and then compacted **in place** to a dedupe fence
  * `{_id, dedupe_key, day, createdAt}` in a snapshot transaction that rechecks its exact bytes and its day.
  *
@@ -51,7 +50,7 @@ const SCAN_HINT = DAILY_OPERATIONS_EVENT_TTL_INDEX.name;
 type Cursor = { created_at: Date; id?: ObjectId | null };
 type Control = { _id: string; enabled_at?: Date; cursor?: Cursor | null; lease_owner?: string | null; lease_until?: Date | null };
 type Row = { raw: Buffer; doc: Document };
-export type DayRow = { day: string; status?: unknown; closed_at?: unknown; webhook_counts_version?: unknown };
+export type DayRow = { day: string; status?: unknown; closed_at?: unknown };
 export type EventVerdict = { verdict: "retire" } | { verdict: "hold"; reason: string };
 export type EventRetirementRun = {
   status: "disabled" | "lease_held" | "not_reviewable" | "ran";
@@ -74,7 +73,10 @@ export function eventVerdict(event: Document, day: DayRow | undefined, cutoffDay
   if (!day) return { verdict: "hold", reason: "day_missing" };
   if (day.status !== "closed") return { verdict: "hold", reason: "day_open" };
   if (!(day.closed_at instanceof Date)) return { verdict: "hold", reason: "day_closed_at_missing" };
-  if (day.webhook_counts_version !== 1) return { verdict: "hold", reason: "day_webhook_counts_unversioned" };
+  // No `webhook_counts_version` clause (lead decision on #274): the only reader of old event bodies, `backfillWebhookDay`,
+  // is unreachable for a closed day. `rebuildOpenDailyOperationsDay` throws DAY_CLOSED before aggregating (rebuild.ts),
+  // and `ops/granot-read-facts-backfill.ts` returns `already_settled` for a closed day. A future caller that backfills
+  // or rebuilds closed days from events must revisit this verdict first.
   return { verdict: "retire" };
 }
 
@@ -106,7 +108,7 @@ export async function loadDays(db: Db, events: readonly Document[], session?: Cl
   const keys = [...new Set(events.map((e) => e.day).filter((d): d is string => typeof d === "string"))];
   if (!keys.length) return new Map();
   const rows = await daysOf(db).find({ day: { $in: keys } },
-    { projection: { day: 1, status: 1, closed_at: 1, webhook_counts_version: 1 }, ...(session ? { session } : {}) }).toArray();
+    { projection: { day: 1, status: 1, closed_at: 1 }, ...(session ? { session } : {}) }).toArray();
   return new Map(rows.map((d) => [d.day, d]));
 }
 
