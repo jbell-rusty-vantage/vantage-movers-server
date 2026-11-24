@@ -16,6 +16,7 @@ applies_to:
   - src/services/granotHistory/endOfLife.ts
   - src/services/domainCommands/retirement/shared.ts
   - src/services/domainCommands/retirement/entityChanges.ts
+  - src/services/domainCommands/retirement/commandExecutions.ts
   - ops/sales-outreach/job-retirement.ts
 owners: [team:main-server]
 sources:
@@ -111,7 +112,7 @@ From the [audit](../operations/VALIDATED-RETIREMENT-AUDIT-2026-11-22.md). Verdic
 | `daily_operations_events` | 400-day TTL; +660 MB projected | **Should adopt** after the Owner revisits the Nov 19 "keep in MongoDB" decision. Proof: the day is closed and frozen; keep a hot dedupe fence |
 | `sheet_sync_jobs` | Permanent | **Should adopt.** Proof: synced, the entity's sheet metadata records the row, nothing newer pending |
 | `entity_changes` | Narrow incident rule built 2026-11-23 (`domainCommands/retirement/entityChanges.ts`, off until enabled): Granot re-snapshot Call Lead revisions outside the newest 50, tails past, Granot records retired; GCS 90 days; timelines read retired rows back by entity | **Adopted** once enabled (incident rows only). Dry run: 111,426 rows, 126.0 MB logical. Everything else stays permanent ([Domain Commands](services/domain-commands.md#entity_changes)) |
-| `domain_command_executions` | Permanent | **Should adopt, last.** Idempotency fence must stay hot |
+| `domain_command_executions` | Phases 1–2 built 2026-11-23 (`domainCommands/retirement/commandExecutions.ts`, off until enabled): retired external-ingestion receipts and Granot processor receipts whose source receipt and Observation Granot retention removed; referenced records must exist; GCS 90 days; no fence row, because no producer can rebuild those keys | **Adopted** once enabled (phases 1–2). Dry run: 163,189 receipts, 197.3 MB logical. Next: phases 3–4, RingCentral and Admin keys, Owner-approved 30-day bound (Admin keeps a compact fence) ([Domain Commands](services/domain-commands.md#domain_command_executions)) |
 | Sales Outreach business collections, `call_interactions` | Business records | **Not applicable**: they are the lifecycle effects |
 
 Cross-cutting: every namespace uses 90 days, in code and on the live bucket (metageneration 9, 2026-11-23); `ops/cloud/mongodb-backup/lifecycle.json` mirrors all six rules, plus a seventh, `history/domain-records/v1/`, not yet on the live bucket (`pnpm domain:entity-change-retirement install` adds it). [Release record](../operations/VALIDATED-RETIREMENT-RELEASE-2026-11-23.md). The real-bucket contract proof of the Cloud Storage module has not run.
