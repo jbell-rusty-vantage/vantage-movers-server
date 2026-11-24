@@ -35,6 +35,47 @@ The #270 review found:
 | Supervised `run --passes 3` | 04:27 | 192 reviews started, 0 failures. Each object drains 800 s before its rows are marked and its clock starts; the cron continues every 2 minutes |
 | First releases (cron) | 04:42 | 12 objects released, 79 rows marked, 0 failures; 278 reviews draining. Spot check: chunk `1ea67f91…` has its clock at 09:42:34 UTC with no holds (GCS may delete it from Feb 21, 2027); its catalog row expires Feb 20, 2027 |
 
+## Evening follow-up (Nov 23, 18:37–18:46 New York)
+
+### Drains confirmed (18:37)
+
+| Pass | Result |
+| --- | --- |
+| RingCentral receipts (`pnpm ringcentral:receipt-retirement status`) | 35,993 receipts in 116 packs (7.3 MB packed), 0 held. `reviewable_pending` 2. The cursor is 12 min behind its 1-day hot window (`lag_seconds` 87,118 counts from now, by design). 8,776 receipts hot. Bucket rule ok |
+| Granot end of life (`granot-history-end-of-life.ts status`) | 0 failures. Rows marked: 22,780 `granot_archived_receipts` + 27,373 `granot_history_archive_chunks` = 50,153 of 62,656. 323 reviewing, 117 queued. Still releasing every 2 minutes |
+| SI job retirement (`pnpm outreach:job-retirement status`) | Lag 439 s, 0 holds, 4 settled rows pending. Catalog 757 packs, 242,072 rows (121,510 retired, 120,562 kept) |
+
+### Real-bucket contract proof: blocked, nothing written
+
+Approved by the Owner for this session.
+- **What happened.** Creating the disposable bucket `vantage-contract-disposable-20261123-23809` in `just-cosmos-437222-b7` through `googleapis` with the test service account returned **403 "The billing account for the owning project is disabled in state absent"**.
+- **What was touched.** No bucket was created, no object was written and the suite did not run. `vantage-sheets-496816` was not touched.
+- **To unblock.** Link an active billing account to `just-cosmos-437222-b7`, or name another test project. The steps are in [Cloud Storage](../knowledge/services/cloud-storage.md#running-the-real-bucket-proof-owner-or-operator).
+
+### Compaction (Owner decision 4, Nov 23 evening)
+
+The Nov 20 method:
+- a temporary 24 h Atlas operator from the `MONGO.env` service account; the app user was not modified;
+- secondaries first, one member at a time;
+- an Atlas failover (restartPrimaries at 18:40, REPAIRING → IDLE by 18:43:52), then the former primary;
+- the temporary user and role deleted at about 18:45.
+
+**What was compacted.** Fifteen namespaces, chosen from the measured WiredTiger "file bytes available for reuse": the oplog, plus every collection with at least 2.6 MB reusable.
+
+**`freeSpaceTargetMB` trap.** The first pass on member 00 freed space only in `sales_intelligence_jobs` (28.5 MB). MongoDB's default `freeSpaceTargetMB` is 20, and WiredTiger skips any single file with less than that recoverable. The free space here is spread across many index files. The untracked `scripts/storage-compact.ts` now takes `--free-space-target-mb=N`. Every member was then compacted with `--free-space-target-mb=1`, each namespace in 0–3 s.
+
+| Member | Before (used / % of 17,308 MB) | Reusable before | After | Reusable after | Returned |
+| --- | --- | --- | --- | --- | --- |
+| `…-00-00` (secondary) | 4,201.7 MB / 24.3% | 352.2 MB | 3,952.9 MB / 22.8% | 98.6 MB | 248.8 MB |
+| `…-00-01` (secondary, now primary) | 4,217.1 MB / 24.4% | 365.8 MB | 3,957.9 MB / 22.9% | 106.2 MB | 259.2 MB |
+| `…-00-02` (former primary) | 4,270.1 MB / 24.7% | 359.8 MB | 4,001.8 MB / 23.1% | 90.4 MB | 268.3 MB |
+
+- **Total returned:** about 776 MB.
+- **Largest gains per member:** `daily_operations_events` (73–78 MB), `sales_intelligence_jobs` (69–79 MB), `granot_webhook_receipts` (22–35 MB) and `sales_intelligence_audit_events` (28–32 MB).
+- **Oplog, unchanged:** 212–235 MB on disk (977.8 MB logical of the 990 MB maximum), with a 96.8 h window, oldest entry Nov 19 22:49 UTC. Compact freed 0 there because only 6–21 MB was reusable.
+- **Evidence:** the untracked `scripts/output/storage-reclaim-report-2026-11-23-{before,after}.json` and `storage-compact-2026-11-23T*.json` in the main checkout.
+- **Next compaction:** the Nov 26 Granot backlog run frees about 17 MB more, which WiredTiger reuses anyway. Compact again only if a later retirement frees at least about 200 MB per member.
+
 ## What stays in MongoDB, and why
 
 - **RingCentral receipts:**
@@ -70,10 +111,11 @@ The #270 review found:
 
 ## Open
 
-- **Real-bucket contract proof** of the Cloud Storage module. It needs a disposable bucket and a test service-account grant, so it needs Owner approval. Only the multipart smoke has run (Nov 23).
-- **Proposals still owed** (decisions 3, 7, 8): `daily_operations_events`, Sheet Sync logs and jobs, Granot booking webhooks, the decision 2 hold review, then `entity_changes` and `domain_command_executions`.
-- **Nov 29:** drop `csi_job_due` if it stayed clean (decision 6).
-- **Nov 26:** the Granot backlog rerun.
+- **Real-bucket contract proof:** approved, but blocked because the test project has no billing account (above). Only the multipart smoke has run.
+- **Proposals delivered for Owner review** (decisions 3, 7, 8), measured and with scenario math: [proposals](VALIDATED-RETIREMENT-PROPOSALS-2026-11-23.md). None is implemented.
+- **Nov 26 (not before):** the Granot backlog rerun.
+- **Nov 29 or later:** drop `csi_job_due` if it stayed clean (decision 6).
+- **Compaction (decision 4):** done Nov 23 evening (above).
 - **Review nits not done:**
   - a retried RingCentral pack's catalog expiry is computed from the retry's `now`, not from the object's original `customTime`;
   - the job-pack scan cost grows with the catalog;
