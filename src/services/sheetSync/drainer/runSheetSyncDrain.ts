@@ -549,6 +549,7 @@ function toSheetSyncEntry(outcome: PlannedWriteOutcome): SheetSyncEntry {
       status: "synced",
       last_synced_at: new Date(),
       updated_since_last_sync: false,
+      job_id: write.jobId,
     };
   }
   return {
@@ -559,6 +560,7 @@ function toSheetSyncEntry(outcome: PlannedWriteOutcome): SheetSyncEntry {
     status: outcome.status === "deferred" ? "pending" : "failed",
     last_error: outcome.error,
     updated_since_last_sync: true,
+    job_id: write.jobId,
   };
 }
 

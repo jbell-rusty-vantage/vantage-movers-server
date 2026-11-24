@@ -257,7 +257,7 @@ No destructive "heal" that could fight the drainer for the same rows.
 
 ## Storage, indexes and read paths
 
-MongoDB holds all Sheet Sync state. Google Sheets holds only reporting rows. Domain documents (Form Leads, Call Leads, Bookings, Cancellations) carry `sheet_sync[]` entries with `target`, `spreadsheet_id`, `tab_name`, a `row_number` hint, `status`, `last_synced_at`, `last_error` and `updated_since_last_sync`. The drainer updates that array outside the domain transaction.
+MongoDB holds all Sheet Sync state. Google Sheets holds only reporting rows. Domain documents (Form Leads, Call Leads, Bookings, Cancellations) carry `sheet_sync[]` entries with `target`, `spreadsheet_id`, `tab_name`, a `row_number` hint, `status`, `last_synced_at`, `last_error`, `updated_since_last_sync` and, since 2026-11-23, `job_id`: the Sheet Sync job whose drain last wrote the entry (for a coalesced duplicate, its representative job). It lets job retirement ([validated retirement](../validated-retirement.md)) prove a job by identity instead of by time; entries written earlier or by the direct `syncRowToTargets` path have none. The drainer updates that array outside the domain transaction.
 
 The five Sheet Sync models leave Mongoose `autoIndex` at its default. `pnpm disk:trim` (`ops/lib/disk-trim.ts`) also applies the two 90-day TTL indexes. Indexes below are exactly as declared in `src/models/`; unnamed indexes carry MongoDB's generated name.
 

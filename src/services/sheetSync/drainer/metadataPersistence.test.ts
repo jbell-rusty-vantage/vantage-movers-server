@@ -50,6 +50,7 @@ test("overlapping plans persist once using the last surviving snapshot and final
   assert.equal(synced.row_number, 3);
   assert.equal(synced.updated_since_last_sync, false);
   assert.equal(synced.last_error, undefined);
+  assert.equal(synced.job_id, "booking", "the entry names the job whose drain wrote it (job retirement proof)");
   assert.ok(synced.last_synced_at!.getTime() >= before);
   assert.ok(synced.last_synced_at! >= writes[0]!.entries[0]!.last_synced_at!);
 });
