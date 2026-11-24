@@ -1,6 +1,7 @@
 import granotRetentionCron from "./routes/granot-retention-cron.routes";
 import salesIntelligenceRetirementCron from "./routes/sales-intelligence-retirement-cron.routes";
 import ringcentralReceiptRetirementCron from "./routes/ringcentral-receipt-retirement-cron.routes";
+import dailyOperationsEventRetirementCron from "./routes/daily-operations-event-retirement-cron.routes";
 import cors from "cors";
 import express, { type Request, type Response } from "express";
 import mongoose from "mongoose";
@@ -62,6 +63,7 @@ app.use(capacitySnapshotCronRoutes);
 app.use(granotRetentionCron);
 app.use(salesIntelligenceRetirementCron);
 app.use(ringcentralReceiptRetirementCron);
+app.use(dailyOperationsEventRetirementCron);
 app.use(leadMessagingCronRoutes);
 app.use(cplCorrectionCronRoutes);
 app.use(twilioMessageStatusRoutes);

@@ -1,5 +1,6 @@
 import { RETIRED_WEBHOOK_CARD_KINDS } from "./kinds";
 import {
+  DAILY_OPERATIONS_LIVE_KIND,
   getDailyOperationsEventModel,
   type DailyOperationsCard,
   type DailyOperationsEventDocument,
@@ -227,7 +228,7 @@ async function defaultListEvents(input: {
   cursor: DailyOperationsEventCursor | null;
   limit: number;
 }): Promise<DailyOperationsEventRow[]> {
-  const filter: Record<string, unknown> = { day: input.day, kind: { $nin: RETIRED_WEBHOOK_CARD_KINDS } };
+  const filter: Record<string, unknown> = { day: input.day, kind: { ...DAILY_OPERATIONS_LIVE_KIND, $nin: RETIRED_WEBHOOK_CARD_KINDS } };
   if (input.lane) filter.lane = input.lane;
   if (input.cursor) {
     const occurredAt = new Date(input.cursor.occurred_at);

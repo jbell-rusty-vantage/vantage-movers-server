@@ -75,6 +75,10 @@
       "schedule": "7-59/10 * * * *"
     },
     {
+      "path": "/api/cron/daily-operations-event-retirement",
+      "schedule": "3-59/10 * * * *"
+    },
+    {
       "path": "/api/cron/ringcentral-call-log-sync",
       "schedule": "*/30 * * * *"
     },

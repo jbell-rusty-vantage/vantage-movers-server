@@ -67,6 +67,17 @@
           "history/ringcentral-webhook-receipts/v1/vantagemovers/"
         ]
       }
+    },
+    {
+      "action": {
+        "type": "Delete"
+      },
+      "condition": {
+        "daysSinceCustomTime": 90,
+        "matchesPrefix": [
+          "history/daily-operations-events/v1/vantagemovers/"
+        ]
+      }
     }
   ]
 }
