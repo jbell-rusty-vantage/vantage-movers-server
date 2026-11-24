@@ -14,6 +14,7 @@ applies_to:
   - src/services/cloudStorage/namespaces.ts
   - src/services/granotHistory/retireOnUse.ts
   - src/services/granotHistory/endOfLife.ts
+  - src/services/granotHistory/unreferencedObjects.ts
   - ops/sales-outreach/job-retirement.ts
 owners: [team:main-server]
 sources:
