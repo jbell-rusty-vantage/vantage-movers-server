@@ -6,7 +6,7 @@ import { ENTITY_CHANGE_COLLECTION } from "../../../models/EntityChange";
 import type { ObjectStore } from "../../cloudStorage";
 import { LEAD_LINK_CHANGE_SCOPE, LEAD_LINK_RESCAN_MS } from "../../numberActivity/leadLinkJobs";
 import type { RawRow } from "../../salesIntelligence/retirement/pack";
-import { OUTREACH_LEAD_CHANGE_SCOPE } from "../../salesOutreach/subjects/feed";
+import { OUTREACH_LEAD_CHANGE_OVERLAP_MS, OUTREACH_LEAD_CHANGE_SCOPE } from "../../salesOutreach/subjects/feed";
 import { ENTITY_CHANGE_ARCHIVE_PACKS_COLLECTION } from "./archivedEntityChanges";
 import {
   acquireLease, advance, catalogIndexes, deleteExact, emptyRun, lookupArchivedRow, openRetirementStore, packAndCatalog, readRawBatch,
@@ -89,7 +89,8 @@ export async function reviewUntil(db: Db, now: Date): Promise<Date | null> {
     { projection: { scope: 1, "cursor.entity_change_applied_at": 1 } }).toArray();
   const cursors = states.map((s) => s.cursor?.entity_change_applied_at).filter((d): d is Date => d instanceof Date);
   if (cursors.length !== 2) return null;
-  return new Date(Math.min(+now - RETIREMENT_SETTLE_MS, ...cursors.map((c) => +c - LEAD_LINK_RESCAN_MS)));
+  const overlap = Math.max(LEAD_LINK_RESCAN_MS, OUTREACH_LEAD_CHANGE_OVERLAP_MS);
+  return new Date(Math.min(+now - RETIREMENT_SETTLE_MS, ...cursors.map((c) => +c - overlap)));
 }
 
 /** Everything a batch's verdicts read: per Lead its newest revision and 50th newest instant, and the hot Granot records. */
@@ -159,9 +160,11 @@ export async function retireIncidentEntityChanges(db: Db, options: {
         const held: Record<string, number> = {};
         for (const v of verdicts) if (v.verdict === "hold") held[v.reason] = (held[v.reason] ?? 0) + 1;
         const times = provenDocs.map((d) => +d.applied_at);
+        const entityRows: Record<string, number> = {};
+        for (const d of provenDocs) entityRows[String(d.entity.id)] = (entityRows[String(d.entity.id)] ?? 0) + 1;
         const packed = await packAndCatalog(db, { store, recoveryDays, catalog: ENTITY_CHANGE_ARCHIVE_PACKS_COLLECTION, rows: proven,
           day: new Date(Math.min(...times)), now, fields: {
-            entity_model: "CallLead", entity_ids: [...new Set(provenDocs.map((d) => String(d.entity.id)))],
+            entity_model: "CallLead", entity_ids: Object.keys(entityRows), entity_rows: entityRows,
             first_applied_at: new Date(Math.min(...times)), last_applied_at: new Date(Math.max(...times)), reviewed: rows.length, held_reasons: held,
           } });
         run.deleted += await deleteExact(db, ENTITY_CHANGE_COLLECTION, proven);

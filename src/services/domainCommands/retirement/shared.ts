@@ -98,11 +98,18 @@ export async function packAndCatalog(db: Db, input: {
   const stored = await input.store.put({ name, bytes, contentType: CONTENT_TYPES.pack, customTime: input.now, metadata: { rows: String(input.rows.length) } });
   if (stored.sha256 !== sha || !packHoldsExactly(stored.persisted, input.rows)) throw new Error("retirement_pack_verification_failed");
   const ids = input.rows.map((r) => r.id).sort();
+  // A retry can reuse an object written earlier: its recovery clock started then, so the catalog row expires from it.
+  let clock = input.now;
+  if (!stored.created) {
+    const started = (await input.store.stat(name, stored.generation))?.recoveryClockStartedAt;
+    if (!started || Number.isNaN(Date.parse(started))) throw new Error("retirement_pack_clock_missing");
+    clock = new Date(started);
+  }
   await db.collection(input.catalog).updateOne({ name }, { $setOnInsert: {
     name, generation: stored.generation, sha256: stored.sha256, size: stored.size, rows: input.rows.length,
     first_id: toObjectId(ids[0]!), last_id: toObjectId(ids.at(-1)!), ...input.fields,
     // One day before GCS can delete the object (the bucket counts whole days since its custom time).
-    created_at: input.now, expires_at: new Date(+input.now + (input.recoveryDays - 1) * DAY_MS),
+    created_at: input.now, expires_at: new Date(+clock + (input.recoveryDays - 1) * DAY_MS),
   } }, { upsert: true });
   return { name, packed_bytes: bytes.length };
 }
@@ -125,12 +132,15 @@ export async function deleteExact(db: Db, collection: string, proven: readonly R
   }
 }
 
-/** The rows of one catalogued pack, verified; `null` when GCS already expired it ahead of its catalog row. */
-export async function readCataloguedPack(store: ObjectStore, pack: Document): Promise<RawRow[] | null> {
+/**
+ * The rows of one catalogued pack, verified; `null` only when GCS deleted it on schedule, after the catalog row's
+ * `expires_at` (the TTL sweep lags). A pack missing before then is an error: fail closed, never a shorter answer.
+ */
+export async function readCataloguedPack(store: ObjectStore, pack: Document, now = new Date()): Promise<RawRow[] | null> {
   try {
     return decodePack(await store.readVerified({ name: pack.name, generation: pack.generation, sha256: pack.sha256, size: pack.size }));
   } catch (error) {
-    if (isCloudStorageError(error, "not_found")) return null;
+    if (isCloudStorageError(error, "not_found") && pack.expires_at instanceof Date && +pack.expires_at <= +now) return null;
     throw error;
   }
 }

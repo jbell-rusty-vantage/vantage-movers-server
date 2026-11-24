@@ -131,7 +131,9 @@ Milestone-mode reads, in order, with the declared index that fits (code declarat
 
 Retention: none owned. The milestones depend on Record Links, official Bookings and Cancellations (including their immutable `*_snapshot` fields) and Lead Entity Changes staying in MongoDB. See [`domain-commands.md`](./domain-commands.md#entity_changes) for `entity_changes` retention.
 
-Retired incident revisions (validated retirement, 2026-11-23, off until enabled): the full timeline (not milestones, which read only job-number rows, never retired) adds the Lead's retired Entity Changes from GCS by entity (`readArchivedEntityChanges`, one catalog query; a GCS read only for a Lead with retired rows), so it shows the same "Lead updated" events and processing-gap attention as before. `maxRowsPerQuery` counts them. After the 90-day archive the rows are gone.
+Retired incident revisions (validated retirement, 2026-11-23, off until enabled): the full timeline (not milestones, which read only job-number rows, never retired) adds the Lead's retired Entity Changes from GCS by entity (`readArchivedEntityChanges`, one catalog query; a GCS read only for a Lead with retired rows), so it shows the same "Lead updated" events and processing-gap attention as before. `maxRowsPerQuery` bounds them before any GCS read (the catalog's per-Lead counts must fit beside the hot rows); packs are read three at a time under a 20 s deadline, and a pack missing before its catalog row expires fails the read.
+
+**Known gap after 90 days.** Once a retired row's pack expires, the row is gone. If the timeline still shows that change's Granot Decision from the Granot archive (an `applied` Decision that requires a Lead change), `evaluateProcessingEvidenceGap` finds no matching Entity Change and raises a processing-gap attention for a change that did happen. Not fixed: telling an expired retired row from a real gap needs a record of what was retired, and the catalog row expires with the pack.
 
 ### Observations for the index phase
 

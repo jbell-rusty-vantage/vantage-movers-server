@@ -3,8 +3,8 @@
  *   node --import tsx ops/domain-commands/entity-change-retirement.replica.ts
  * Proves: a storage failure changes nothing; a run archives and deletes only the proven incident rows (outside the newest
  * 50, tails past, Granot records retired) and keeps the creation row, the newest 50, a Lead with few rows and a row whose
- * Observation is hot; a retired row restores byte for byte by `_id` and by Call Lead; the next run finishes the pass and
- * a later pass is a no-op. Synthetic rows in `testvantagemovers_entchg`, dropped at the end.
+ * Observation is hot; a retired row restores byte for byte by `_id` and by Call Lead (bounded by its catalog counts); a
+ * finished pass rests and a later pass is a no-op; a pack missing before its catalog row expires fails the read. Synthetic rows in `testvantagemovers_entchg`, dropped at the end.
  */
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
@@ -83,6 +83,8 @@ async function main() {
     assert.ok(found && Buffer.from(BSON.serialize(found.doc)).equals(before.get(String(expected[0]!._id))!), "restored byte for byte");
     const byLead = await readArchivedEntityChanges(db, [{ model: "CallLead", id: big }, { model: "CallLead", id: small }], { store });
     assert.deepEqual(byLead.map((d) => d.revision_after).sort((a, b) => a - b), expected.map((r) => r.revision_after));
+    assert.deepEqual(pack.entity_rows, { [big]: 10 });
+    await assert.rejects(readArchivedEntityChanges(db, [{ model: "CallLead", id: big }], { store, maxRows: 9 }), /EVIDENCE_LIMIT_REACHED/, "bounded before any GCS read");
 
     // 4. That run finished the pass, so the next one rests; a day later the next pass re-reviews the held rows and changes nothing.
     assert.ok(run.pass_completed);
@@ -91,6 +93,12 @@ async function main() {
     await db.collection("sales_intelligence_sync_state").updateMany({}, { $set: { "cursor.entity_change_applied_at": later } });
     const again = await retireIncidentEntityChanges(db, { now: later, store });
     assert.deepEqual([again.rows, again.retire, again.deleted, again.packs], [56, 0, 0, 0]);
+
+    // 5. Fail closed: a pack gone from GCS before its catalog row expires is an error, never a shorter timeline.
+    const state = await bucket.stat(pack.name);
+    await bucket.remove(pack.name, { generation: state!.generation, metageneration: state!.metageneration });
+    await assert.rejects(readArchivedEntityChanges(db, [{ model: "CallLead", id: big }], { store }), /not found/i);
+    await assert.rejects(lookupArchivedEntityChange(db, String(expected[0]!._id), store), /not found/i);
     console.log(JSON.stringify({ ok: true, database, run, pack: { rows: pack.rows, size: pack.size } }));
   } finally {
     await db.dropDatabase();
